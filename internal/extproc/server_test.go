@@ -268,13 +268,54 @@ func TestServer_Process(t *testing.T) {
 		p.expHeaderMap = hm
 		req := &extprocv3.ProcessingRequest{
 			Attributes: map[string]*structpb.Struct{
-				"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{"something": {}}},
+				"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+					"something": {},
+					// Marks the request as AI Gateway's, so an unresolvable backend must fail.
+					internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue("default/myroute"),
+				}},
 			},
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
 		ms := &mockExternalProcessingStream{t: t, ctx: t.Context(), retRecv: req}
 		err := s.Process(ms)
 		require.ErrorContains(t, err, `missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']`)
+	})
+	t.Run("upstream filter on a route AI Gateway does not own", func(t *testing.T) {
+		// Envoy Gateway MergeBackends can share one cluster between an AIGatewayRoute and a plain
+		// HTTPRoute, and an upstream filter cannot be disabled for just one of them.
+		//
+		// Such a request never passed through the router filter, so it deliberately carries
+		// NEITHER x-ai-eg-internal-req-id NOR x-ai-eg-original-path. Both are required by guards
+		// that run before the backend can be resolved, so a classification made any later than
+		// this never runs. Supplying either header here would defeat the point of the test.
+		s, p := requireNewServerWithMockProcessor(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/foo"}, {Key: "foo", Value: "bar"}}}
+		p.t = t
+		req := &extprocv3.ProcessingRequest{
+			Attributes: map[string]*structpb.Struct{
+				// Only a MergeBackends cluster asks for xds.cluster_name, and no AI Gateway route
+				// metadata accompanies it.
+				extProcFilterAttributeNamespace: {Fields: map[string]*structpb.Value{
+					internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				}},
+			},
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
+		}
+		ms := &mockExternalProcessingStream{
+			t: t, ctx: ctx, retRecv: req,
+			// passThroughProcessor answers request headers without mutating anything.
+			expResponseOnSend: &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_RequestHeaders{},
+			},
+		}
+		err := s.Process(ms)
+		// The stream keeps returning the same request until the context deadline; the point is
+		// that it is never rejected for a missing request ID, path or backend name.
+		require.ErrorContains(t, err, "context deadline exceeded")
 	})
 	t.Run("ok", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
@@ -343,6 +384,54 @@ func TestServer_setBackend(t *testing.T) {
 	}
 }
 
+func TestOnForeignMergedCluster(t *testing.T) {
+	const cluster = "backend/default/openai-backend/0"
+	for _, tc := range []struct {
+		name       string
+		attributes map[string]*structpb.Value
+		want       bool
+	}{
+		{
+			name: "merged cluster with no AI Gateway state is foreign",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue(cluster),
+			},
+			want: true,
+		},
+		{
+			// A legacy or hand-written data plane never requests xds.cluster_name, so a cluster
+			// whose metadata was simply not stamped keeps failing closed rather than silently
+			// forwarding unauthenticated, untranslated requests to the provider.
+			name:       "absent cluster name is not a merged cluster",
+			attributes: map[string]*structpb.Value{},
+			want:       false,
+		},
+		{
+			name: "route name present means AI Gateway generated the route",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath:            structpb.NewStringValue(cluster),
+				internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue("default/myroute"),
+			},
+			want: false,
+		},
+		{
+			name: "resolvable backend name means the request is ours",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath:                     structpb.NewStringValue(cluster),
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue("b"),
+			},
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, onForeignMergedCluster(&structpb.Struct{Fields: tc.attributes}))
+		})
+	}
+	t.Run("nil attributes", func(t *testing.T) {
+		require.False(t, onForeignMergedCluster(nil))
+	})
+}
+
 func TestResolveBackendName(t *testing.T) {
 	const backendName = "default/openai/route/aigw-run/rule/0/ref/0"
 
@@ -376,13 +465,75 @@ func TestResolveBackendName(t *testing.T) {
 			expected: backendName,
 		},
 		{
-			name:        "missing backend name for router",
+			// The route name marks this as AI Gateway's traffic, so an unresolvable backend is a
+			// real error and the request must fail rather than reach the provider unprocessed.
+			name: "missing backend name for router",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue("default/myroute"),
+			},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			// Classification of foreign traffic happens in Process, not here: resolveBackendName
+			// still fails closed for anything that reaches it without a resolvable name.
+			name:        "no metadata at all still fails closed",
 			attributes:  map[string]*structpb.Value{},
 			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
 		},
 		{
 			name:             "missing backend name for endpoint picker",
 			attributes:       map[string]*structpb.Value{},
+			isEndpointPicker: true,
+			expectedErr:      "rpc error: code = Internal desc = missing backend name in attributes at path: xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			name: "merged backend cluster resolves via the route mapping",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0":    backendName,
+						"backend/default/anthropic-backend/0": "default/anthropic/route/aigw-run/rule/0/ref/1",
+					})),
+			},
+			expected: backendName,
+		},
+		{
+			name: "merged mapping without the serving cluster falls through",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue("default/myroute"),
+				internalapi.XDSClusterNamePath:            structpb.NewStringValue("backend/default/unmapped/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0": backendName,
+					})),
+			},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			// Envoy delivers a struct-valued attribute as the literal "CelMap value".
+			name: "struct-valued mapping does not resolve",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue("default/myroute"),
+				internalapi.XDSClusterNamePath:            structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"backend/default/openai-backend/0": structpb.NewStringValue(backendName),
+					},
+				}),
+			},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			// The endpoint picker reads cluster metadata directly.
+			name: "merged mapping is ignored for the endpoint picker",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0": backendName,
+					})),
+			},
 			isEndpointPicker: true,
 			expectedErr:      "rpc error: code = Internal desc = missing backend name in attributes at path: xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
 		},

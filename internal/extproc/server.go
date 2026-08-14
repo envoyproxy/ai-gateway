@@ -95,6 +95,9 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 
 var errNoProcessor = errors.New("no processor registered for the given path")
 
+// extProcFilterAttributeNamespace is the key Envoy files ext_proc request attributes under.
+const extProcFilterAttributeNamespace = "envoy.filters.http.ext_proc"
+
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently.
 func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
@@ -178,6 +181,26 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			originalReqID = headersMap["x-request-id"]
 			// Assume that when attributes are set, this stream is for the upstream filter level.
 			isUpstreamFilter = req.GetAttributes() != nil
+
+			// This has to precede every header-derived guard below. A request on a route AI Gateway
+			// does not own never passed through the router filter, so it carries neither the
+			// internal request ID nor the original path those guards require, and would be rejected
+			// before it could be classified.
+			if isUpstreamFilter && onForeignMergedCluster(req.GetAttributes()[extProcFilterAttributeNamespace]) {
+				p = passThroughProcessor{}
+				if logger == nil {
+					logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", true)
+				}
+				ctx = context.WithValue(ctx, loggerContextKey, logger)
+				resp, procErr := s.processMsg(ctx, p, req, "", true)
+				if procErr != nil {
+					return status.Errorf(codes.Unknown, "error processing request message: %v", procErr)
+				}
+				if sendErr := stream.Send(resp); sendErr != nil {
+					return status.Errorf(codes.Unknown, "cannot send response: %v", sendErr)
+				}
+				continue
+			}
 
 			if isUpstreamFilter {
 				// For upstream filter, use the internal request ID passed from the router filter
@@ -373,7 +396,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 // setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
 // if the processor is an upstream filter.
 func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID string, isEndpointPicker bool, req *extprocv3.ProcessingRequest) error {
-	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
+	attributes := req.GetAttributes()[extProcFilterAttributeNamespace]
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
@@ -421,9 +444,58 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
 			return b.GetStringValue(), nil
 		}
+		// MergeBackends: the shared cluster carries no rule-scoped name, so the route's mapping
+		// does, selected by the serving cluster.
+		if b, ok := mergedBackendName(attributes); ok {
+			return b, nil
+		}
 	}
 
 	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+}
+
+// onForeignMergedCluster reports whether an upstream-filter request reached a cluster Envoy Gateway
+// deduplicated across backends, over a route AI Gateway does not own.
+//
+// Envoy Gateway MergeBackends can put an AIGatewayRoute and a plain HTTPRoute on one shared
+// cluster, and an upstream filter is cluster-wide: it cannot be disabled for just one of them. Such
+// a request must be passed through untouched rather than failing traffic that worked before the
+// backend was shared.
+//
+// The test is deliberately narrow. Only a MergeBackends cluster asks for xds.cluster_name, so an
+// ordinary cluster whose metadata is merely missing still fails closed, as do requests on routes AI
+// Gateway generated - it stamps the route name on every one of them.
+func onForeignMergedCluster(attributes *structpb.Struct) bool {
+	if attributes == nil {
+		return false
+	}
+	if _, ok := attributes.Fields[internalapi.XDSClusterNamePath]; !ok {
+		return false // Not a MergeBackends cluster.
+	}
+	for _, path := range []string{
+		internalapi.XDSRouteMetadataRouteNamePath,
+		internalapi.XDSUpstreamHostMetadataBackendNamePath,
+		internalapi.XDSClusterMetadataBackendNamePath,
+	} {
+		if _, ok := attributes.Fields[path]; ok {
+			return false // Carries AI Gateway's own routing state.
+		}
+	}
+	return true
+}
+
+// mergedBackendName resolves a MergeBackends cluster's backend name from the route rule's
+// mapping. The mapping is a flat string, not a struct: see internalapi.EncodeMergedBackendNames.
+func mergedBackendName(attributes *structpb.Struct) (string, bool) {
+	mapping, ok := attributes.Fields[internalapi.XDSRouteMetadataMergedBackendNamesPath]
+	if !ok {
+		return "", false
+	}
+	clusterName, ok := attributes.Fields[internalapi.XDSClusterNamePath]
+	if !ok {
+		return "", false
+	}
+	return internalapi.LookupMergedBackendName(mapping.GetStringValue(), clusterName.GetStringValue())
 }
 
 func resolveRouteName(attributes *structpb.Struct) string {

@@ -98,9 +98,27 @@ func parseAIGatewayClusterName(name string) (aiGatewayClusterName, error) {
 func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
+	// One AIGatewayRoute cache for every route walk below: Envoy Gateway emits a route per rule x
+	// match, so the same object is otherwise fetched many times per translation.
+	routeCache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+	backendCache := make(map[client.ObjectKey]*aigv1b1.AIServiceBackend)
+
+	// Resolve which MergeBackends clusters AIGatewayRoutes use before the cluster loop decides
+	// where to attach the upstream external processor. Empty unless MergeBackends is enabled.
+	mergedBackendClusters, mergedKeys, err := s.applyMergedBackendRouting(ctx, req.Clusters, req.Routes, routeCache, backendCache)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve merged backend clusters: %w", err)
+	}
+
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
+		if use, merged := mergedBackendClusters[cluster.Name]; merged {
+			// Shared cluster: maybeModifyCluster's per-rule endpoint work does not apply, since the
+			// backend name comes from the route's mapping instead.
+			if err = s.modifyMergedBackendCluster(ctx, cluster, use); err != nil {
+				return nil, fmt.Errorf("failed to modify merged backend cluster %s: %w", cluster.Name, err)
+			}
+		} else if err = s.maybeModifyCluster(ctx, cluster, routeCache, mergedKeys, backendCache); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -120,7 +138,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	}
 
 	// Apply the per-rule stream idle timeout to the generated routes.
-	if err = s.applyStreamIdleTimeouts(ctx, req.Routes); err != nil {
+	if err = s.applyStreamIdleTimeouts(ctx, req.Routes, routeCache); err != nil {
 		return nil, fmt.Errorf("failed to apply stream idle timeouts: %w", err)
 	}
 
@@ -191,7 +209,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 
 	// Inject rate limit filter into listener HCM filter chains, add rate limit service cluster,
 	// and patch routes with rate limit actions for QuotaPolicy enforcement.
-	req.Clusters, err = s.maybeInjectQuotaRateLimiting(ctx, req.Clusters, req.Listeners, req.Routes)
+	req.Clusters, err = s.maybeInjectQuotaRateLimiting(ctx, req.Clusters, req.Listeners, req.Routes, routeCache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
 	}
@@ -202,9 +220,9 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 
 // applyStreamIdleTimeouts walks the generated route configurations and sets the per-try idle
 // timeout on every AIGatewayRoute route whose rule configures StreamIdleTimeout.
-// Lookups are cached to avoid hitting the API server more than once per route.
-func (s *Server) applyStreamIdleTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
-	cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+// The cache is shared with the other route walks in PostTranslateModify, so each AIGatewayRoute is
+// fetched at most once per translation.
+func (s *Server) applyStreamIdleTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
 	for _, rc := range routeConfigs {
 		for _, vh := range rc.VirtualHosts {
 			for _, route := range vh.Routes {
@@ -228,17 +246,12 @@ func (s *Server) maybeSetStreamIdleTimeout(ctx context.Context, route *routev3.R
 		return nil
 	}
 
-	// Route name format: "httproute/<namespace>/<name>/rule/<index>/match/<...>".
-	parts := strings.Split(route.Name, "/")
-	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" || parts[1] == "" || parts[2] == "" {
-		return nil
-	}
-	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil {
+	namespace, name, ruleIndex, ok := parseAIGatewayRouteName(route.Name)
+	if !ok {
 		return nil
 	}
 
-	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: parts[1], Name: parts[2]})
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: namespace, Name: name})
 	if err != nil {
 		return err
 	}
@@ -268,6 +281,10 @@ func (s *Server) maybeSetStreamIdleTimeout(ctx context.Context, route *routev3.R
 // retrieveAndCacheAIGatewayRoute returns the AIGatewayRoute for the key and saves the result.
 // If the route is not found it will be  cached as nil, so one translation pass hits the API server at most once per route.
 func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute, key client.ObjectKey) (*aigv1b1.AIGatewayRoute, error) {
+	if cache == nil {
+		// Callers that resolve a single route (tests, one-shot lookups) may omit the cache.
+		cache = make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute, 1)
+	}
 	if cached, ok := cache[key]; ok {
 		return cached, nil
 	}
@@ -299,7 +316,13 @@ func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[c
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
+func (s *Server) maybeModifyCluster(
+	ctx context.Context,
+	cluster *clusterv3.Cluster,
+	routeCache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
+	mergedKeys map[mergedBackendKey]struct{},
+	backendCache map[client.ObjectKey]*aigv1b1.AIServiceBackend,
+) error {
 	clusterName, err := parseAIGatewayClusterName(cluster.Name)
 	if err != nil {
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name, "error", err)
@@ -311,19 +334,22 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
-	// Get the HTTPRoute object from the cluster name.
-	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	// Get the HTTPRoute object from the cluster name. The cache is shared with the route walks so
+	// that one translation sees one version of each AIGatewayRoute: a second, independent read here
+	// could observe an edit mid-translation and stamp endpoint metadata from a different revision
+	// than the route metadata already written.
+	cached, err := s.retrieveAndCacheAIGatewayRoute(ctx, routeCache, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName})
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
-				"namespace", httpRouteNamespace, "name", httpRouteName)
-			return nil
-		}
 		s.log.Error(err, "failed to get AIGatewayRoute object",
 			"namespace", httpRouteNamespace, "name", httpRouteName)
 		return err
 	}
+	if cached == nil {
+		s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
+			"namespace", httpRouteNamespace, "name", httpRouteName)
+		return nil
+	}
+	aigwRoute := *cached
 
 	// Get the backend from the HTTPRoute object.
 	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
@@ -378,6 +404,25 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				// Likewise for a backend MergeBackends moved onto its own shared cluster: this
+				// cluster's LoadAssignment holds a locality only for the refs that were not merged,
+				// so counting a merged ref here would shift every later ref onto the wrong locality.
+				merged, mergedErr := s.backendRefIsMerged(ctx, mergedKeys, backendCache, aigwRoute.Namespace, &httpRouteRule.BackendRefs[i])
+				if mergedErr != nil {
+					return mergedErr
+				}
+				if merged {
+					continue
+				}
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					// Envoy Gateway emitted fewer localities than the rule has backendRefs for a
+					// reason not accounted for above. Stop rather than index out of range, which
+					// would take the extension server down and stall the Gateway's config.
+					s.log.Error(errEndpointBackendRefMismatch, "leaving the remaining endpoints unlabelled",
+						"cluster_name", cluster.Name, "backend_refs", len(httpRouteRule.BackendRefs),
+						"localities", len(cluster.LoadAssignment.Endpoints))
+					break
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name
@@ -411,6 +456,108 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		}
 	}
 
+	return s.insertUpstreamAIGatewayFilters(cluster, false)
+}
+
+// modifyMergedBackendCluster prepares a MergeBackends cluster an AIGatewayRoute routes to.
+//
+// The cluster is shared between rules, so the per-rule endpoint metadata maybeModifyCluster writes
+// has no place to live here — the route carries the mapping instead. What remains is cluster-wide
+// configuration, which has to be reconciled across every AIGatewayRoute that reaches it.
+func (s *Server) modifyMergedBackendCluster(ctx context.Context, cluster *clusterv3.Cluster, use *mergedClusterUse) error {
+	// backendRef.Priority is expressed as endpoint priority within one cluster. Under MergeBackends
+	// each backend is its own cluster and the rule becomes weighted clusters, which Envoy has no
+	// priority concept for, so failover ordering cannot be honoured. Say so rather than silently
+	// serving live traffic from a backend the user marked standby.
+	for _, ignored := range use.ignoredPriorities {
+		s.log.Error(errMergedClusterPriorityUnsupported, "backendRef priority is ignored",
+			"backend_ref", ignored, "cluster", cluster.Name)
+	}
+
+	if err := s.maybeWrapMergedClusterInForwardProxy(ctx, cluster, use); err != nil {
+		return err
+	}
+	return s.insertUpstreamAIGatewayFilters(cluster, true)
+}
+
+// maybeWrapMergedClusterInForwardProxy routes a merged cluster's egress through a forward proxy,
+// but only when every route sharing the cluster agrees that it should be.
+//
+// The http_11_proxy transport socket is a property of the cluster, not of a route, so wrapping a
+// shared cluster retargets egress for every route on it. Applying one route's proxy to a route
+// whose Gateway configures none - or to a route AI Gateway does not even own - would tunnel traffic
+// through a proxy it was never configured for, which fails outright where that proxy is
+// unreachable. So the proxy is applied only on unanimity, and the disagreement is logged.
+func (s *Server) maybeWrapMergedClusterInForwardProxy(ctx context.Context, cluster *clusterv3.Cluster, use *mergedClusterUse) error {
+	var resolved string
+	for i, route := range use.routes {
+		addr, err := s.resolveForwardProxyAddr(ctx, route)
+		if err != nil {
+			return err
+		}
+		if i > 0 && addr != resolved {
+			s.log.Error(errMergedClusterForwardProxyConflict, "leaving the shared cluster unproxied",
+				"cluster", cluster.Name, "route", fmt.Sprintf("%s/%s", route.Namespace, route.Name),
+				"resolved", addr, "other_routes_resolved", resolved)
+			return nil
+		}
+		resolved = addr
+	}
+	if resolved == "" {
+		return nil
+	}
+	if use.sharedWithForeignRoute {
+		s.log.Error(errMergedClusterForwardProxyConflict, "leaving the shared cluster unproxied",
+			"cluster", cluster.Name, "reason", "a route AI Gateway does not own shares this cluster")
+		return nil
+	}
+
+	proxyAddress, err := parseForwardProxyAddress(resolved)
+	if err != nil {
+		return fmt.Errorf("invalid forward proxy address %q for cluster %s: %w", resolved, cluster.Name, err)
+	}
+	return wrapClusterInForwardProxy(cluster, proxyAddress)
+}
+
+// errMergedClusterForwardProxyConflict reports that the routes sharing a MergeBackends cluster do
+// not agree on a forward proxy, so none can be applied to the cluster they share.
+var errMergedClusterForwardProxyConflict = errors.New("routes sharing a MergeBackends cluster disagree on the forward proxy")
+
+// errMergedClusterPriorityUnsupported reports that backendRef.Priority cannot be honoured on a
+// cluster Envoy Gateway deduplicated across backends.
+var errMergedClusterPriorityUnsupported = errors.New("backendRef.Priority is not supported on a MergeBackends cluster")
+
+// backendRefIsMerged reports whether Envoy Gateway put this backendRef's backend object on its own
+// MergeBackends cluster. It is a no-op, and costs no API reads, when MergeBackends is off.
+func (s *Server) backendRefIsMerged(
+	ctx context.Context,
+	mergedKeys map[mergedBackendKey]struct{},
+	backendCache map[client.ObjectKey]*aigv1b1.AIServiceBackend,
+	routeNamespace string,
+	ref *aigv1b1.AIGatewayRouteRuleBackendRef,
+) (bool, error) {
+	if len(mergedKeys) == 0 || ref.IsInferencePool() {
+		return false, nil
+	}
+	key, err := s.backendKeyForRef(ctx, backendCache, routeNamespace, ref)
+	if err != nil || key == nil {
+		return false, err
+	}
+	_, merged := mergedKeys[*key]
+	return merged, nil
+}
+
+// errEndpointBackendRefMismatch reports that a cluster has fewer localities than its rule has
+// backendRefs, so the remaining backendRefs cannot be tied to an endpoint.
+var errEndpointBackendRefMismatch = errors.New("cluster has fewer localities than the rule has backendRefs")
+
+// insertUpstreamAIGatewayFilters installs the AI Gateway upstream external processor and header
+// mutation filter into the cluster's upstream filter chain, skipping clusters that already have it.
+//
+// merged selects the extra request attributes only a MergeBackends cluster needs, so the common
+// case does not pay for CEL evaluation and gRPC payload it never reads.
+func (s *Server) insertUpstreamAIGatewayFilters(cluster *clusterv3.Cluster, merged bool) error {
+	var err error
 	if cluster.TypedExtensionProtocolOptions == nil {
 		cluster.TypedExtensionProtocolOptions = make(map[string]*anypb.Any)
 	}
@@ -447,7 +594,17 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
+		// Always requested: its absence is how the external processor tells a request that did not
+		// arrive on an AI Gateway route, and so must pass through untouched, from one that did.
 		internalapi.XDSRouteMetadataRouteNamePath,
+	}
+	if merged {
+		// The shared cluster carries no rule-scoped backend name; the route's mapping does, keyed
+		// by the serving cluster.
+		extProcConfig.RequestAttributes = append(extProcConfig.RequestAttributes,
+			internalapi.XDSRouteMetadataMergedBackendNamesPath,
+			internalapi.XDSClusterNamePath,
+		)
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
@@ -852,26 +1009,17 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 		return false
 	}
 
-	eg, ok := route.Metadata.FilterMetadata["envoy-gateway"]
-	if !ok {
-		s.log.Info("no envoy-gateway metadata found in the route, skipping", "route", route.Name)
-		return false
-	}
-	resources, ok := eg.Fields["resources"]
-	if !ok {
-		s.log.Info("no resources found in the envoy-gateway metadata, skipping", "route", route.Name)
-		return false
-	}
-	if resources.GetListValue() == nil || len(resources.GetListValue().Values) == 0 {
+	resourceList := egResourceList(route.Metadata)
+	if len(resourceList) == 0 {
 		s.log.Info("no resources found in the envoy-gateway metadata, skipping", "route", route.Name)
 		return false
 	}
 
 	if s.isStandAloneMode {
 		// In stand-alone mode, we don't have annotations to check, so instead use the name prefix.
-		for _, resource := range resources.GetListValue().Values {
+		for _, resource := range resourceList {
 			// Skips all the MCP-related resources.
-			if name, ok := resource.GetStructValue().Fields["name"]; ok {
+			if name, ok := resource.GetStructValue().Fields[egXdsMetadataKeyName]; ok {
 				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPGeneratedResourceCommonPrefix) {
 					return false
 				}
@@ -881,7 +1029,7 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 	}
 
 	// Walk through the resources to find the AIGateway-generated HTTPRoute annotation.
-	for _, resource := range resources.GetListValue().Values {
+	for _, resource := range resourceList {
 		if resource.GetStructValue() == nil {
 			s.log.Info("resource is not a struct, skipping", "route", route.Name, "resource", resource)
 			continue
@@ -919,27 +1067,19 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 	if route.Metadata == nil || route.Metadata.FilterMetadata == nil {
 		return ""
 	}
-	eg, ok := route.Metadata.FilterMetadata["envoy-gateway"]
-	if !ok || eg == nil || eg.Fields == nil {
-		return ""
-	}
-	resources, ok := eg.Fields["resources"]
-	if !ok || resources.GetListValue() == nil {
-		return ""
-	}
-	for _, resource := range resources.GetListValue().Values {
+	for _, resource := range egResourceList(route.Metadata) {
 		resourceStruct := resource.GetStructValue()
 		if resourceStruct == nil || resourceStruct.Fields == nil {
 			continue
 		}
-		namespace, ok := resourceStruct.Fields["namespace"]
+		namespace, ok := resourceStruct.Fields[egXdsMetadataKeyNamespace]
 		if ok && namespace.GetStringValue() != "" {
-			name, nameOK := resourceStruct.Fields["name"]
+			name, nameOK := resourceStruct.Fields[egXdsMetadataKeyName]
 			if nameOK && name.GetStringValue() != "" {
 				return fmt.Sprintf("%s/%s", namespace.GetStringValue(), name.GetStringValue())
 			}
 		}
-		name, ok := resourceStruct.Fields["name"]
+		name, ok := resourceStruct.Fields[egXdsMetadataKeyName]
 		if ok && name.GetStringValue() != "" {
 			return name.GetStringValue()
 		}

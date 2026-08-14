@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
-	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -61,6 +59,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	clusters []*clusterv3.Cluster,
 	listeners []*listenerv3.Listener,
 	routes []*routev3.RouteConfiguration,
+	cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
 ) ([]*clusterv3.Cluster, error) {
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
@@ -97,7 +96,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// Patch routes and track which route configs had quota backends enabled.
 	quotaEnabledRoutes := make(map[string]bool)
 	for _, routeConfig := range routes {
-		if s.patchRoutesWithQuotaRateLimits(ctx, routeConfig, quotaBackendPolicies) {
+		if s.patchRoutesWithQuotaRateLimits(ctx, routeConfig, quotaBackendPolicies, cache) {
 			quotaEnabledRoutes[routeConfig.Name] = true
 		}
 	}
@@ -286,6 +285,7 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 	ctx context.Context,
 	routeConfig *routev3.RouteConfiguration,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
+	cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
 ) bool {
 	patched := false
 	for _, vh := range routeConfig.VirtualHosts {
@@ -293,18 +293,20 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			if !s.isRouteGeneratedByAIGateway(route) {
 				continue
 			}
-			routeAction := route.GetRoute()
-			if routeAction == nil {
+			if route.GetRoute() == nil {
 				continue
 			}
-			if !s.routeHasQuotaBackend(ctx, route, quotaBackendPolicies) {
+			// Resolve the AIGatewayRoute rule once; both lookups below key on it.
+			info := s.resolveRouteRule(ctx, route.Name, cache)
+			// A rule with no quota-carrying backend needs no patching. buildQuotaBackendPolicies
+			// only ever appends, so a present key always holds a non-empty slice and this is
+			// exactly the "has a quota backend" test — no separate pre-check can disagree with it.
+			policies := policiesForRouteRule(info, quotaBackendPolicies)
+			if len(policies) == 0 {
 				continue
 			}
 
-			policies := s.policiesForRoute(ctx, route, quotaBackendPolicies)
-			modelInfo := s.resolveRouteModelInfo(ctx, route)
-
-			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, modelInfo); err != nil {
+			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, routeRuleModelInfo(info)); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
 			}
 			patched = true
@@ -313,61 +315,27 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 	return patched
 }
 
-// routeHasQuotaBackend checks whether any backend referenced by the route has
-// a QuotaPolicy by resolving the cluster name to an AIGatewayRoute and checking
-// its BackendRefs against the quotaBackendPolicies map.
-func (s *Server) routeHasQuotaBackend(
-	ctx context.Context,
-	route *routev3.Route,
-	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
-) bool {
-	routeAction := route.GetRoute()
-	if routeAction == nil {
-		return false
-	}
-
-	// Check single cluster.
-	if clusterName := routeAction.GetCluster(); clusterName != "" {
-		return s.clusterHasQuotaBackend(ctx, clusterName, quotaBackendPolicies)
-	}
-
-	// Check weighted clusters.
-	if wc := routeAction.GetWeightedClusters(); wc != nil {
-		for _, c := range wc.Clusters {
-			if s.clusterHasQuotaBackend(ctx, c.Name, quotaBackendPolicies) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// clusterRouteInfo contains the resolved route rule information for a cluster.
-type clusterRouteInfo struct {
+// routeRuleInfo contains the resolved AIGatewayRoute rule for an Envoy route.
+type routeRuleInfo struct {
 	namespace string
 	rule      *aigv1b1.AIGatewayRouteRule
 }
 
-// resolveClusterRule parses a cluster name and fetches the corresponding AIGatewayRoute rule.
-// Cluster name format: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
-func (s *Server) resolveClusterRule(ctx context.Context, clusterName string) *clusterRouteInfo {
-	parts := strings.Split(clusterName, "/")
-	if len(parts) != 5 || parts[0] != "httproute" {
-		return nil
-	}
-	namespace := parts[1]
-	routeName := parts[2]
-	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil || ruleIndex < 0 {
+// resolveRouteRule parses an Envoy route name and fetches the corresponding AIGatewayRoute rule.
+//
+// It keys on the route name, not the cluster name: Envoy Gateway MergeBackends renames clusters
+// ("backend/<ns>/<name>/<port>") but leaves route names intact, so a cluster-name key would miss a
+// merged cluster and skip quota enforcement for that route.
+func (s *Server) resolveRouteRule(ctx context.Context, routeName string, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) *routeRuleInfo {
+	namespace, name, ruleIndex, ok := parseAIGatewayRouteName(routeName)
+	if !ok {
 		return nil
 	}
 
-	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      routeName,
-	}, &aigwRoute); err != nil {
+	// Envoy Gateway emits one route per rule x match, so the same AIGatewayRoute is resolved many
+	// times per translation; the cache is shared with the other route walks in PostTranslateModify.
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: namespace, Name: name})
+	if err != nil || aigwRoute == nil {
 		return nil
 	}
 
@@ -375,85 +343,39 @@ func (s *Server) resolveClusterRule(ctx context.Context, clusterName string) *cl
 		return nil
 	}
 
-	return &clusterRouteInfo{
+	return &routeRuleInfo{
 		namespace: namespace,
 		rule:      &aigwRoute.Spec.Rules[ruleIndex],
 	}
 }
 
-// clusterHasQuotaBackend checks whether a cluster references any AIServiceBackend
-// that has a QuotaPolicy attached.
-func (s *Server) clusterHasQuotaBackend(ctx context.Context, clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
-	info := s.resolveClusterRule(ctx, clusterName)
+// policiesForRouteRule collects the deduplicated QuotaPolicies applicable to the resolved rule by
+// looking up each of its backends in the policies map.
+func policiesForRouteRule(info *routeRuleInfo, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) []aigv1a1.QuotaPolicy {
 	if info == nil {
-		return false
-	}
-
-	for _, backendRef := range info.rule.BackendRefs {
-		key := info.namespace + "/" + backendRef.Name
-		if _, ok := quotaBackendPolicies[key]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-// policiesForRoute collects the deduplicated QuotaPolicies applicable to a route
-// by resolving its clusters to backends and looking up the policies map.
-func (s *Server) policiesForRoute(
-	ctx context.Context,
-	route *routev3.Route,
-	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
-) []aigv1a1.QuotaPolicy {
-	seen := make(map[string]struct{})
-	var result []aigv1a1.QuotaPolicy
-
-	collectFromCluster := func(clusterName string) {
-		backendKeys := s.backendKeysForCluster(ctx, clusterName)
-		for _, key := range backendKeys {
-			policies, ok := quotaBackendPolicies[key]
-			if !ok {
-				continue
-			}
-			for i := range policies {
-				uid := string(policies[i].UID)
-				if _, dup := seen[uid]; dup {
-					continue
-				}
-				seen[uid] = struct{}{}
-				result = append(result, policies[i])
-			}
-		}
-	}
-
-	routeAction := route.GetRoute()
-	if routeAction == nil {
 		return nil
 	}
-	if clusterName := routeAction.GetCluster(); clusterName != "" {
-		collectFromCluster(clusterName)
-	}
-	if wc := routeAction.GetWeightedClusters(); wc != nil {
-		for _, c := range wc.Clusters {
-			collectFromCluster(c.Name)
+
+	seen := make(map[string]struct{})
+	var result []aigv1a1.QuotaPolicy
+	for _, backendRef := range info.rule.BackendRefs {
+		// A backendRef may name an AIServiceBackend in another namespace, and QuotaPolicies are
+		// keyed by the namespace of the backend they target. Keying on the route's namespace would
+		// silently find nothing and leave the tenant's quota unenforced.
+		policies, ok := quotaBackendPolicies[backendRef.GetNamespace(info.namespace)+"/"+backendRef.Name]
+		if !ok {
+			continue
+		}
+		for i := range policies {
+			uid := string(policies[i].UID)
+			if _, dup := seen[uid]; dup {
+				continue
+			}
+			seen[uid] = struct{}{}
+			result = append(result, policies[i])
 		}
 	}
 	return result
-}
-
-// backendKeysForCluster resolves a cluster name to "namespace/backendName" keys
-// by fetching the AIGatewayRoute and looking up its BackendRefs.
-func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) []string {
-	info := s.resolveClusterRule(ctx, clusterName)
-	if info == nil {
-		return nil
-	}
-
-	var keys []string
-	for _, backendRef := range info.rule.BackendRefs {
-		keys = append(keys, info.namespace+"/"+backendRef.Name)
-	}
-	return keys
 }
 
 // routeModelInfo holds the resolved model information for an Envoy route.
@@ -465,11 +387,9 @@ type routeModelInfo struct {
 	backendModels map[string][]string
 }
 
-// resolveRouteModelInfo determines the model information for an Envoy route by
-// resolving its clusters back to AIGatewayRoute rules.
-func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route) *routeModelInfo {
-	routeAction := route.GetRoute()
-	if routeAction == nil {
+// routeRuleModelInfo builds the model information (backend → ModelNameOverrides) for the resolved rule.
+func routeRuleModelInfo(resolved *routeRuleInfo) *routeModelInfo {
+	if resolved == nil {
 		return nil
 	}
 
@@ -477,32 +397,16 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 		backendModels: make(map[string][]string),
 	}
 	seen := make(map[string]map[string]bool)
-
-	collectFromCluster := func(clusterName string) {
-		resolved := s.resolveClusterRule(ctx, clusterName)
-		if resolved == nil {
-			return
+	for _, br := range resolved.rule.BackendRefs {
+		if br.ModelNameOverride == "" {
+			continue
 		}
-
-		for _, br := range resolved.rule.BackendRefs {
-			if br.ModelNameOverride != "" {
-				if seen[br.Name] == nil {
-					seen[br.Name] = make(map[string]bool)
-				}
-				if !seen[br.Name][br.ModelNameOverride] {
-					seen[br.Name][br.ModelNameOverride] = true
-					info.backendModels[br.Name] = append(info.backendModels[br.Name], br.ModelNameOverride)
-				}
-			}
+		if seen[br.Name] == nil {
+			seen[br.Name] = make(map[string]bool)
 		}
-	}
-
-	if clusterName := routeAction.GetCluster(); clusterName != "" {
-		collectFromCluster(clusterName)
-	}
-	if wc := routeAction.GetWeightedClusters(); wc != nil {
-		for _, c := range wc.Clusters {
-			collectFromCluster(c.Name)
+		if !seen[br.Name][br.ModelNameOverride] {
+			seen[br.Name][br.ModelNameOverride] = true
+			info.backendModels[br.Name] = append(info.backendModels[br.Name], br.ModelNameOverride)
 		}
 	}
 
