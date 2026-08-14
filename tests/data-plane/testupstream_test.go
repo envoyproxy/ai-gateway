@@ -189,7 +189,7 @@ func TestWithTestUpstream(t *testing.T) {
 			expRequestHeaders: map[string]string{"x-goog-api-key": fakeGoogleAIStudioAPIKey},
 			expRequestBody:    `{"contents":[{"parts":[{"text":"a cat wearing sunglasses"}],"role":"user"}],"tools":null,"generationConfig":{"candidateCount":2,"responseModalities":["IMAGE","TEXT"]}}`,
 			// Gemini returns the image as raw inlineData bytes; "AQID" is base64 for 0x01,0x02,0x03.
-			responseBody: `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQID"}}]}}],"modelVersion":"gemini-2.5-flash-image","usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":1292,"totalTokenCount":1300}}`,
+			responseBody: `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQID"}}]}}],"modelVersion":"gemini-2.5-flash-image","usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":1292,"thoughtsTokenCount":30,"totalTokenCount":1330,"promptTokensDetails":[{"modality":"TEXT","tokenCount":8}]}}`,
 			expStatus:    http.StatusOK,
 			expResponseBodyFunc: func(t require.TestingT, body []byte) {
 				var resp openai.ImageGenerationResponse
@@ -197,7 +197,11 @@ func TestWithTestUpstream(t *testing.T) {
 				require.Len(t, resp.Data, 1)
 				require.Equal(t, "AQID", resp.Data[0].B64JSON)
 				require.NotNil(t, resp.Usage)
-				require.Equal(t, 1300, resp.Usage.TotalTokens)
+				require.Equal(t, 1330, resp.Usage.TotalTokens)
+				require.Equal(t, 8, resp.Usage.InputTokens)
+				// Thinking tokens are billed as output, so they land in output_tokens.
+				require.Equal(t, 1322, resp.Usage.OutputTokens)
+				require.Equal(t, &openai.ImageGenerationInputTokensDetails{TextTokens: 8}, resp.Usage.InputTokensDetails)
 			},
 		},
 		{

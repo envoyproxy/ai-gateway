@@ -165,28 +165,64 @@ func TestOpenAIToGoogleAIStudioImageTranslator_ResponseBody(t *testing.T) {
 		require.Equal(t, &openai.ImageGenerationUsage{InputTokens: 11, OutputTokens: 22, TotalTokens: 33}, got.Usage)
 	})
 
-	t.Run("folds thinking and tool-use tokens into the billed side", func(t *testing.T) {
-		// Gemini reports these separately but bills them, and counts both in totalTokenCount,
-		// so input + output must still add up to total.
+	t.Run("folds thinking tokens into output and reports them as reasoning", func(t *testing.T) {
 		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
 		resp := newResp()
 		resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
 			PromptTokenCount:        11,
-			ToolUsePromptTokenCount: 4,
+			CachedContentTokenCount: 3,
 			CandidatesTokenCount:    22,
 			ThoughtsTokenCount:      7,
-			TotalTokenCount:         44,
+			TotalTokenCount:         40,
 		}
 		buf, err := json.Marshal(resp)
 		require.NoError(t, err)
 
 		_, bm, usage, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), false, nil)
 		require.NoError(t, err)
-		require.Equal(t, tokenUsageFrom(15, -1, -1, 29, 44, -1), usage)
+		require.Equal(t, tokenUsageFrom(11, 3, -1, 29, 40, 7), usage)
 
 		var got openai.ImageGenerationResponse
 		require.NoError(t, json.Unmarshal(bm, &got))
-		require.Equal(t, &openai.ImageGenerationUsage{InputTokens: 15, OutputTokens: 29, TotalTokens: 44}, got.Usage)
+		require.Equal(t, &openai.ImageGenerationUsage{InputTokens: 11, OutputTokens: 29, TotalTokens: 40}, got.Usage)
+	})
+
+	t.Run("maps the prompt modality breakdown to input_tokens_details", func(t *testing.T) {
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		resp := newResp()
+		resp.UsageMetadata.PromptTokensDetails = []*genai.ModalityTokenCount{
+			{Modality: genai.MediaModalityText, TokenCount: 6},
+			{Modality: genai.MediaModalityImage, TokenCount: 5},
+			// Modalities OpenAI has no field for are dropped rather than mis-attributed.
+			{Modality: genai.MediaModalityAudio, TokenCount: 9},
+		}
+		buf, err := json.Marshal(resp)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), false, nil)
+		require.NoError(t, err)
+
+		var got openai.ImageGenerationResponse
+		require.NoError(t, json.Unmarshal(bm, &got))
+		require.Equal(t, &openai.ImageGenerationInputTokensDetails{TextTokens: 6, ImageTokens: 5}, got.Usage.InputTokensDetails)
+	})
+
+	t.Run("omits input_tokens_details when nothing maps", func(t *testing.T) {
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		resp := newResp()
+		resp.UsageMetadata.PromptTokensDetails = []*genai.ModalityTokenCount{
+			{Modality: genai.MediaModalityAudio, TokenCount: 9},
+		}
+		buf, err := json.Marshal(resp)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), false, nil)
+		require.NoError(t, err)
+		require.NotContains(t, string(bm), "input_tokens_details")
+
+		var got openai.ImageGenerationResponse
+		require.NoError(t, json.Unmarshal(bm, &got))
+		require.Nil(t, got.Usage.InputTokensDetails)
 	})
 
 	t.Run("omits usage when the response carries no usage metadata", func(t *testing.T) {

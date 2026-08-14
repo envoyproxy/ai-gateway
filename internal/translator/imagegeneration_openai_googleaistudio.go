@@ -167,19 +167,26 @@ func (t *openAIToGoogleAIStudioImageGenerationTranslator) ResponseBody(
 		Data:    imageData,
 	}
 
-	// Gemini's totalTokenCount is prompt + candidates + toolUsePrompt + thoughts. Fold the two
-	// extra counts into the side they are billed as, so input + output still sums to total;
-	// candidatesTokenCount alone undercounts output for any model that thinks.
+	// Thinking tokens are billed as output but reported separately, so fold them in as
+	// [geminiUsageToOpenAIUsage] does on the Vertex path; candidatesTokenCount alone undercounts
+	// output for any model that thinks. Reasoning and cached counts are reported only when Gemini
+	// sends them, since [metrics.TokenUsage] distinguishes zero from absent.
 	if usage := geminiResp.UsageMetadata; usage != nil {
-		inputTokens := usage.PromptTokenCount + usage.ToolUsePromptTokenCount
 		outputTokens := usage.CandidatesTokenCount + usage.ThoughtsTokenCount
-		tokenUsage.SetInputTokens(uint32(inputTokens))           //nolint:gosec
-		tokenUsage.SetOutputTokens(uint32(outputTokens))         //nolint:gosec
-		tokenUsage.SetTotalTokens(uint32(usage.TotalTokenCount)) //nolint:gosec
+		tokenUsage.SetInputTokens(uint32(usage.PromptTokenCount)) //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(outputTokens))          //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(usage.TotalTokenCount))  //nolint:gosec
+		if usage.ThoughtsTokenCount > 0 {
+			tokenUsage.SetReasoningTokens(uint32(usage.ThoughtsTokenCount)) //nolint:gosec
+		}
+		if usage.CachedContentTokenCount > 0 {
+			tokenUsage.SetCachedInputTokens(uint32(usage.CachedContentTokenCount)) //nolint:gosec
+		}
 		openAIResp.Usage = &openai.ImageGenerationUsage{
-			InputTokens:  int(inputTokens),
-			OutputTokens: int(outputTokens),
-			TotalTokens:  int(usage.TotalTokenCount),
+			InputTokens:        int(usage.PromptTokenCount),
+			OutputTokens:       int(outputTokens),
+			TotalTokens:        int(usage.TotalTokenCount),
+			InputTokensDetails: inputTokensDetails(usage.PromptTokensDetails),
 		}
 	}
 
@@ -194,6 +201,31 @@ func (t *openAIToGoogleAIStudioImageGenerationTranslator) ResponseBody(
 	}
 	newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
+}
+
+// inputTokensDetails maps Gemini's per-modality prompt breakdown onto the text/image split that
+// gpt-image-1 clients read. Modalities OpenAI has no field for are dropped, and an absent or
+// entirely unmappable breakdown yields nil so the field stays omitted.
+func inputTokensDetails(details []*genai.ModalityTokenCount) *openai.ImageGenerationInputTokensDetails {
+	var out openai.ImageGenerationInputTokensDetails
+	var mapped bool
+	for _, d := range details {
+		if d == nil {
+			continue
+		}
+		switch d.Modality {
+		case genai.MediaModalityText:
+			out.TextTokens += int(d.TokenCount)
+			mapped = true
+		case genai.MediaModalityImage:
+			out.ImageTokens += int(d.TokenCount)
+			mapped = true
+		}
+	}
+	if !mapped {
+		return nil
+	}
+	return &out
 }
 
 // ResponseError implements [OpenAIImageGenerationTranslator.ResponseError]. Gemini reports errors in
