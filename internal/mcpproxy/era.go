@@ -91,32 +91,6 @@ var modernOnlyMethods = map[string]struct{}{
 	"subscriptions/listen": {},
 }
 
-// Caching hints applied to gateway-generated cacheable results (2026-07-28
-// caching spec). Servers MUST include caching hints (ttlMs/cacheScope) on
-// complete results for server/discover, tools/list, prompts/list,
-// resources/list, resources/templates/list, and resources/read.
-const (
-	// defaultListTTLMs is the freshness hint for aggregated list results. These
-	// are re-derived from backend server/discover, whose freshness the gateway
-	// already tracks via capabilityCache, so a short TTL keeps clients roughly
-	// in sync with backend list_changed notifications.
-	//
-	// nolint:unused // TODO: remove this once we have the modern spec implemented
-	defaultListTTLMs = 60_000
-
-	// cacheScopePublic marks results that do not contain per-caller data and may
-	// be shared across callers/proxies.
-	//
-	// nolint:unused // TODO: remove this once we have the modern spec implemented
-	cacheScopePublic = "public"
-
-	// cacheScopePrivate marks results that may vary per authorization context and
-	// MUST NOT be shared across callers.
-	//
-	// nolint:unused // TODO: remove this once we have the modern spec implemented
-	cacheScopePrivate = "private"
-)
-
 // era represents whether a client/backend speaks legacy or modern MCP protocol.
 type era int
 
