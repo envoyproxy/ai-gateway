@@ -6,10 +6,13 @@
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
-  name: googleai-apikey
+  name: googleai-with-apikey
   namespace: default
 spec:
-  type: GoogleAIKey
-  googleAIKey:
+  type: GoogleAPIKey
+  googleAPIKey:
     secretRef:
       name: api-key-secret
+  apiKey:
+    secretRef:
+      name: another-secret

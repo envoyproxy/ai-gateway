@@ -165,6 +165,30 @@ func TestOpenAIToGoogleAIStudioImageTranslator_ResponseBody(t *testing.T) {
 		require.Equal(t, &openai.ImageGenerationUsage{InputTokens: 11, OutputTokens: 22, TotalTokens: 33}, got.Usage)
 	})
 
+	t.Run("folds thinking and tool-use tokens into the billed side", func(t *testing.T) {
+		// Gemini reports these separately but bills them, and counts both in totalTokenCount,
+		// so input + output must still add up to total.
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		resp := newResp()
+		resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
+			PromptTokenCount:        11,
+			ToolUsePromptTokenCount: 4,
+			CandidatesTokenCount:    22,
+			ThoughtsTokenCount:      7,
+			TotalTokenCount:         44,
+		}
+		buf, err := json.Marshal(resp)
+		require.NoError(t, err)
+
+		_, bm, usage, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, tokenUsageFrom(15, -1, -1, 29, 44, -1), usage)
+
+		var got openai.ImageGenerationResponse
+		require.NoError(t, json.Unmarshal(bm, &got))
+		require.Equal(t, &openai.ImageGenerationUsage{InputTokens: 15, OutputTokens: 29, TotalTokens: 44}, got.Usage)
+	})
+
 	t.Run("omits usage when the response carries no usage metadata", func(t *testing.T) {
 		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
 		resp := newResp()
@@ -273,16 +297,56 @@ func TestOpenAIToGoogleAIStudioImageTranslator_ResponseHeaders_NoOp(t *testing.T
 }
 
 func TestOpenAIToGoogleAIStudioImageTranslator_ResponseError(t *testing.T) {
-	tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
-	headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "503"}
-	hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte("backend error")))
-	require.NoError(t, err)
-	require.NotNil(t, hm)
-	require.NotNil(t, bm)
-
-	var actual struct {
-		Error openai.ErrorType `json:"error"`
+	decode := func(t *testing.T, bm []byte) openai.ErrorType {
+		var actual struct {
+			Error openai.ErrorType `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(bm, &actual))
+		return actual.Error
 	}
-	require.NoError(t, json.Unmarshal(bm, &actual))
-	require.Equal(t, openAIBackendError, actual.Error.Type)
+
+	t.Run("google error envelope is converted", func(t *testing.T) {
+		// Gemini answers with Google's envelope, whose "code" is a number and which has no "type".
+		// Passing it through would hand an OpenAI client a body it cannot parse.
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		headers := map[string]string{contentTypeHeaderName: jsonContentType, statusHeaderName: "400"}
+		body := `{"error":{"code":400,"message":"API key not valid","status":"INVALID_ARGUMENT"}}`
+
+		hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte(body)))
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+
+		actual := decode(t, bm)
+		require.Equal(t, "INVALID_ARGUMENT", actual.Type)
+		require.Equal(t, "API key not valid", actual.Message)
+		require.Equal(t, "400", *actual.Code)
+	})
+
+	t.Run("error details are appended to the message", func(t *testing.T) {
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		headers := map[string]string{contentTypeHeaderName: jsonContentType, statusHeaderName: "429"}
+		body := `{"error":{"code":429,"message":"quota exceeded","status":"RESOURCE_EXHAUSTED","details":[{"reason":"RATE_LIMIT"}]}}`
+
+		_, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte(body)))
+		require.NoError(t, err)
+
+		actual := decode(t, bm)
+		require.Equal(t, "RESOURCE_EXHAUSTED", actual.Type)
+		require.Contains(t, actual.Message, "quota exceeded")
+		require.Contains(t, actual.Message, "RATE_LIMIT")
+	})
+
+	t.Run("non-envelope body falls back to the backend error type", func(t *testing.T) {
+		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+		headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "503"}
+
+		hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte("backend error")))
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+
+		actual := decode(t, bm)
+		require.Equal(t, googleAIStudioBackendError, actual.Type)
+		require.Equal(t, "backend error", actual.Message)
+		require.Equal(t, "503", *actual.Code)
+	})
 }

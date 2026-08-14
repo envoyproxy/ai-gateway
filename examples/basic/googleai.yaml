@@ -46,8 +46,8 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: envoy-ai-gateway-basic-googleai
-  type: GoogleAIKey
-  googleAIKey:
+  type: GoogleAPIKey
+  googleAPIKey:
     secretRef:
       name: envoy-ai-gateway-basic-googleai-apikey
       namespace: default

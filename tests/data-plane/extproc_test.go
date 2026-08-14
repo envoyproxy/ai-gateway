@@ -68,7 +68,7 @@ var (
 		ProjectName: "gcp-project-name",
 	}}}
 	testUpstreamGoogleAIStudioBackend = filterapi.Backend{Name: "testupstream-googleaistudio", Schema: googleAIStudioSchema, Auth: &filterapi.BackendAuth{
-		GoogleAIKey: &filterapi.GoogleAIKeyAuth{Key: fakeGoogleAIStudioAPIKey},
+		GoogleAPIKey: &filterapi.GoogleAPIKeyAuth{Key: fakeGoogleAIStudioAPIKey},
 	}}
 	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
 	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}

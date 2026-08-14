@@ -104,7 +104,7 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 	requiresRotation := bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAPIKey &&
 		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAzureAPIKey &&
 		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey &&
-		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeGoogleAIKey
+		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeGoogleAPIKey
 
 	// Skip rotation for AWS when neither credentials file nor OIDC exchange is configured
 	// This allows IRSA/Pod Identity to work via the default credential chain
@@ -434,7 +434,7 @@ func getBSPGeneratedSecretName(bsp *aigv1b1.BackendSecurityPolicy) string {
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey,
 		aigv1b1.BackendSecurityPolicyTypeAzureAPIKey,
 		aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey,
-		aigv1b1.BackendSecurityPolicyTypeGoogleAIKey:
+		aigv1b1.BackendSecurityPolicyTypeGoogleAPIKey:
 		return "" // APIKey does not require rotation.
 	default:
 		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))

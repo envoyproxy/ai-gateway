@@ -94,7 +94,7 @@ const (
 	// https://docs.claude.com/en/api/claude-on-amazon-bedrock
 	APISchemaAWSAnthropic APISchema = "AWSAnthropic"
 	// APISchemaGoogleAIStudio is the schema for the Google AI Studio (Gemini Developer API) hosted at
-	// generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAIKey
+	// generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAPIKey
 	// BackendSecurityPolicy) and is distinct from APISchemaGCPVertexAI, which uses GCP service account
 	// credentials against the Vertex AI platform.
 	//

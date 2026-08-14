@@ -214,8 +214,8 @@ type BackendAuth struct {
 	AzureAPIKey *AzureAPIKeyAuth `json:"azureAPIKey,omitempty"`
 	// AnthropicAPIKey is the Anthropic API key.
 	AnthropicAPIKey *AnthropicAPIKeyAuth `json:"anthropicAPIKey,omitempty"`
-	// GoogleAIKey is the Google AI Studio API key.
-	GoogleAIKey *GoogleAIKeyAuth `json:"googleAIKey,omitempty"`
+	// GoogleAPIKey is the Google API key injected into "x-goog-api-key".
+	GoogleAPIKey *GoogleAPIKeyAuth `json:"googleAPIKey,omitempty"`
 	// AzureAuth specifies the location of Azure access token file.
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
@@ -296,14 +296,14 @@ func (a AnthropicAPIKeyAuth) LogValue() slog.Value {
 	return slog.GroupValue(slog.String("key", "[REDACTED]"))
 }
 
-// GoogleAIKeyAuth defines the Google AI Studio API key.
-type GoogleAIKeyAuth struct {
-	// Key is the Google AI Studio API key as a literal string.
+// GoogleAPIKeyAuth defines the Google API key injected into "x-goog-api-key".
+type GoogleAPIKeyAuth struct {
+	// Key is the Google API key as a literal string.
 	Key string `json:"key"`
 }
 
-// LogValue implements slog.LogValuer for GoogleAIKeyAuth to redact sensitive information.
-func (a GoogleAIKeyAuth) LogValue() slog.Value {
+// LogValue implements slog.LogValuer for GoogleAPIKeyAuth to redact sensitive information.
+func (a GoogleAPIKeyAuth) LogValue() slog.Value {
 	return slog.GroupValue(slog.String("key", "[REDACTED]"))
 }
 

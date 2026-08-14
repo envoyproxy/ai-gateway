@@ -59,8 +59,8 @@ func applyAnthropicCredential(requestHeaders map[string]string, credential strin
 	return []internalapi.Header{{"x-api-key", credential}}, nil
 }
 
-// applyGoogleAICredential sets x-goog-api-key: <credential>.
-func applyGoogleAICredential(requestHeaders map[string]string, credential string) ([]internalapi.Header, error) {
+// applyGoogleAPIKeyCredential sets x-goog-api-key: <credential>.
+func applyGoogleAPIKeyCredential(requestHeaders map[string]string, credential string) ([]internalapi.Header, error) {
 	requestHeaders["x-goog-api-key"] = credential
 	return []internalapi.Header{{"x-goog-api-key", credential}}, nil
 }

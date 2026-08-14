@@ -14,9 +14,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-func TestGoogleAIKeyHandler(t *testing.T) {
+func TestGoogleAPIKeyHandler(t *testing.T) {
 	t.Run("sets x-goog-api-key header", func(t *testing.T) {
-		handler, err := newGoogleAIKeyHandler(&filterapi.GoogleAIKeyAuth{Key: "test-google-key"})
+		handler, err := newGoogleAPIKeyHandler(&filterapi.GoogleAPIKeyAuth{Key: "test-google-key"})
 		require.NoError(t, err)
 
 		headers := make(map[string]string)
@@ -34,7 +34,7 @@ func TestGoogleAIKeyHandler(t *testing.T) {
 	})
 
 	t.Run("trims whitespace", func(t *testing.T) {
-		handler, err := newGoogleAIKeyHandler(&filterapi.GoogleAIKeyAuth{Key: "  key-with-spaces  "})
+		handler, err := newGoogleAPIKeyHandler(&filterapi.GoogleAPIKeyAuth{Key: "  key-with-spaces  "})
 		require.NoError(t, err)
 
 		headers := make(map[string]string)

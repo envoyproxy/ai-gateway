@@ -220,13 +220,13 @@ func TestCredentialOverrideHandler_PerAuthType(t *testing.T) {
 	})
 
 	t.Run("google ai sets x-goog-api-key", func(t *testing.T) {
-		inner, err := newGoogleAIKeyHandler(&filterapi.GoogleAIKeyAuth{Key: "static"})
+		inner, err := newGoogleAPIKeyHandler(&filterapi.GoogleAPIKeyAuth{Key: "static"})
 		require.NoError(t, err)
 
 		h := &credentialOverrideHandler{
 			inner:   inner,
 			config:  makeHeaderOverride("x-aigw-goog-api-key", false),
-			applyFn: applyGoogleAICredential,
+			applyFn: applyGoogleAPIKeyCredential,
 		}
 
 		headers := map[string]string{"x-aigw-goog-api-key": "per-req"}

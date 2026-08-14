@@ -575,7 +575,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials)
-- [BackendSecurityPolicyGoogleAIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleaikey)
+- [BackendSecurityPolicyGoogleAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleapikey)
 - [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicystatus)
@@ -932,7 +932,7 @@ APISchema defines the API schema.
   name="GoogleAIStudio"
   type="enum"
   required="false"
-  description="APISchemaGoogleAIStudio is the schema for the Google AI Studio (Gemini Developer API) hosted at<br />generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAIKey<br />BackendSecurityPolicy) and is distinct from APISchemaGCPVertexAI, which uses GCP service account<br />credentials against the Vertex AI platform.<br />https://ai.google.dev/api/rest<br />"
+  description="APISchemaGoogleAIStudio is the schema for the Google AI Studio (Gemini Developer API) hosted at<br />generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAPIKey<br />BackendSecurityPolicy) and is distinct from APISchemaGCPVertexAI, which uses GCP service account<br />credentials against the Vertex AI platform.<br />https://ai.google.dev/api/rest<br />"
 />
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile">AWSCredentialsFile</a>
 
@@ -1213,14 +1213,14 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 />
 
 
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleaikey">BackendSecurityPolicyGoogleAIKey</a>
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleapikey">BackendSecurityPolicyGoogleAPIKey</a>
 
 
 
 **Appears in:**
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
-BackendSecurityPolicyGoogleAIKey specifies the Google AI Studio API key.
+BackendSecurityPolicyGoogleAPIKey specifies the Google API key injected into "x-goog-api-key".
 
 ##### Fields
 
@@ -1230,7 +1230,7 @@ BackendSecurityPolicyGoogleAIKey specifies the Google AI Studio API key.
   name="secretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
   required="true"
-  description="SecretRef is the reference to the secret containing the Google AI Studio API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
+  description="SecretRef is the reference to the secret containing the Google API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
 />
 
 
@@ -1325,10 +1325,10 @@ Only one type of BackendSecurityPolicy can be defined.
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
 /><ApiField
-  name="googleAIKey"
-  type="[BackendSecurityPolicyGoogleAIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleaikey)"
+  name="googleAPIKey"
+  type="[BackendSecurityPolicyGoogleAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygoogleapikey)"
   required="false"
-  description="GoogleAIKey is a mechanism to access Google AI Studio (generativelanguage.googleapis.com) backend(s).<br />The API key will be injected into the `x-goog-api-key` header.<br />https://ai.google.dev/api/rest"
+  description="GoogleAPIKey is a mechanism to access Google backend(s) with a Google API key.<br />The API key will be injected into the `x-goog-api-key` header.<br />This is the credential accepted by the Gemini Developer API on<br />generativelanguage.googleapis.com, minted from Google AI Studio. It is distinct from<br />GCPCredentials, which uses service account OAuth tokens against Vertex AI.<br />https://ai.google.dev/api/rest"
 />
 
 
@@ -1397,7 +1397,7 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 /><ApiField
-  name="GoogleAIKey"
+  name="GoogleAPIKey"
   type="enum"
   required="false"
   description=""
@@ -3139,7 +3139,7 @@ MCPRouteList contains a list of MCPRoute.
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
 - [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
-- [BackendSecurityPolicyGoogleAIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleaikey)
+- [BackendSecurityPolicyGoogleAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleapikey)
 - [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)
@@ -3490,7 +3490,7 @@ APISchema defines the API schema.
   name="GoogleAIStudio"
   type="enum"
   required="false"
-  description="APISchemaGoogleAIStudio is the schema for the Google AI Studio (Gemini Developer API) hosted at<br />generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAIKey<br />BackendSecurityPolicy) and is distinct from APISchemaGCPVertexAI, which uses GCP service account<br />credentials against the Vertex AI platform.<br />https://ai.google.dev/api/rest<br />"
+  description="APISchemaGoogleAIStudio is the schema for the Google AI Studio (Gemini Developer API) hosted at<br />generativelanguage.googleapis.com. It uses the `x-goog-api-key` header for auth (see the GoogleAPIKey<br />BackendSecurityPolicy) and is distinct from APISchemaGCPVertexAI, which uses GCP service account<br />credentials against the Vertex AI platform.<br />https://ai.google.dev/api/rest<br />"
 />
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile">AWSCredentialsFile</a>
 
@@ -3804,14 +3804,14 @@ default service account credentials when running on GCP.
 />
 
 
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleaikey">BackendSecurityPolicyGoogleAIKey</a>
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleapikey">BackendSecurityPolicyGoogleAPIKey</a>
 
 
 
 **Appears in:**
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
-BackendSecurityPolicyGoogleAIKey specifies the Google AI Studio API key.
+BackendSecurityPolicyGoogleAPIKey specifies the Google API key injected into "x-goog-api-key".
 
 ##### Fields
 
@@ -3821,7 +3821,7 @@ BackendSecurityPolicyGoogleAIKey specifies the Google AI Studio API key.
   name="secretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
   required="true"
-  description="SecretRef is the reference to the secret containing the Google AI Studio API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
+  description="SecretRef is the reference to the secret containing the Google API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
 />
 
 
@@ -3916,10 +3916,10 @@ Only one type of BackendSecurityPolicy can be defined.
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
 /><ApiField
-  name="googleAIKey"
-  type="[BackendSecurityPolicyGoogleAIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleaikey)"
+  name="googleAPIKey"
+  type="[BackendSecurityPolicyGoogleAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygoogleapikey)"
   required="false"
-  description="GoogleAIKey is a mechanism to access Google AI Studio (generativelanguage.googleapis.com) backend(s).<br />The API key will be injected into the `x-goog-api-key` header.<br />https://ai.google.dev/api/rest"
+  description="GoogleAPIKey is a mechanism to access Google backend(s) with a Google API key.<br />The API key will be injected into the `x-goog-api-key` header.<br />This is the credential accepted by the Gemini Developer API on<br />generativelanguage.googleapis.com, minted from Google AI Studio. It is distinct from<br />GCPCredentials, which uses service account OAuth tokens against Vertex AI.<br />https://ai.google.dev/api/rest"
 /><ApiField
   name="credentialOverride"
   type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
@@ -3993,7 +3993,7 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 /><ApiField
-  name="GoogleAIKey"
+  name="GoogleAPIKey"
   type="enum"
   required="false"
   description=""
@@ -4048,7 +4048,7 @@ CredentialOverrideFromRequestHeaders sources the per-request credential from a r
   name="header"
   type="string"
   required="false"
-  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  GoogleAIKey     → x-aigw-goog-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  GoogleAPIKey     → x-aigw-goog-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
 /><ApiField
   name="fallbackToConfigured"
   type="boolean"

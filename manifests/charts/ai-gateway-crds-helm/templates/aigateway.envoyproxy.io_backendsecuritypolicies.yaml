@@ -5798,15 +5798,20 @@ spec:
                     must be specified
                   rule: (has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig))
                     || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))
-              googleAIKey:
+              googleAPIKey:
                 description: |-
-                  GoogleAIKey is a mechanism to access Google AI Studio (generativelanguage.googleapis.com) backend(s).
+                  GoogleAPIKey is a mechanism to access Google backend(s) with a Google API key.
                   The API key will be injected into the "x-goog-api-key" header.
+
+                  This is the credential accepted by the Gemini Developer API on
+                  generativelanguage.googleapis.com, minted from Google AI Studio. It is distinct from
+                  GCPCredentials, which uses service account OAuth tokens against Vertex AI.
+
                   https://ai.google.dev/api/rest
                 properties:
                   secretRef:
                     description: |-
-                      SecretRef is the reference to the secret containing the Google AI Studio API key.
+                      SecretRef is the reference to the secret containing the Google API key.
                       ai-gateway must be given the permission to read this secret.
                       The key of the secret should be "apiKey".
                     properties:
@@ -5902,7 +5907,7 @@ spec:
                 - AzureCredentials
                 - GCPCredentials
                 - AnthropicAPIKey
-                - GoogleAIKey
+                - GoogleAPIKey
                 type: string
             required:
             - type
@@ -5911,39 +5916,39 @@ spec:
             - message: When type is APIKey, only apiKey field should be set
               rule: 'self.type == ''APIKey'' ? (has(self.apiKey) && !has(self.awsCredentials)
                 && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey) && !has(self.googleAIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.googleAPIKey)) : true'
             - message: When type is AWSCredentials, only awsCredentials field should
                 be set
               rule: 'self.type == ''AWSCredentials'' ? (has(self.awsCredentials) &&
                 !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is AzureAPIKey, only azureAPIKey field should be
                 set
               rule: 'self.type == ''AzureAPIKey'' ? (has(self.azureAPIKey) && !has(self.apiKey)
                 && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey) && !has(self.googleAIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.googleAPIKey)) : true'
             - message: When type is AzureCredentials, only azureCredentials field
                 should be set
               rule: 'self.type == ''AzureCredentials'' ? (has(self.azureCredentials)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is GCPCredentials, only gcpCredentials field should
                 be set
               rule: 'self.type == ''GCPCredentials'' ? (has(self.gcpCredentials) &&
                 !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.azureCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is AnthropicAPIKey, only anthropicAPIKey field should
                 be set
               rule: 'self.type == ''AnthropicAPIKey'' ? (has(self.anthropicAPIKey)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.googleAIKey))
+                && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.googleAPIKey))
                 : true'
-            - message: When type is GoogleAIKey, only googleAIKey field should be
+            - message: When type is GoogleAPIKey, only googleAPIKey field should be
                 set
-              rule: 'self.type == ''GoogleAIKey'' ? (has(self.googleAIKey) && !has(self.apiKey)
+              rule: 'self.type == ''GoogleAPIKey'' ? (has(self.googleAPIKey) && !has(self.apiKey)
                 && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials)
                 && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true'
           status:
@@ -9937,7 +9942,7 @@ spec:
                           Defaults to the x-aigw-* header for the configured auth type:
                             APIKey          → x-aigw-api-key
                             AnthropicAPIKey → x-aigw-anthropic-api-key
-                            GoogleAIKey     → x-aigw-goog-api-key
+                            GoogleAPIKey     → x-aigw-goog-api-key
                             AzureAPIKey     → x-aigw-azure-api-key
                             AzureCredentials → x-aigw-azure-access-token
                             GCPCredentials  → x-aigw-gcp-access-token
@@ -11848,15 +11853,20 @@ spec:
                 - message: At most one of credentialsFile or workloadIdentityFederationConfig
                     may be specified
                   rule: '!(has(self.credentialsFile) && has(self.workloadIdentityFederationConfig))'
-              googleAIKey:
+              googleAPIKey:
                 description: |-
-                  GoogleAIKey is a mechanism to access Google AI Studio (generativelanguage.googleapis.com) backend(s).
+                  GoogleAPIKey is a mechanism to access Google backend(s) with a Google API key.
                   The API key will be injected into the "x-goog-api-key" header.
+
+                  This is the credential accepted by the Gemini Developer API on
+                  generativelanguage.googleapis.com, minted from Google AI Studio. It is distinct from
+                  GCPCredentials, which uses service account OAuth tokens against Vertex AI.
+
                   https://ai.google.dev/api/rest
                 properties:
                   secretRef:
                     description: |-
-                      SecretRef is the reference to the secret containing the Google AI Studio API key.
+                      SecretRef is the reference to the secret containing the Google API key.
                       ai-gateway must be given the permission to read this secret.
                       The key of the secret should be "apiKey".
                     properties:
@@ -11952,7 +11962,7 @@ spec:
                 - AzureCredentials
                 - GCPCredentials
                 - AnthropicAPIKey
-                - GoogleAIKey
+                - GoogleAPIKey
                 type: string
             required:
             - type
@@ -11961,39 +11971,39 @@ spec:
             - message: When type is APIKey, only apiKey field should be set
               rule: 'self.type == ''APIKey'' ? (has(self.apiKey) && !has(self.awsCredentials)
                 && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey) && !has(self.googleAIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.googleAPIKey)) : true'
             - message: When type is AWSCredentials, only awsCredentials field should
                 be set
               rule: 'self.type == ''AWSCredentials'' ? (has(self.awsCredentials) &&
                 !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is AzureAPIKey, only azureAPIKey field should be
                 set
               rule: 'self.type == ''AzureAPIKey'' ? (has(self.azureAPIKey) && !has(self.apiKey)
                 && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey) && !has(self.googleAIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.googleAPIKey)) : true'
             - message: When type is AzureCredentials, only azureCredentials field
                 should be set
               rule: 'self.type == ''AzureCredentials'' ? (has(self.azureCredentials)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is GCPCredentials, only gcpCredentials field should
                 be set
               rule: 'self.type == ''GCPCredentials'' ? (has(self.gcpCredentials) &&
                 !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAIKey))
+                && !has(self.azureCredentials) && !has(self.anthropicAPIKey) && !has(self.googleAPIKey))
                 : true'
             - message: When type is AnthropicAPIKey, only anthropicAPIKey field should
                 be set
               rule: 'self.type == ''AnthropicAPIKey'' ? (has(self.anthropicAPIKey)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.googleAIKey))
+                && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.googleAPIKey))
                 : true'
-            - message: When type is GoogleAIKey, only googleAIKey field should be
+            - message: When type is GoogleAPIKey, only googleAPIKey field should be
                 set
-              rule: 'self.type == ''GoogleAIKey'' ? (has(self.googleAIKey) && !has(self.apiKey)
+              rule: 'self.type == ''GoogleAPIKey'' ? (has(self.googleAPIKey) && !has(self.apiKey)
                 && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials)
                 && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true'
             - message: credentialOverride is not supported for AWSCredentials

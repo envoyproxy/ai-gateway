@@ -41,5 +41,5 @@ Below is a table of currently supported providers and their respective configura
 [Azure Credentials]: api/api.mdx#backendsecuritypolicyazurecredentials
 [Azure API Key]: api/api.mdx#backendsecuritypolicyazureapikey
 [Anthropic API Key]: api/api.mdx#backendsecuritypolicyanthropicapikey
-[Google AI Studio API Key]: api/api.mdx#backendsecuritypolicygoogleaikey
+[Google AI Studio API Key]: api/api.mdx#backendsecuritypolicygoogleapikey
 [vLLM]: https://docs.vllm.ai/en/v0.8.3/serving/openai_compatible_server.html

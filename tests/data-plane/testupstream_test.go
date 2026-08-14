@@ -211,7 +211,22 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
 			responseBody:    `backend timeout`,
 			expStatus:       http.StatusServiceUnavailable,
-			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
+			expResponseBody: `{"error":{"type":"GoogleAIStudioBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
+		},
+		{
+			// Google's error envelope has a numeric "code" and no "type", so it has to be
+			// converted rather than passed through to an OpenAI client.
+			name:            "google-ai-studio - /v1/images/generations - google error envelope mapped to OpenAI",
+			backend:         "google-ai-studio",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-2.5-flash-image","prompt":"a cat"}`,
+			expPath:         "/v1beta/models/gemini-2.5-flash-image:generateContent",
+			responseHeaders: "content-type:application/json",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"error":{"code":400,"message":"API key not valid","status":"INVALID_ARGUMENT"}}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"error":{"type":"INVALID_ARGUMENT","message":"API key not valid","code":"400"},"type":"error"}`,
 		},
 		{
 			// Gemini only returns inline bytes, so the gateway rejects response_format=url

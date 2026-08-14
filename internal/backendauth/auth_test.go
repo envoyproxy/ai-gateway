@@ -57,9 +57,9 @@ aws_secret_access_key = test
 			},
 		},
 		{
-			name: "GoogleAIKey",
+			name: "GoogleAPIKey",
 			config: &filterapi.BackendAuth{
-				GoogleAIKey: &filterapi.GoogleAIKeyAuth{Key: "TEST"},
+				GoogleAPIKey: &filterapi.GoogleAPIKeyAuth{Key: "TEST"},
 			},
 		},
 	} {
