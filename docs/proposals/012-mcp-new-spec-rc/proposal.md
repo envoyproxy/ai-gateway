@@ -10,7 +10,7 @@
 - 2.3 [Notification Streaming](#notification-streaming)
 - 2.4 [Server-to-Client Requests](#server-to-client-requests)
 
-1. [Spec Changelog Summary](#spec-changelog-summary)
+3. [Spec Changelog Summary](#spec-changelog-summary)
 
 - 3.1 [Major Changes (Breaking)](#major-changes-breaking)
 - 3.2 [Minor Changes](#minor-changes)
@@ -18,18 +18,18 @@
 - 3.4 [Pass-Through / No Gateway Work](#pass-through--no-gateway-work)
 - 3.5 [Not Relevant to the Gateway](#not-relevant-to-the-gateway)
 
-1. [Goals and Non-Goals](#goals-and-non-goals)
-2. [Scope & Prioritization](#scope--prioritization)
-3. [Terminology](#terminology)
-4. [The Core Problem: Multiplexing Without Sessions](#the-core-problem-multiplexing-without-sessions)
-5. [Compatibility Matrix](#compatibility-matrix)
+4. [Goals and Non-Goals](#goals-and-non-goals)
+5. [Scope & Prioritization](#scope--prioritization)
+6. [Terminology](#terminology)
+7. [The Core Problem: Multiplexing Without Sessions](#the-core-problem-multiplexing-without-sessions)
+8. [Compatibility Matrix](#compatibility-matrix)
 
 - 8.1 [Cell 1 — Legacy Client ↔ Legacy Backend](#cell-1--legacy-client--legacy-backend)
 - 8.2 [Cell 2 — Modern Client ↔ Modern Backend](#cell-2--modern-client--modern-backend)
 - 8.3 [Cell 3 — Modern Client ↔ Legacy Backend](#cell-3--modern-client--legacy-backend)
 - 8.4 [Cell 4 — Legacy Client ↔ Modern Backend](#cell-4--legacy-client--modern-backend)
 
-1. [Design Decisions](#design-decisions)
+9. [Design Decisions](#design-decisions)
 
 - 9.1 [D1 — Downstream (Client) Era Detection](#d1--downstream-client-era-detection)
 - 9.2 [D2 — Upstream (Backend) Era Detection](#d2--upstream-backend-era-detection)
@@ -37,17 +37,17 @@
 - 9.4 [D4 — MRTR Translation Strategy](#d4--mrtr-translation-strategy)
 - 9.5 [D5 — Upstream Session Pool (Cell 3)](#d5--upstream-session-pool-cell-3)
 
-1. [Phased Implementation Plan](#phased-implementation-plan)
+10. [Phased Implementation Plan](#phased-implementation-plan)
 
 - 10.1 [Phase 0 — Foundations (No Behavior Change)](#phase-0--foundations-no-behavior-change)
 - 10.2 [Phase 1 — Modern ↔ Modern (Stateless) + Legacy ↔ Legacy (Unchanged)](#phase-1--modern--modern-stateless--legacy--legacy-unchanged)
 - 10.3 [Phase 2–4: Deferred](#phase-24-deferred-documented-for-architectural-context)
 
-1. [Spec Item → Phase Mapping](#spec-item--phase-mapping)
-2. [Gotchas and Risks](#gotchas-and-risks)
-3. [Testing and Verification](#testing-and-verification)
-4. [go-sdk Dependency](#go-sdk-dependency)
-5. [Future Work](#future-work)
+11. [Spec Item → Phase Mapping](#spec-item--phase-mapping)
+12. [Gotchas and Risks](#gotchas-and-risks)
+13. [Testing and Verification](#testing-and-verification)
+14. [go-sdk Dependency](#go-sdk-dependency)
+15. [Future Work](#future-work)
 
 ## Background and Motivation
 
@@ -203,7 +203,7 @@ Today, the encrypted session ID carries everything the proxy needs for stateless
 | **Per-backend capabilities**        | Fetch via `**server/discover`** per backend and **cache it. This is backend server state, not per-client session state. Each gateway instance rebuilds independently.                                                                                                    |
 | **Subject / anti-hijack**           | No session ⇒ no session hijacking vector. Per-request bearer-token auth (`authorization.go`, `extractSubject`) already covers identity.                                                                                                                                  |
 
-The encrypted-session-ID mechanism is replaced by **(1) name-prefix routing** (already exists for single-target calls) plus **(2) a per-backend `server/discover` capability cache** for fan-out operations. Route and identity are already per-request. No shared session store is required for the modern↔modern path.
+The encrypted-session-ID mechanism is replaced by **(1) name-prefix routing** (already exists for single-target calls) plus **(2) a per-backend** `server/discover` **capability cache** for fan-out operations. Route and identity are already per-request. No shared session store is required for the modern↔modern path.
 
 ## Compatibility Matrix
 
@@ -235,7 +235,7 @@ No code changes in any phase. The existing MCP proxy test suite must continue to
 **Fully stateless. Target design.** This is the primary deliverable of Phase 1.
 
 - **No session object.** Route from header; backend from namespaced `Mcp-Name`/name/URI.
-- **Inject `_meta`** (protocolVersion, clientInfo, clientCapabilities, logLevel) and set `Mcp-Method` / `Mcp-Name` / `MCP-Protocol-Version` on each upstream request.
+- **Inject** `_meta` (protocolVersion, clientInfo, clientCapabilities, logLevel) and set `Mcp-Method` / `Mcp-Name` / `MCP-Protocol-Version` on each upstream request.
 - **Fan-out** (`tools/list`, `resources/list`, `prompts/list`) uses the capability cache to pick backends; merge functions are unchanged.
 - `**server/discover` answered by merging cached backend discovery results.
 - **MRTR flows straight through**: `InputRequiredResult` returned to client; the client's retry `tools/call` re-routes to the same backend by name prefix. No cross-instance ID encoding needed — the retry is a normal request; `requestState` is opaque and passes through.
@@ -264,7 +264,7 @@ The gateway keeps a client-facing session but the upstream is stateless.
 - Accept client `initialize`; answer from the **capability cache** (built via `server/discover` for each modern backend). Mint the encrypted client-facing session ID with **empty backend session IDs** — the already-supported `sessionID == ""` case (`session.go:72`). `newSession` gains a modern-backend branch that skips upstream `initialize` and instead calls `server/discover`.
 - Per client request, inject modern `_meta` + `Mcp-Method`/`Mcp-Name` headers upstream.
 - **MRTR → legacy server-to-client**: modern backend returns `InputRequiredResult`; the gateway converts it to a legacy server-to-client request on the client's SSE stream (reusing `maybeServerToClientRequestModify` ID-encoding). The client's response is converted back to an MRTR retry upstream.
-- **Legacy GET stream → upstream `subscriptions/listen`**: merged.
+- **Legacy GET stream → upstream** `subscriptions/listen`: merged.
 
 **Tradeoffs:**
 
@@ -525,6 +525,8 @@ Kept separate so PR 1.1 stays reviewable. Likely none committed up front, pulled
 
 > **Status:** Deferred per review. Cross-era support can wait until modern clients emerge and legacy backends remain common. These phases are retained for completeness but are **not in active scope**.
 
+> **Note on backend homogeneity:** With this proposal (Phase 0 + Phase 1), an `MCPRoute` is only supported when **all of its backends share a single era** — either all legacy or all modern, but **not mixed**. A route that fans out across both legacy and modern backends requires the cross-era translation machinery (upstream session pool, MRTR↔SSE translation, per-backend era detection) that lives in the deferred Phase 2/3. Until those phases land, mixed-era routes are out of scope and should be split so each route targets backends of a single era.
+
 Phase 2 — Cross-Era Translation (Cells 3 and 4)
 
 **Objective:** Enable modern clients to talk to legacy backends (Cell 3) and legacy clients to talk to modern backends (Cell 4).
@@ -535,10 +537,10 @@ Phase 2 — Cross-Era Translation (Cells 3 and 4)
 | P2.2 | **Upstream session pool** (Cell 3) — gateway-managed pool keyed by `route+backend+subject`; lazy `initializeSession()`; idle reap via `Close()`                                                        | #F1, #A1             | new `session_pool.go`                  |
 | P2.3 | **MRTR↔SSE translator** (Cell 3) — convert legacy server→client SSE requests to `InputRequiredResult`; convert modern client MRTR retry `inputResponses` back to JSON-RPC responses on backend stream | #A3, #F1             | new `translate.go`                     |
 | P2.4 | `**subscriptions/listen` → legacy GET (Cell 3) — map modern `subscriptions/listen` to legacy GET SSE stream per backend                                                                                | #A2, #F1             | `subscriptions.go`                     |
-| P2.5 | **Modern-backend branch in `newSession`** (Cell 4) — skip upstream `initialize`; build `compositeSessionEntry` with `sessionID == ""` and capabilities from `server/discover`                          | #F1                  | `mcpproxy.go`                          |
+| P2.5 | **Modern-backend branch in** `newSession` (Cell 4) — skip upstream `initialize`; build `compositeSessionEntry` with `sessionID == ""` and capabilities from `server/discover`                          | #F1                  | `mcpproxy.go`                          |
 | P2.6 | `**_meta`/header injection for legacy clients (Cell 4) — inject modern headers/`_meta` on upstream calls from legacy client sessions                                                                   | #F1                  | `session.go`                           |
 | P2.7 | **MRTR → legacy SSE translator** (Cell 4) — convert modern `InputRequiredResult` to server-to-client requests on client SSE stream; convert client responses to MRTR retry upstream                    | #A3, #F1             | `translate.go`                         |
-| P2.8 | **Legacy GET → upstream `subscriptions/listen`** (Cell 4) — open upstream `subscriptions/listen`, merge into legacy client GET stream                                                                  | #A2, #F1             | `session.go`                           |
+| P2.8 | **Legacy GET → upstream** `subscriptions/listen` (Cell 4) — open upstream `subscriptions/listen`, merge into legacy client GET stream                                                                  | #A2, #F1             | `session.go`                           |
 | P2.9 | **Translation fidelity limits** — document unsupported edge cases: cancellation across eras, timeout propagation, progress token mismatches                                                            | #F1                  | docs                                   |
 
 Phase 3 — Cacheable Results, Deterministic Ordering, Minor Spec Items
@@ -548,9 +550,9 @@ Phase 3 — Cacheable Results, Deterministic Ordering, Minor Spec Items
 | Item | Description                                                                                                                                                                                                                                                                                                    | Spec Items Addressed | Files                            |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------- |
 | P3.1 | **Proxy-level result caching** — cache `tools/list`, `prompts/list`, `resources/list`, `resources/read`, `resources/templates/list` results using `ttlMs` and `cacheScope`. `cacheScope: "public"` allows shared cache across clients; `"private"` is per-client. Invalidate on `*_list_changed` notifications | #B1                  | new `cache.go` or `discovery.go` |
-| P3.2 | **Deterministic `tools/list` ordering** — sort merged tools by `backend__toolName` lexicographically across aggregated backends for stable LLM prompt cache hit rates                                                                                                                                          | #B2                  | `handlers.go`                    |
+| P3.2 | **Deterministic** `tools/list` **ordering** — sort merged tools by `backend__toolName` lexicographically across aggregated backends for stable LLM prompt cache hit rates                                                                                                                                      | #B2                  | `handlers.go`                    |
 | P3.3 | `**extensions` field preservation — fix `mergedCapabilities` (`session.go:647`) to merge the `extensions` map instead of dropping it                                                                                                                                                                           | #D3                  | `session.go`                     |
-| P3.4 | **OTel `_meta` verification** — verify `traceparent`, `tracestate`, `baggage` keys conform to the formalized conventions. No new code expected; `tracing/mcp.go:76` already injects these                                                                                                                      | #D2                  | `tracing/mcp.go`                 |
+| P3.4 | **OTel** `_meta` **verification** — verify `traceparent`, `tracestate`, `baggage` keys conform to the formalized conventions. No new code expected; `tracing/mcp.go:76` already injects these                                                                                                                  | #D2                  | `tracing/mcp.go`                 |
 | P3.5 | `**Mcp-Param-{Name}` headers — support `x-mcp-header` annotated tool parameters: extract from tool input schema, set corresponding `Mcp-Param-{Name}` headers on upstream requests                                                                                                                             | #D1                  | `handlers.go`                    |
 | P3.6 | `**resultType` on all results — audit every handler to ensure `resultType: "complete"` is set on all result payloads sent to modern clients                                                                                                                                                                    | #A3                  | `handlers.go`                    |
 | P3.7 | **Error code allocation compliance** — ensure gateway-minted error codes fall within `-32020` to `-32099` (MCP reserved range) or `-32000` to `-32019` (implementation-defined, grandfathered). No codes in the unallocated ranges                                                                             | #D4                  | `handlers.go`                    |
@@ -561,7 +563,7 @@ Phase 4 — Auth Hardening, Deprecations, and Cleanup
 
 | Item | Description                                                                                                                                                                                                          | Spec Items Addressed | Files                             |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | --------------------------------- |
-| P4.1 | **Authorization response `iss` validation** — when generating Envoy `jwt_authn` config, include validation that the `iss` parameter in authorization responses matches the recorded issuer per RFC 9207              | #C1                  | `mcproute.go`, `authorization.go` |
+| P4.1 | **Authorization response** `iss` **validation** — when generating Envoy `jwt_authn` config, include validation that the `iss` parameter in authorization responses matches the recorded issuer per RFC 9207          | #C1                  | `mcproute.go`, `authorization.go` |
 | P4.2 | **Client credentials issuer binding** — ensure `tokenprovider/` and `rotators/` key persisted credentials by the issuer identifier and do not reuse across authorization servers. Re-register on authz server change | #C2                  | `tokenprovider/`, `rotators/`     |
 | P4.3 | **Deprecation annotations** — add log warnings when legacy-only features (Roots, Sampling, Logging, HTTP+SSE, `includeContext`) are used. Do not remove functionality                                                | #E1, #E2             | `handlers.go`, `sse.go`           |
 | P4.4 | **Tasks extension pass-through** — ensure `io.modelcontextprotocol/tasks` extension methods are passed through without gateway intervention                                                                          | #E3                  | `handlers.go`                     |
@@ -633,12 +635,4 @@ Each gateway instance maintains its own upstream session pool for legacy backend
 
 #### Deprecated but Live
 
-Roots, Sampling, and Logging must keep working during the 12-month deprecation window. Do not strip handlers; add deprecation warnings. (Phase 4 concern.)
-
-## Future Work
-
-- **Envoy-native routing on `Mcp-Method`/`Mcp-Name` headers** — route without the proxy parsing the body at all. The `Mcp-Name` header already carries the `backend__toolName` prefix, making Envoy header-match routing feasible.
-- **Distributed upstream session pool** — for Cell 3 at scale, consider Redis-backed session pool to avoid redundant upstream sessions across gateway instances.
-- **Proxy-level structured content validation** — as `structuredContent` adoption grows, the gateway may optionally validate `outputSchema` conformance.
-- `**Mcp-Param-{Name}` header routing — use `x-mcp-header`-annotated tool parameters for Envoy-level routing decisions (e.g., route to different backends based on parameter values).
-- **Client ID Metadata Documents (CIMD)** — when DCR is fully removed, update metadata serving to use CIMD exclusively.
+Roots, Sampling, and Logging must keep working during the 12-month deprecation window. Do not strip handlers; add deprecation warnings. (Phase 4 concern.).
