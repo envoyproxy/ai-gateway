@@ -94,7 +94,6 @@ The following tables classify every item from the [official changelog](https://m
 
 ### Major Changes (Breaking)
 
-
 | Issue Ref | SEP / Change | Title                                                                                                                                                                                                                                                       | Gateway Impact                                                                                                                    |
 | --------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | #A1       | SEP-2567     | Stateless Streamable HTTP — remove `Mcp-Session-Id` header and HTTP `DELETE` session termination                                                                                                                                                            | Heavy — `session.go` composite session ID is the central abstraction; `handlers.go:329` requires session for all non-`initialize` |
@@ -102,9 +101,7 @@ The following tables classify every item from the [official changelog](https://m
 | #A3       | SEP-2322     | Multi Round-Trip Requests (MRTR) — `InputRequiredResult` with required `resultType` field; replaces server-initiated requests (sampling/elicitation/roots)                                                                                                  | Heavy — `handlers.go:606-700` server-to-client request ID encoding, `maybeServerToClientRequestModify`                            |
 | #A4       | SEP-2575     | Per-request `_meta` fields — `io.modelcontextprotocol/protocolVersion` (required), `io.modelcontextprotocol/clientInfo` (required), `io.modelcontextprotocol/clientCapabilities` (required), `io.modelcontextprotocol/logLevel` (optional) on every request | Moderate — body injection in `invokeJSONRPCRequest`                                                                               |
 
-
 ### Minor Changes
-
 
 | Issue Ref | SEP / Change | Title                                                                                                                                                                                            | Gateway Impact                                                                                  |
 | --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
@@ -112,16 +109,14 @@ The following tables classify every item from the [official changelog](https://m
 | #B2       | — (non-SEP)  | Deterministic `tools/list` ordering across aggregated backends                                                                                                                                   | Light — `handlers.go:1620` merge order                                                          |
 | #C1       | SEP-2468     | Authorization response `iss` validation — authorization servers SHOULD include `iss` per RFC 9207; clients MUST validate                                                                         | Moderate — Envoy JWT verify (`mcproute.go:32`); gateway generates filter config                 |
 | #C2       | SEP-2352     | Client credentials bound to issuing authz server — clients MUST key credentials by issuer, MUST NOT reuse across servers                                                                         | Moderate — `tokenprovider/`, `rotators/` persist credentials                                    |
-| #D1       | SEP-2243     | Required `Mcp-Method` / `Mcp-Name` headers on Streamable HTTP POST + `x-mcp-header` for custom headers from tool parameters + reject on header↔body mismatch                                     | Moderate — `handlers.go` body-parse dispatch; enables intermediary routing without body parsing |
+| #D1       | SEP-2243     | Required `Mcp-Method` / `Mcp-Name` headers on Streamable HTTP POST + `x-mcp-header` for custom headers from tool parameters + reject on header↔body mismatch                                    | Moderate — `handlers.go` body-parse dispatch; enables intermediary routing without body parsing |
 | #D2       | SEP-414      | OTel `_meta` trace-context conventions — formalize `traceparent`, `tracestate`, `baggage` keys                                                                                                   | Light (verify) — `tracing/mcp.go:76` already injects `_meta` trace context                      |
 | #D3       | — (non-SEP)  | `extensions` field on `ClientCapabilities` and `ServerCapabilities`                                                                                                                              | Light — `session.go:647` merges field-by-field but drops `extensions`; needs fix                |
 | #D4       | — (non-SEP)  | JSON-RPC error code renumbering + allocation policy: `-32002` → `-32602`, new codes `-32020` (HeaderMismatch), `-32021` (MissingRequiredClientCapability), `-32022` (UnsupportedProtocolVersion) | Moderate — `handlers.go` switches on `jsonrpcErr.Code`, mints own errors                        |
 | #D5       | SEP-2575     | Remove `notifications/elicitation/complete` notification and `elicitationId` field                                                                                                               | Light — under MRTR, correlation is via `requestState`; gateway passes through                   |
 | #D6       | SEP-2106     | JSON Schema 2020-12 for `inputSchema`/`outputSchema`; `structuredContent` may be any JSON; `$ref` resolution requirements                                                                        | Light — gateway doesn't validate schemas; opaque pass-through                                   |
 
-
 ### Deprecations
-
 
 | Issue Ref | SEP / Change | Title                                                                                                         | Gateway Impact                                                                                                                  |
 | --------- | ------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -130,25 +125,20 @@ The following tables classify every item from the [official changelog](https://m
 | #E3       | SEP-2663     | Tasks moved to `io.modelcontextprotocol/tasks` extension                                                      | Light — no task handling today; extension pass-through only                                                                     |
 | #E4       | PR #2858     | Deprecate Dynamic Client Registration in favor of Client ID Metadata Documents                                | Light — gateway only passes `registration_endpoint` in served metadata (`mcp_route_security_policy.go:642`); no DCR origination |
 
-
 ### Pass-Through / No Gateway Work
-
 
 | SEP / Change | Title                        | Why No Work                                                                |
 | ------------ | ---------------------------- | -------------------------------------------------------------------------- |
 | SEP-2106     | JSON Schema 2020-12 adoption | Gateway doesn't validate `inputSchema`/`outputSchema`; opaque pass-through |
 | SEP-2663     | Tasks extension              | No task handling today; JSON-RPC pass-through                              |
 
-
 ### Not Relevant to the Gateway
-
 
 | SEP / Change | Title                                             | Why Excluded                                                                                            |
 | ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | SEP-837      | `application_type` in Dynamic Client Registration | OAuth client-registration concern; gateway is a resource server / token validator, never originates DCR |
 | PR #2858     | DCR → Client ID Metadata Documents (CIMD)         | Client-registration mechanism; gateway only passes `registration_endpoint` through in served metadata   |
 | SEP-1850     | Formalized PR-based SEP workflow                  | Governance process only; no gateway code                                                                |
-
 
 ## Goals and Non-Goals
 
@@ -176,22 +166,18 @@ The following tables classify every item from the [official changelog](https://m
 
 ### Immediate Scope (This Proposal Delivers)
 
-
-| Phase       | Objective                                                                | Outcome                                                        |
-| ----------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| **Phase 0** | Foundations — constants, types, helpers, error constructors              | Zero behavior change; all existing tests pass; unlocks Phase 1 |
+| Phase       | Objective                                                                  | Outcome                                                        |
+| ----------- | -------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Phase 0** | Foundations — constants, types, helpers, error constructors                | Zero behavior change; all existing tests pass; unlocks Phase 1 |
 | **Phase 1** | Modern↔Modern (Cell 2) stateless path + Legacy↔Legacy (Cell 1) unchanged | Spec-conformant gateway for modern clients and modern backends |
 
-
 ### Deferred (Future Proposals)
-
 
 | Phase   | Objective                                                   | Rationale for Deferral                                                                                                |
 | ------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Phase 2 | Cross-era translation (Cells 3 & 4)                         | No modern clients exist yet; legacy backends will upgrade organically. Revisit when mixed-era deployments become real |
 | Phase 3 | Cacheable results, deterministic ordering, minor spec items | Optimization layer; not required for conformance                                                                      |
 | Phase 4 | Auth hardening, deprecations, cleanup                       | Non-urgent; deprecation window is 12 months                                                                           |
-
 
 The design decisions (D1–D5) and compatibility matrix in this document remain the full architecture vision. Phases 2–4 are intentionally kept here as reference for when they become relevant.
 
@@ -209,7 +195,6 @@ Following the spec's terminology:
 
 Today, the encrypted session ID carries everything the proxy needs for stateless (from the proxy process's perspective) request routing: the route name, the subject, per-backend session IDs, and per-backend capabilities. In the `2026-07-28` spec, there is no session ID. The proxy must source each piece from elsewhere:
 
-
 | Information Previously in Session   | Stateless Replacement                                                                                                                                                                                                                                                    |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Route name**                      | Already arrives on **every** request in the `x-ai-eg-mcp-route` header (`internalapi.MCPRouteHeader`), set by the Envoy frontend `HTTPRouteFilter`. Today read only on `initialize` (`handlers.go:376`); must be read on every request.                                  |
@@ -217,7 +202,6 @@ Today, the encrypted session ID carries everything the proxy needs for stateless
 | **Per-backend session IDs**         | None needed. Modern backends are stateless; forward each request directly. The existing `sessionID == ""` stateless-backend path (`session.go:72`) already models this.                                                                                                  |
 | **Per-backend capabilities**        | Fetch via `**server/discover`** per backend and **cache it. This is backend server state, not per-client session state. Each gateway instance rebuilds independently.                                                                                                    |
 | **Subject / anti-hijack**           | No session ⇒ no session hijacking vector. Per-request bearer-token auth (`authorization.go`, `extractSubject`) already covers identity.                                                                                                                                  |
-
 
 The encrypted-session-ID mechanism is replaced by **(1) name-prefix routing** (already exists for single-target calls) plus **(2) a per-backend `server/discover` capability cache** for fan-out operations. Route and identity are already per-request. No shared session store is required for the modern↔modern path.
 
@@ -453,9 +437,9 @@ The foundational plumbing that every later PR depends on, plus the mechanical se
 - Move legacy-only HTTP handlers into `legacy.go`; keep cross-era/shared helpers in `handlers.go` (P0.10–P0.11).
 - Header/`_meta` validation helpers written as pure functions with no caller yet (P1.2).
 
-*Files:* new `era.go`, `modern.go`, `legacy.go`; 
+_Files:_ new `era.go`, `modern.go`, `legacy.go`;
 
-*Acceptance:* `go build ./...` passes, full existing suite green unmodified, new unit tests for era detection, error constructors, validation helpers, and `Mcp-Name` round-trip.
+_Acceptance:_ `go build ./...` passes, full existing suite green unmodified, new unit tests for era detection, error constructors, validation helpers, and `Mcp-Name` round-trip.
 
 **Pre-req before PR 0.2:** verify `github.com/modelcontextprotocol/go-sdk` (currently `v1.6.1`) exposes `DiscoverResult`/`DiscoverParams`, `InputRequiredResult`, the `resultType` field on `Result`, `SubscriptionsListenParams`, the `2026-07-28` version constant, and error codes `-32020`/`-32021`/`-32022`. If unavailable: bump the SDK, or hand-roll local types and migrate when the SDK catches up.
 
@@ -468,8 +452,8 @@ Everything that needs **all backends** of a route. Still additive — these hand
 - Modern fan-out for `tools/list`, `resources/list`, `prompts/list`: reuse the existing `sendToAllBackendsAndAggregateResponses` and merge functions, but source the capability check from the cache instead of `cse.capabilities`; merged results set `resultType: "complete"` (P1.7).
 - `subscriptions/listen` handler in new `subscriptions.go`: fan out the POST to route backends, merge the response SSE streams into one client response, no `Last-Event-ID`, keep-alive via SSE comment lines, invalidate the capability cache on `*_list_changed` (P1.8).
 
-*Files:* new `discovery.go`, `subscriptions.go`; `handlers.go`. *Spec:* #A2, #A3.
-*Acceptance:* unit tests against fake backends returning varied `DiscoverResult`; merge and stream-merge tests. Legacy fan-out untouched.
+_Files:_ new `discovery.go`, `subscriptions.go`; `handlers.go`. _Spec:_ #A2, #A3.
+_Acceptance:_ unit tests against fake backends returning varied `DiscoverResult`; merge and stream-merge tests. Legacy fan-out untouched.
 
 #### PR 0.3 — Modern single-target routing and per-method behavior
 
@@ -482,8 +466,8 @@ Everything that resolves to **one backend**, plus the per-method rejections. Mod
 - Reject removed methods on the modern path — `ping`/`logging/setLevel`/`initialize` → `-32601`; GET/DELETE → `405` (P1.10).
 - Read `x-ai-eg-mcp-route` on every modern request, not just `initialize` (P1.11).
 
-*Files:* `handlers.go`, `session.go`. *Spec:* #A1, #A3, #A4, #D1.
-*Acceptance:* unit tests for the prefix round-trip with header recompute, `_meta` injection, era-aware upstream send, MRTR passthrough, and each rejected method. Legacy branch byte-identical.
+_Files:_ `handlers.go`, `session.go`. _Spec:_ #A1, #A3, #A4, #D1.
+_Acceptance:_ unit tests for the prefix round-trip with header recompute, `_meta` injection, era-aware upstream send, MRTR passthrough, and each rejected method. Legacy branch byte-identical.
 
 **Shared constant block introduced across Phase 0:**
 
@@ -545,24 +529,21 @@ Phase 2 — Cross-Era Translation (Cells 3 and 4)
 
 **Objective:** Enable modern clients to talk to legacy backends (Cell 3) and legacy clients to talk to modern backends (Cell 4).
 
-
-| Item | Description                                                                                                                                                                                           | Spec Items Addressed | Files                                  |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------------- |
-| P2.1 | **Backend era detection + cache** (D2) — `backendEra(route, backend)` with auto-detect + optional config field on `MCPBackend`                                                                        | #F1                  | new `era.go`, `filterapi/mcpconfig.go` |
-| P2.2 | **Upstream session pool** (Cell 3) — gateway-managed pool keyed by `route+backend+subject`; lazy `initializeSession()`; idle reap via `Close()`                                                       | #F1, #A1             | new `session_pool.go`                  |
+| Item | Description                                                                                                                                                                                            | Spec Items Addressed | Files                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | -------------------------------------- |
+| P2.1 | **Backend era detection + cache** (D2) — `backendEra(route, backend)` with auto-detect + optional config field on `MCPBackend`                                                                         | #F1                  | new `era.go`, `filterapi/mcpconfig.go` |
+| P2.2 | **Upstream session pool** (Cell 3) — gateway-managed pool keyed by `route+backend+subject`; lazy `initializeSession()`; idle reap via `Close()`                                                        | #F1, #A1             | new `session_pool.go`                  |
 | P2.3 | **MRTR↔SSE translator** (Cell 3) — convert legacy server→client SSE requests to `InputRequiredResult`; convert modern client MRTR retry `inputResponses` back to JSON-RPC responses on backend stream | #A3, #F1             | new `translate.go`                     |
-| P2.4 | `**subscriptions/listen` → legacy GET (Cell 3) — map modern `subscriptions/listen` to legacy GET SSE stream per backend                                                                               | #A2, #F1             | `subscriptions.go`                     |
-| P2.5 | **Modern-backend branch in `newSession`** (Cell 4) — skip upstream `initialize`; build `compositeSessionEntry` with `sessionID == ""` and capabilities from `server/discover`                         | #F1                  | `mcpproxy.go`                          |
-| P2.6 | `**_meta`/header injection for legacy clients (Cell 4) — inject modern headers/`_meta` on upstream calls from legacy client sessions                                                                  | #F1                  | `session.go`                           |
-| P2.7 | **MRTR → legacy SSE translator** (Cell 4) — convert modern `InputRequiredResult` to server-to-client requests on client SSE stream; convert client responses to MRTR retry upstream                   | #A3, #F1             | `translate.go`                         |
-| P2.8 | **Legacy GET → upstream `subscriptions/listen`** (Cell 4) — open upstream `subscriptions/listen`, merge into legacy client GET stream                                                                 | #A2, #F1             | `session.go`                           |
-| P2.9 | **Translation fidelity limits** — document unsupported edge cases: cancellation across eras, timeout propagation, progress token mismatches                                                           | #F1                  | docs                                   |
-
+| P2.4 | `**subscriptions/listen` → legacy GET (Cell 3) — map modern `subscriptions/listen` to legacy GET SSE stream per backend                                                                                | #A2, #F1             | `subscriptions.go`                     |
+| P2.5 | **Modern-backend branch in `newSession`** (Cell 4) — skip upstream `initialize`; build `compositeSessionEntry` with `sessionID == ""` and capabilities from `server/discover`                          | #F1                  | `mcpproxy.go`                          |
+| P2.6 | `**_meta`/header injection for legacy clients (Cell 4) — inject modern headers/`_meta` on upstream calls from legacy client sessions                                                                   | #F1                  | `session.go`                           |
+| P2.7 | **MRTR → legacy SSE translator** (Cell 4) — convert modern `InputRequiredResult` to server-to-client requests on client SSE stream; convert client responses to MRTR retry upstream                    | #A3, #F1             | `translate.go`                         |
+| P2.8 | **Legacy GET → upstream `subscriptions/listen`** (Cell 4) — open upstream `subscriptions/listen`, merge into legacy client GET stream                                                                  | #A2, #F1             | `session.go`                           |
+| P2.9 | **Translation fidelity limits** — document unsupported edge cases: cancellation across eras, timeout propagation, progress token mismatches                                                            | #F1                  | docs                                   |
 
 Phase 3 — Cacheable Results, Deterministic Ordering, Minor Spec Items
 
 **Objective:** Implement proxy-level caching, deterministic tool ordering, and remaining minor spec items.
-
 
 | Item | Description                                                                                                                                                                                                                                                                                                    | Spec Items Addressed | Files                            |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------- |
@@ -574,11 +555,9 @@ Phase 3 — Cacheable Results, Deterministic Ordering, Minor Spec Items
 | P3.6 | `**resultType` on all results — audit every handler to ensure `resultType: "complete"` is set on all result payloads sent to modern clients                                                                                                                                                                    | #A3                  | `handlers.go`                    |
 | P3.7 | **Error code allocation compliance** — ensure gateway-minted error codes fall within `-32020` to `-32099` (MCP reserved range) or `-32000` to `-32019` (implementation-defined, grandfathered). No codes in the unallocated ranges                                                                             | #D4                  | `handlers.go`                    |
 
-
 Phase 4 — Auth Hardening, Deprecations, and Cleanup
 
 **Objective:** Address authorization spec changes, formalize deprecation handling, update docs and examples.
-
 
 | Item | Description                                                                                                                                                                                                          | Spec Items Addressed | Files                             |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | --------------------------------- |
@@ -590,11 +569,9 @@ Phase 4 — Auth Hardening, Deprecations, and Cleanup
 | P4.6 | **Docs, examples, versioned capability pages** — update `site/docs/capabilities/mcp`, `examples/mcp` with dual-era examples. Version-specific documentation                                                          | #F2                  | `site/`, `examples/`              |
 | P4.7 | **Conformance and E2E testing** — dual-era test matrix + benchmarks                                                                                                                                                  | #F3                  | `*_test.go`, `e2e/`               |
 
-
 ## Spec Item → Phase Mapping
 
 Every item from the spec changelog and the tracking issue, mapped to a phase:
-
 
 | Issue Ref | SEP / Change | Title                                                                                                         | Phase                                              |
 | --------- | ------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -619,7 +596,6 @@ Every item from the spec changelog and the tracking issue, mapped to a phase:
 | #F1       | —            | Backward compatibility (dual-era)                                                                             | Phase 0 (detection), Phase 2 (translation)         |
 | #F2       | —            | Docs and examples                                                                                             | Phase 4                                            |
 | #F3       | —            | Conformance and E2E testing                                                                                   | Phase 4                                            |
-
 
 ## Gotchas and Risks
 
@@ -666,4 +642,3 @@ Roots, Sampling, and Logging must keep working during the 12-month deprecation w
 - **Proxy-level structured content validation** — as `structuredContent` adoption grows, the gateway may optionally validate `outputSchema` conformance.
 - `**Mcp-Param-{Name}` header routing — use `x-mcp-header`-annotated tool parameters for Envoy-level routing decisions (e.g., route to different backends based on parameter values).
 - **Client ID Metadata Documents (CIMD)** — when DCR is fully removed, update metadata serving to use CIMD exclusively.
-
