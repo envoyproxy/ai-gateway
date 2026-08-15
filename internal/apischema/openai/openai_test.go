@@ -3009,6 +3009,13 @@ func TestResponseToolUnionMarshalJSON(t *testing.T) {
 			expRes: `{"type": "apply_patch"}`,
 		},
 		{
+			name: "marshal unknown type is emitted verbatim",
+			input: ResponseToolUnion{
+				OfUnknown: json.RawMessage(`{"type":"unknown_tool","execution":"client"}`),
+			},
+			expRes: `{"type":"unknown_tool","execution":"client"}`,
+		},
+		{
 			name:   "marshal no field set",
 			input:  ResponseToolUnion{},
 			expErr: "no tool to marshal",
@@ -3241,9 +3248,11 @@ func TestResponseToolUnionUnmarshalJSON(t *testing.T) {
 			},
 		},
 		{
-			name:   "unmarshal unknown type",
-			input:  []byte(`{"type":"unknown_tool"}`),
-			expErr: "unknown tool type",
+			name:  "unmarshal unknown type is preserved",
+			input: []byte(`{"type":"unknown_tool","execution":"client"}`),
+			expRes: ResponseToolUnion{
+				OfUnknown: json.RawMessage(`{"type":"unknown_tool","execution":"client"}`),
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
