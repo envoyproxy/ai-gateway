@@ -223,21 +223,23 @@ type BackendAuth struct {
 type CredentialOverride struct {
 	// HeaderName is the request header that carries the per-request credential.
 	// Set for fromRequestHeaders source; empty for fromDynamicMetadata source.
+	// For AWS this is a prefix, not a full header name: see
+	// internalapi.AWSCredentialOverrideHeaderNames for the three names derived from it.
 	HeaderName string `json:"headerName,omitempty"`
 	// DynamicMetadataNamespace is the Envoy metadata namespace to read from.
 	// Set for fromDynamicMetadata source; empty for fromRequestHeaders source.
 	DynamicMetadataNamespace string `json:"dynamicMetadataNamespace,omitempty"`
 	// DynamicMetadataKey is the key within DynamicMetadataNamespace.
+	// For AWS the value is a struct with accessKeyId/secretAccessKey/sessionToken, not a string.
 	DynamicMetadataKey string `json:"dynamicMetadataKey,omitempty"`
 	// FallbackToConfigured controls behaviour when the source value is absent.
 	// true falls back to the static credential; false returns 401 to the caller.
 	FallbackToConfigured bool `json:"fallbackToConfigured"`
-	// InputHeaderToRemove is the header that should be stripped before the request
-	// reaches the upstream backend. Only set for HeaderName source.
-	// The controller adds this to the backend HeaderMutation.Remove list so the
-	// HeaderMutator tells Envoy to remove it upstream while keeping it visible
-	// in the local requestHeaders map for the handler to read.
-	InputHeaderToRemove string `json:"inputHeaderToRemove,omitempty"`
+	// InputHeadersToRemove are stripped before the request reaches the backend. Only set for the
+	// HeaderName source; one entry for every auth type except AWS, which has three.
+	// The controller adds these to HeaderMutation.Remove, so Envoy drops them upstream while they
+	// stay visible in the local requestHeaders map for the handler to read.
+	InputHeadersToRemove []string `json:"inputHeadersToRemove,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
