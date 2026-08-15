@@ -113,7 +113,7 @@ APISchema VersionedAPISchema `json:"schema"`
 // from the request content before the routing decision.
 //
 // How multiple rules are matched is the same as the Gateway API. See for the details:
-// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
+// https://gateway-api.sigs.k8s.io/reference/api-spec/main/spec/#httproute
 //
 // +kubebuilder:validation:Required
 // +kubebuilder:validation:MaxItems=128
@@ -165,7 +165,7 @@ BackendRefs []AIGatewayRouteRuleBackendRef `json:"backendRefs,omitempty"`
 
 // Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
 // This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
-// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
+// https://gateway-api.sigs.k8s.io/reference/api-spec/main/spec/#httproutematch
 //
 // +optional
 // +kubebuilder:validation:MaxItems=128
