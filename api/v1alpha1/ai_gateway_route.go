@@ -75,7 +75,7 @@ type AIGatewayRouteSpec struct {
 	Hostnames []gwapiv1.Hostname `json:"hostnames,omitempty"`
 
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
-	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
+	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/reference/api-types/httproute/).
 	//
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
 	// modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
