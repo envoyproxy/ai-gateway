@@ -1637,11 +1637,16 @@ type ChatCompletionChunkChoiceDeltaToolCall struct {
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content          *string                                  `json:"content,omitempty"`
-	Role             string                                   `json:"role,omitempty"`
-	ToolCalls        []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
-	Annotations      *[]Annotation                            `json:"annotations,omitempty"`
-	ReasoningContent *StreamReasoningContent                  `json:"reasoning_content,omitempty"`
+	Content     *string                                  `json:"content,omitempty"`
+	Role        string                                   `json:"role,omitempty"`
+	ToolCalls   []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
+	Annotations *[]Annotation                            `json:"annotations,omitempty"`
+	// ReasoningContent serializes as a plain string; see StreamReasoningContent.
+	ReasoningContent *StreamReasoningContent `json:"reasoning_content,omitempty"`
+	// ThinkingBlocks carries provider-specific reasoning metadata (signatures, redacted
+	// content) that cannot be represented in the plain-string reasoning_content,
+	// following the LiteLLM convention also used on the non-streaming Message.
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -2062,10 +2067,46 @@ type ReasoningContent struct {
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
 }
 
+// StreamReasoningContent carries reasoning deltas on streaming chunks. On the wire,
+// `delta.reasoning_content` is a plain string (the convention established by DeepSeek and
+// followed by vLLM, LiteLLM, etc.) holding only Text; provider-specific metadata
+// (Signature, RedactedContent) is carried separately in `delta.thinking_blocks`,
+// mirroring the non-streaming Message shape.
 type StreamReasoningContent struct {
-	Text            string `json:"text,omitzero"`
-	Signature       string `json:"signature,omitzero"`
-	RedactedContent []byte `json:"redactedContent,omitzero"`
+	Text            string
+	Signature       string
+	RedactedContent []byte
+}
+
+// MarshalJSON emits the reasoning delta as a plain JSON string. Signature and
+// RedactedContent are intentionally not serialized here — translators surface them via
+// ChatCompletionResponseChunkChoiceDelta.ThinkingBlocks so that clients validating the
+// de-facto `reasoning_content: string` convention do not reject the chunk.
+func (s StreamReasoningContent) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Text)
+}
+
+// UnmarshalJSON accepts both the plain-string form emitted by OpenAI-compatible backends
+// (vLLM, DeepSeek, ...) and the legacy object form ({"text":...,"signature":...})
+// emitted by ai-gateway <= v1.0.0.
+func (s *StreamReasoningContent) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		s.Text = text
+		return nil
+	}
+	var legacy struct {
+		Text            string `json:"text,omitzero"`
+		Signature       string `json:"signature,omitzero"`
+		RedactedContent []byte `json:"redactedContent,omitzero"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return fmt.Errorf("cannot unmarshal reasoning_content as string or object: %w", err)
+	}
+	s.Text = legacy.Text
+	s.Signature = legacy.Signature
+	s.RedactedContent = legacy.RedactedContent
+	return nil
 }
 
 // CompletionRequest represents a request to the legacy /completions endpoint.
@@ -2850,6 +2891,10 @@ type ResponseToolUnion struct {
 	OfApplyPatch       *ApplyPatchToolParam
 	OfNamespace        *NamespaceToolParam
 	OfToolSearch       *ToolSearchToolParam
+	// OfUnknown holds the raw JSON of a tool whose "type" is not one of the above. The Responses
+	// body is forwarded to the upstream as received, so an unrecognized tool is preserved rather
+	// than failing the whole request.
+	OfUnknown json.RawMessage
 }
 
 func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -2882,6 +2927,8 @@ func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 		return json.Marshal(t.OfNamespace)
 	case t.OfToolSearch != nil:
 		return json.Marshal(t.OfToolSearch)
+	case t.OfUnknown != nil:
+		return t.OfUnknown, nil
 	default:
 		return nil, errors.New("no tool to marshal in ToolUnionParam")
 	}
@@ -2975,7 +3022,9 @@ func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
 		}
 		t.OfToolSearch = &ts
 	default:
-		return fmt.Errorf("unknown tool type %s", typ.String())
+		// Copy: json.RawMessage is sonic's NoCopyRawMessage, so retaining data would alias the
+		// caller's buffer.
+		t.OfUnknown = append(json.RawMessage(nil), data...)
 	}
 	return nil
 }
@@ -3924,6 +3973,11 @@ type ResponseInputItemUnionParam struct {
 	OfCustomToolCall       *ResponseCustomToolCall
 	OfCompactionTrigger    *ResponseInputItemCompactionTriggerParam
 	OfItemReference        *ResponseInputItemItemReferenceParam
+	// Codex-emitted item types whose schema is not yet part of the public Responses API.
+	// Preserve their raw JSON so OpenAI-compatible backends can handle them unchanged.
+	OfAgentMessage    *json.RawMessage
+	OfAgentReasoning  *json.RawMessage
+	OfAdditionalTools *ResponseInputItemAdditionalToolsParam
 }
 
 func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -3988,6 +4042,12 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 		return json.Marshal(r.OfCompactionTrigger)
 	case r.OfItemReference != nil:
 		return json.Marshal(r.OfItemReference)
+	case r.OfAgentMessage != nil:
+		return json.Marshal(r.OfAgentMessage)
+	case r.OfAgentReasoning != nil:
+		return json.Marshal(r.OfAgentReasoning)
+	case r.OfAdditionalTools != nil:
+		return json.Marshal(r.OfAdditionalTools)
 	default:
 		return nil, errors.New("no input item to marshal")
 	}
@@ -4212,6 +4272,18 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.OfItemReference = &ir
+	case "agent_message":
+		raw := json.RawMessage(append([]byte(nil), data...))
+		r.OfAgentMessage = &raw
+	case "agent_reasoning":
+		raw := json.RawMessage(append([]byte(nil), data...))
+		r.OfAgentReasoning = &raw
+	case "additional_tools":
+		var at ResponseInputItemAdditionalToolsParam
+		if err := json.Unmarshal(data, &at); err != nil {
+			return err
+		}
+		r.OfAdditionalTools = &at
 	// Add other cases here for different input item types as needed.
 	default:
 		return errors.New("cannot unmarshal unknown input type: " + typ.String())
@@ -6077,6 +6149,24 @@ type ResponseCustomToolCall struct {
 	// The unique ID of the custom tool call in the OpenAI platform.
 	ID string `json:"id,omitzero"`
 	// The type of the custom tool call. Always `custom_tool_call`.
+	Type string `json:"type"`
+}
+
+// A list of additional tools made available to the model at a given point in the
+// conversation.
+//
+// The properties ID, Role, Tools are required.
+type ResponseInputItemAdditionalToolsParam struct {
+	// The unique ID of the additional tools item.
+	ID string `json:"id"`
+	// The role that provided the additional tools.
+	//
+	// Any of "unknown", "user", "assistant", "system", "critic", "discriminator",
+	// "developer", "tool".
+	Role string `json:"role"`
+	// The additional tool definitions made available at this item.
+	Tools []ResponseToolUnion `json:"tools"`
+	// The type of the item. Always `additional_tools`.
 	Type string `json:"type"`
 }
 
@@ -8996,4 +9086,11 @@ const (
 // TranslationResponse represents the JSON response from /v1/audio/translations.
 type TranslationResponse struct {
 	Text string `json:"text"`
+}
+
+// ResponsesInputTokensResponse represents the response from /v1/responses/input_tokens.
+type ResponsesInputTokensResponse struct {
+	// Object is the object type, which is always "response.input_tokens".
+	Object      string `json:"object"`
+	InputTokens int64  `json:"input_tokens"`
 }

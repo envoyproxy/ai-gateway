@@ -3009,6 +3009,13 @@ func TestResponseToolUnionMarshalJSON(t *testing.T) {
 			expRes: `{"type": "apply_patch"}`,
 		},
 		{
+			name: "marshal unknown type is emitted verbatim",
+			input: ResponseToolUnion{
+				OfUnknown: json.RawMessage(`{"type":"unknown_tool","execution":"client"}`),
+			},
+			expRes: `{"type":"unknown_tool","execution":"client"}`,
+		},
+		{
 			name:   "marshal no field set",
 			input:  ResponseToolUnion{},
 			expErr: "no tool to marshal",
@@ -3241,9 +3248,11 @@ func TestResponseToolUnionUnmarshalJSON(t *testing.T) {
 			},
 		},
 		{
-			name:   "unmarshal unknown type",
-			input:  []byte(`{"type":"unknown_tool"}`),
-			expErr: "unknown tool type",
+			name:  "unmarshal unknown type is preserved",
+			input: []byte(`{"type":"unknown_tool","execution":"client"}`),
+			expRes: ResponseToolUnion{
+				OfUnknown: json.RawMessage(`{"type":"unknown_tool","execution":"client"}`),
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -4572,6 +4581,20 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			expRes: []byte(`{"type": "message", "role": "assistant", "status": "completed", "id": "resp-123", "content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}]}`),
 		},
 		{
+			name: "marshal agent_message",
+			input: ResponseInputItemUnionParam{
+				OfAgentMessage: ptr.To(json.RawMessage(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`)),
+			},
+			expRes: []byte(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`),
+		},
+		{
+			name: "marshal agent_reasoning",
+			input: ResponseInputItemUnionParam{
+				OfAgentReasoning: ptr.To(json.RawMessage(`{"type":"agent_reasoning","summary":"prior reasoning"}`)),
+			},
+			expRes: []byte(`{"type":"agent_reasoning","summary":"prior reasoning"}`),
+		},
+		{
 			name: "marshal file_search_call",
 			input: ResponseInputItemUnionParam{
 				OfFileSearchCall: &ResponseFileSearchToolCall{
@@ -4982,6 +5005,33 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 				},
 			},
 			expRes: []byte(`{"type": "item_reference", "id": "id-123"}`),
+		},
+		{
+			name: "marshal additional_tools",
+			input: ResponseInputItemUnionParam{
+				OfAdditionalTools: &ResponseInputItemAdditionalToolsParam{
+					Type: "additional_tools",
+					ID:   "tools-123",
+					Role: "developer",
+					Tools: []ResponseToolUnion{
+						{
+							OfFunction: &FunctionToolParam{
+								Type:        "function",
+								Name:        "get_weather",
+								Description: "Get weather by city",
+								Parameters: map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"city": map[string]any{"type": "string"},
+									},
+								},
+								Strict: ptr.To(true),
+							},
+						},
+					},
+				},
+			},
+			expRes: []byte(`{"type": "additional_tools", "id": "tools-123", "role": "developer", "tools": [{"type": "function", "name": "get_weather", "description": "Get weather by city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}, "strict": true}]}`),
 		},
 	}
 
@@ -5520,6 +5570,47 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: []byte(`{"type": "item_reference", "id": "id-123"}`),
+		},
+		{
+			name: "unmarshal agent_message",
+			expRes: ResponseInputItemUnionParam{
+				OfAgentMessage: ptr.To(json.RawMessage(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`)),
+			},
+			input: []byte(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`),
+		},
+		{
+			name: "unmarshal agent_reasoning",
+			expRes: ResponseInputItemUnionParam{
+				OfAgentReasoning: ptr.To(json.RawMessage(`{"type":"agent_reasoning","summary":"prior reasoning"}`)),
+			},
+			input: []byte(`{"type":"agent_reasoning","summary":"prior reasoning"}`),
+		},
+		{
+			name: "unmarshal additional_tools",
+			expRes: ResponseInputItemUnionParam{
+				OfAdditionalTools: &ResponseInputItemAdditionalToolsParam{
+					Type: "additional_tools",
+					ID:   "tools-123",
+					Role: "developer",
+					Tools: []ResponseToolUnion{
+						{
+							OfFunction: &FunctionToolParam{
+								Type:        "function",
+								Name:        "get_weather",
+								Description: "Get weather by city",
+								Parameters: map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"city": map[string]any{"type": "string"},
+									},
+								},
+								Strict: ptr.To(true),
+							},
+						},
+					},
+				},
+			},
+			input: []byte(`{"type": "additional_tools", "id": "tools-123", "role": "developer", "tools": [{"type": "function", "name": "get_weather", "description": "Get weather by city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}, "strict": true}]}`),
 		},
 		{
 			name:   "unmarshal empty type string",
