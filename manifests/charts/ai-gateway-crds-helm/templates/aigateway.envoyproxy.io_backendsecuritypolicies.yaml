@@ -9860,7 +9860,18 @@ spec:
                         description: |-
                           Namespace is the Envoy metadata namespace written by the trusted filter.
                           Example: "envoy.filters.http.ext_authz"
+                          The gateway automatically configures Envoy to forward this namespace to its
+                          processor; no extra Envoy configuration is required.
+
+                          Only untyped dynamic metadata is read. A filter that writes the credential as typed
+                          metadata (google.protobuf.Any) under this namespace produces no value, and the request
+                          falls back to the static credential or is rejected per FallbackToConfigured.
+
+                          The character set matches Envoy filter names (letters, digits, ".", "_", "/", "-"); the
+                          gateway also encodes the namespace into internal bookkeeping that reserves other
+                          characters.
                         minLength: 1
+                        pattern: ^[A-Za-z0-9._/-]+$
                         type: string
                     required:
                     - namespace

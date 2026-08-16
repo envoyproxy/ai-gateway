@@ -422,12 +422,25 @@ type CredentialOverrideFromRequestHeaders struct {
 
 // CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
 // dynamic metadata produced by a trusted filter running earlier in the filter chain.
+// This is the preferred source: metadata cannot be forged by clients and never appears
+// as a request header, so nothing needs to be stripped and nothing can leak upstream.
 type CredentialOverrideFromDynamicMetadata struct {
 	// Namespace is the Envoy metadata namespace written by the trusted filter.
 	// Example: "envoy.filters.http.ext_authz"
+	// The gateway automatically configures Envoy to forward this namespace to its
+	// processor; no extra Envoy configuration is required.
+	//
+	// Only untyped dynamic metadata is read. A filter that writes the credential as typed
+	// metadata (google.protobuf.Any) under this namespace produces no value, and the request
+	// falls back to the static credential or is rejected per FallbackToConfigured.
+	//
+	// The character set matches Envoy filter names (letters, digits, ".", "_", "/", "-"); the
+	// gateway also encodes the namespace into internal bookkeeping that reserves other
+	// characters.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._/-]+$`
 	Namespace string `json:"namespace"`
 
 	// Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ import (
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -98,9 +100,14 @@ func parseAIGatewayClusterName(name string) (aiGatewayClusterName, error) {
 func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
+	// One policy Resolver per translation: the per-cluster namespace lookups below then cost one
+	// BackendSecurityPolicy List per involved namespace for the whole pass, and every cluster
+	// sees the same snapshot.
+	resolver := backendpolicy.NewResolver(s.k8sClient)
+
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
+		if err := s.maybeModifyCluster(ctx, cluster, resolver); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -299,7 +306,9 @@ func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[c
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
+//
+// resolver memoizes the policy lookups across one translation pass; nil makes a one-shot one.
+func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster, resolver *backendpolicy.Resolver) error {
 	clusterName, err := parseAIGatewayClusterName(cluster.Name)
 	if err != nil {
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name, "error", err)
@@ -411,6 +420,22 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		}
 	}
 
+	// Resolve which dynamic metadata namespaces the backends behind *this* cluster need. Envoy
+	// copies every listed namespace into the MetadataContext of every ProcessingRequest, so a
+	// cluster-wide union would ship one backend's JWT claims to every other backend's processor.
+	//
+	// This is also why the lookup is here rather than once per translation in PostTranslateModify:
+	// clusters that aren't ours return above without ever touching the API server, so a Gateway
+	// with no AI routes never fails translation on a cache or list error.
+	if resolver == nil {
+		resolver = backendpolicy.NewResolver(s.k8sClient)
+	}
+	credentialOverrideNamespaces, err := resolver.CredentialOverrideMetadataNamespaces(
+		ctx, aigwRoute.Namespace, clusterBackendRefs(httpRouteRule, clusterName.backendRefIndex))
+	if err != nil {
+		return fmt.Errorf("failed to resolve credential override metadata namespaces for cluster %s: %w", cluster.Name, err)
+	}
+
 	if cluster.TypedExtensionProtocolOptions == nil {
 		cluster.TypedExtensionProtocolOptions = make(map[string]*anypb.Any)
 	}
@@ -431,7 +456,27 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 
 	for _, filter := range po.HttpFilters {
 		if filter.Name == aiGatewayExtProcName {
-			// Nothing to do, the filter is already there.
+			// The filter chain already carries a filter with our name: user-supplied
+			// typed_extension_protocol_options on the EG Backend (EG regenerates clusters from
+			// its own IR each translation, so our own insertion below never round-trips here).
+			// The forwarding namespaces still have to track the current policies - otherwise the
+			// credential override never works for this cluster and nothing says why - but the
+			// rest of the filter is left alone, and a config we cannot decode is tolerated the
+			// way it always was rather than failing the whole gateway's translation.
+			changed, nsErr := setExtProcForwardingNamespaces(filter, credentialOverrideNamespaces)
+			if nsErr != nil {
+				s.log.Error(nsErr, "leaving unrecognized ext_proc filter config as is", "cluster_name", cluster.Name)
+				return nil
+			}
+			if !changed {
+				return nil
+			}
+			var refreshed *anypb.Any
+			if refreshed, err = toAny(po); err != nil {
+				s.log.Error(err, "failed to marshal HttpProtocolOptions to Any", "cluster_name", cluster.Name)
+				return fmt.Errorf("failed to marshal HttpProtocolOptions to Any: %w", err)
+			}
+			cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = refreshed
 			return nil
 		}
 	}
@@ -442,6 +487,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 		},
 	}
+	setForwardingNamespaces(extProcConfig, credentialOverrideNamespaces)
 	extProcConfig.AllowModeOverride = true
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
@@ -531,6 +577,79 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	}
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = poAny
 	return nil
+}
+
+// clusterBackendRefs returns the backend references the cluster actually serves: a single one when
+// Envoy Gateway created a cluster per backend, the rule's routable ones otherwise. Weight-0 refs
+// are excluded from the rule-level set the same way the endpoint loop excludes them from the
+// LoadAssignment: no request on the cluster can reach them, so their policies' namespaces have no
+// business in its ProcessingRequests.
+func clusterBackendRefs(rule *aigv1b1.AIGatewayRouteRule, backendRefIndex int) []aigv1b1.AIGatewayRouteRuleBackendRef {
+	if backendRefIndex != noBackendRefIndex {
+		return rule.BackendRefs[backendRefIndex : backendRefIndex+1]
+	}
+	refs := make([]aigv1b1.AIGatewayRouteRuleBackendRef, 0, len(rule.BackendRefs))
+	for i := range rule.BackendRefs {
+		if ref := &rule.BackendRefs[i]; ref.Weight == nil || *ref.Weight != 0 {
+			refs = append(refs, *ref)
+		}
+	}
+	return refs
+}
+
+// setForwardingNamespaces sets the untyped dynamic metadata namespaces Envoy forwards to the
+// processor. Envoy forwards nothing but what is listed here, so
+// credentialOverride.fromDynamicMetadata sees no metadata without it and falls back to the static
+// credential (or returns 401). An empty list clears the untyped entries, so removing the last
+// policy stops the forwarding.
+//
+// Only the untyped list is managed, matching backendauth's lookup; typed entries belong to a
+// user-supplied filter config and are left alone.
+func setForwardingNamespaces(cfg *extprocv3.ExternalProcessor, namespaces []string) {
+	fw := cfg.GetMetadataOptions().GetForwardingNamespaces()
+	if len(namespaces) == 0 {
+		switch {
+		case fw == nil:
+		case len(fw.GetTyped()) > 0:
+			fw.Untyped = nil
+		default:
+			cfg.MetadataOptions.ForwardingNamespaces = nil
+		}
+		return
+	}
+	if cfg.MetadataOptions == nil {
+		cfg.MetadataOptions = &extprocv3.MetadataOptions{}
+	}
+	if cfg.MetadataOptions.ForwardingNamespaces == nil {
+		cfg.MetadataOptions.ForwardingNamespaces = &extprocv3.MetadataOptions_MetadataNamespaces{}
+	}
+	cfg.MetadataOptions.ForwardingNamespaces.Untyped = namespaces
+}
+
+// setExtProcForwardingNamespaces rewrites the forwarding namespaces of an ext_proc filter that is
+// already in the chain, leaving the rest of its configuration untouched, and reports whether it
+// changed anything. A filter without a typed config is left alone, and one already carrying the
+// wanted namespaces is not re-marshaled, so user-supplied Any bytes are only replaced when the
+// namespaces actually differ.
+func setExtProcForwardingNamespaces(filter *httpconnectionmanagerv3.HttpFilter, namespaces []string) (bool, error) {
+	raw := filter.GetTypedConfig()
+	if raw == nil {
+		return false, nil
+	}
+	cfg := &extprocv3.ExternalProcessor{}
+	if err := raw.UnmarshalTo(cfg); err != nil {
+		return false, fmt.Errorf("failed to unmarshal ExternalProcessor: %w", err)
+	}
+	if slices.Equal(cfg.GetMetadataOptions().GetForwardingNamespaces().GetUntyped(), namespaces) {
+		return false, nil
+	}
+	setForwardingNamespaces(cfg, namespaces)
+	cfgAny, err := toAny(cfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal ExternalProcessor to Any: %w", err)
+	}
+	filter.ConfigType = &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: cfgAny}
+	return true, nil
 }
 
 // maybeModifyListenerAndRoutes modifies listeners and routes to support InferencePool backends.

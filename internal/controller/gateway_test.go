@@ -2947,9 +2947,14 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
 
-	// Then it should result in the error due to multiple BSPs found.
-	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
-	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
+	// Multiple policies: the oldest stays in effect, per the Gateway API conflict convention.
+	// Rejecting instead would turn the misconfiguration into an outage and let any policy
+	// creator take the backend down; the newer policy is simply ignored. The fake client stamps
+	// identical creation times, so the name tie-breaker picks bsp-bar over bsp-bar-target-refs.
+	_, dupBSP, err := c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.NoError(t, err)
+	require.NotNil(t, dupBSP)
+	require.Equal(t, bspName, dupBSP.Name)
 }
 
 // Ensure MCP-only routes produce a correct MCPConfig in the filter Secret.

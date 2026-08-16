@@ -32,6 +32,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -1071,70 +1072,61 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return
 	}
 
-	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
-	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
-		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
-		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
+	matchingBSPs, err := backendpolicy.TargetingPolicies(ctx, c.client, namespace, name, aiServiceBackendGroup, aiServiceBackendKind)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
-	for i := range backendSecurityPolicyList.Items {
-		policy := &backendSecurityPolicyList.Items[i]
-		for _, target := range policy.Spec.TargetRefs {
-			if string(target.Name) == name &&
-				target.Group == aiServiceBackendGroup &&
-				target.Kind == aiServiceBackendKind {
-				matchingBSPs = append(matchingBSPs, policy)
-			}
+	if len(matchingBSPs) > 0 {
+		bsp = oldestPolicy(matchingBSPs)
+		if len(matchingBSPs) > 1 {
+			// The API allows one policy per backend; the AIServiceBackend controller reports the
+			// misconfiguration as a NotAccepted condition. Following the Gateway API conflict
+			// convention, the oldest policy stays in effect: dropping the backend instead would
+			// turn the misconfiguration into an outage, and would also let anyone able to create
+			// a policy take a serving backend down, while under oldest-wins their policy is
+			// simply ignored.
+			c.logger.Info("multiple BackendSecurityPolicies found for backend, using the oldest",
+				"backend_name", name, "backend_namespace", namespace,
+				"count", len(matchingBSPs), "using", bsp.Name)
 		}
-	}
-
-	switch len(matchingBSPs) {
-	case 0:
-	case 1:
-		bsp = matchingBSPs[0]
-	default:
-		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
-		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
-		//
-		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
-		// is created after the AIServiceBackend's reconciliation.
-		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
-			"count", len(matchingBSPs))
-		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return
 }
 
+// oldestPolicy returns the policy with the earliest creationTimestamp, name as the tie-breaker,
+// per the Gateway API conflict-resolution convention.
+func oldestPolicy(policies []*aigv1b1.BackendSecurityPolicy) *aigv1b1.BackendSecurityPolicy {
+	oldest := policies[0]
+	for _, p := range policies[1:] {
+		switch {
+		case p.CreationTimestamp.Time.Before(oldest.CreationTimestamp.Time):
+			oldest = p
+		case p.CreationTimestamp.Time.Equal(oldest.CreationTimestamp.Time) && p.Name < oldest.Name:
+			oldest = p
+		}
+	}
+	return oldest
+}
+
 // getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
 func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1b1.BackendSecurityPolicy, error) {
-	var bspList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
-	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
-		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
-		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)
-	}
-
-	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
-	for i := range bspList.Items {
-		bsp := &bspList.Items[i]
-		for _, target := range bsp.Spec.TargetRefs {
-			if string(target.Name) == name &&
-				target.Group == inferencePoolGroup &&
-				target.Kind == inferencePoolKind {
-				matchingBSPs = append(matchingBSPs, bsp)
-			}
-		}
+	matchingBSPs, err := backendpolicy.TargetingPolicies(ctx, c.client, namespace, name, inferencePoolGroup, inferencePoolKind)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(matchingBSPs) == 0 {
 		return nil, nil
 	}
+	bsp := oldestPolicy(matchingBSPs)
 	if len(matchingBSPs) > 1 {
-		return nil, fmt.Errorf("multiple BackendSecurityPolicies found for inference pool %s in namespace %s", name, namespace)
+		// Oldest wins, same as backendWithMaybeBSP: an outage helps nobody and would let any
+		// policy creator take the pool's traffic down.
+		c.logger.Info("multiple BackendSecurityPolicies found for inference pool, using the oldest",
+			"inference_pool", name, "namespace", namespace, "count", len(matchingBSPs), "using", bsp.Name)
 	}
-	return matchingBSPs[0], nil
+	return bsp, nil
 }
 
 // checkPodHasSideCar returns whether the extproc container is current.

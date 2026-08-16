@@ -3933,6 +3933,8 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
 
 CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
 dynamic metadata produced by a trusted filter running earlier in the filter chain.
+This is the preferred source: metadata cannot be forged by clients and never appears
+as a request header, so nothing needs to be stripped and nothing can leak upstream.
 
 ##### Fields
 
@@ -3942,7 +3944,7 @@ dynamic metadata produced by a trusted filter running earlier in the filter chai
   name="namespace"
   type="string"
   required="true"
-  description="Namespace is the Envoy metadata namespace written by the trusted filter.<br />Example: `envoy.filters.http.ext_authz`"
+  description="Namespace is the Envoy metadata namespace written by the trusted filter.<br />Example: `envoy.filters.http.ext_authz`<br />The gateway automatically configures Envoy to forward this namespace to its<br />processor; no extra Envoy configuration is required.<br />Only untyped dynamic metadata is read. A filter that writes the credential as typed<br />metadata (google.protobuf.Any) under this namespace produces no value, and the request<br />falls back to the static credential or is rejected per FallbackToConfigured.<br />The character set matches Envoy filter names (letters, digits, `.`, `_`, `/`, `-`); the<br />gateway also encodes the namespace into internal bookkeeping that reserves other<br />characters."
 /><ApiField
   name="key"
   type="string"
