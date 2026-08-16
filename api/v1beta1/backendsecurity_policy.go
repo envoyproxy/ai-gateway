@@ -373,7 +373,9 @@ type BackendSecurityPolicyAnthropicAPIKey struct {
 // +kubebuilder:validation:MaxProperties=1
 type BackendSecurityPolicyCredentialOverride struct {
 	// FromRequestHeaders sources the credential from a request header injected by a trusted
-	// ingress filter. The gateway strips the header before forwarding to the upstream backend.
+	// ingress filter. The gateway strips the header before forwarding upstream — from every
+	// backend of the gateway's AI routes, so retries, provider fallback, and requests matching
+	// other rules do not leak it to another backend.
 	// Because any client can set request headers, this source is only safe when a trusted filter
 	// removes any client-supplied copy and writes the canonical value.
 	//
@@ -408,6 +410,12 @@ type CredentialOverrideFromRequestHeaders struct {
 	// Prefer FromDynamicMetadata for AWSCredentials. Headers are client-settable, and a secret
 	// access key on the wire is a worse leak than an API key.
 	//
+	// The name is reserved for credential transport across the whole gateway: every backend of
+	// the gateway's AI routes strips it before the request egresses, so do not pick a header a
+	// backend needs to receive as-is. Names the gateway cannot strip are rejected: Envoy
+	// pseudo-headers (":..."), the gateway's own "x-ai-eg-" prefix, and "x-envoy-original-path".
+	//
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith(':') && !self.lowerAscii().startsWith('x-ai-eg-') && self.lowerAscii() != 'x-envoy-original-path'",message="header must not use a reserved name (':*', 'x-ai-eg-*', 'x-envoy-original-path')"
 	// +optional
 	Header string `json:"header,omitempty"`
 

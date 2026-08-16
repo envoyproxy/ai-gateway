@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -497,7 +498,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
 						continue
 					}
-					stripCredentialOverrideInputHeaders(&b)
 				}
 
 				ec.Backends = append(ec.Backends, b)
@@ -544,6 +544,31 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	var effectiveMCPRoute bool
 	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
 	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
+
+	// Headers to strip come from the policies attached to this gateway's own routes, so one
+	// gateway's policies cannot strip headers off another gateway's traffic, and a policy change
+	// regenerates this config through the BSP -> backend -> route -> gateway sync chain. The
+	// extproc merges the list into every backend's HeaderMutation.Remove at config load; see
+	// filterapi.Config.CredentialOverrideStripHeaders.
+	stripResolver := backendpolicy.NewResolver(c.client)
+	stripHeaders := make(map[string]struct{})
+	for i := range aiGatewayRoutes {
+		route := &aiGatewayRoutes[i]
+		if !route.GetDeletionTimestamp().IsZero() {
+			continue
+		}
+		routeStrip, stripErr := stripResolver.CredentialOverrideStripHeaders(ctx, route.Namespace, backendpolicy.RouteBackendRefs(route))
+		if stripErr != nil {
+			return false, fmt.Errorf("failed to collect credential override strip headers: %w", stripErr)
+		}
+		for _, h := range routeStrip {
+			stripHeaders[h] = struct{}{}
+		}
+	}
+	ec.CredentialOverrideStripHeaders = slices.Sorted(maps.Keys(stripHeaders))
+	if len(ec.CredentialOverrideStripHeaders) == 0 {
+		ec.CredentialOverrideStripHeaders = nil
+	}
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
@@ -745,66 +770,6 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
-// stripCredentialOverrideInputHeaders puts the credential input header(s) on the backend's remove
-// list so Envoy drops them before the backend sees them. HeaderMutator.Mutate keeps them in the
-// extproc's local map, so the handler can still read them in Do().
-//
-// This is what keeps the credential off the wire. Deleting it from the requestHeaders map would
-// not: only headers a handler returns become Envoy mutations. AWS has three, others one. No-op for
-// the metadata source, where the credential never touches the request.
-func stripCredentialOverrideInputHeaders(b *filterapi.Backend) {
-	if b.Auth == nil || b.Auth.CredentialOverride == nil || len(b.Auth.CredentialOverride.InputHeadersToRemove) == 0 {
-		return
-	}
-	if b.HeaderMutation == nil {
-		b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
-	}
-	b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeadersToRemove...)
-}
-
-// defaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
-// These headers carry the per-request credential injected by a trusted ingress filter.
-//
-// For AWSCredentials this is a prefix, not a full header name: three names are derived from it.
-// See internalapi.AWSCredentialOverrideHeaderNames.
-func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
-	switch t {
-	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
-		return "x-aigw-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
-		return "x-aigw-anthropic-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
-		return "x-aigw-azure-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
-		return "x-aigw-azure-access-token"
-	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
-		return "x-aigw-gcp-access-token"
-	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		return internalapi.AWSCredentialOverrideHeaderPrefix
-	default:
-		return ""
-	}
-}
-
-// defaultOverrideMetadataKey returns the default metadata key for the given auth type. Same as the
-// header name except for AWSCredentials, whose metadata value is one struct holding all three inputs.
-func defaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
-	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
-		return internalapi.AWSCredentialOverrideMetadataKey
-	}
-	return defaultOverrideHeaderName(t)
-}
-
-// overrideInputHeaders returns the headers a trusted filter injects for this auth type, which are
-// also the ones to strip. Three for AWS, one for the rest.
-func overrideInputHeaders(t aigv1b1.BackendSecurityPolicyType, headerName string) []string {
-	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
-		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(headerName)
-		return []string{accessKeyID, secretAccessKey, sessionToken}
-	}
-	return []string{headerName}
-}
-
 // resolveCredentialOverride converts the API-level CredentialOverride to the filterapi type,
 // resolving default header/key names and validating the fallback configuration.
 func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, override *aigv1b1.BackendSecurityPolicyCredentialOverride, hasStaticCredential bool) (*filterapi.CredentialOverride, error) {
@@ -817,20 +782,19 @@ func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, overri
 	switch {
 	case override.FromRequestHeaders != nil:
 		src := override.FromRequestHeaders
-		headerName := src.Header
-		if headerName == "" {
-			headerName = defaultOverrideHeaderName(bspType)
-		}
-		headerName = strings.ToLower(headerName)
+		headerName := backendpolicy.ResolvedOverrideHeaderName(bspType, src)
 		result.HeaderName = headerName
-		result.InputHeadersToRemove = overrideInputHeaders(bspType, headerName)
+		result.InputHeadersToRemove = backendpolicy.OverrideInputHeaders(bspType, headerName)
+		if err := backendpolicy.ValidateOverrideInputHeaders(result.InputHeadersToRemove); err != nil {
+			return nil, err
+		}
 		result.FallbackToConfigured = src.FallbackToConfigured == nil || *src.FallbackToConfigured
 
 	case override.FromDynamicMetadata != nil:
 		src := override.FromDynamicMetadata
 		key := src.Key
 		if key == "" {
-			key = defaultOverrideMetadataKey(bspType)
+			key = backendpolicy.DefaultOverrideMetadataKey(bspType)
 		}
 		result.DynamicMetadataNamespace = src.Namespace
 		result.DynamicMetadataKey = key

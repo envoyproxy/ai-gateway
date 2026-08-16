@@ -509,7 +509,7 @@ func Test_maybeModifyCluster_forwardsCredentialOverrideNamespaces(t *testing.T) 
 
 	t.Run("rule-level cluster covers every backend of the rule", func(t *testing.T) {
 		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0"}
-		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil))
+		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil, nil))
 
 		cfg := extProcFilterConfig(t, cluster)
 		require.Equal(t, []string{aigv1b1.AIGatewayFilterMetadataNamespace},
@@ -520,7 +520,7 @@ func Test_maybeModifyCluster_forwardsCredentialOverrideNamespaces(t *testing.T) 
 
 	t.Run("per-backend cluster only gets its own backend's namespaces", func(t *testing.T) {
 		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0/backend/1"}
-		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil))
+		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil, nil))
 
 		// backend/1 is plain-backend, which has no policy at all.
 		require.Nil(t, extProcFilterConfig(t, cluster).MetadataOptions.GetForwardingNamespaces())
@@ -567,7 +567,7 @@ func Test_maybeModifyCluster_refreshesForwardingNamespacesOnExistingFilter(t *te
 		},
 	}
 
-	require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil))
+	require.NoError(t, s.maybeModifyCluster(t.Context(), cluster, nil, nil))
 
 	cfg := extProcFilterConfig(t, cluster)
 	require.Equal(t, []string{"envoy.filters.http.ext_authz"},
@@ -575,4 +575,37 @@ func Test_maybeModifyCluster_refreshesForwardingNamespacesOnExistingFilter(t *te
 	// The rest of the existing configuration is left alone.
 	require.Equal(t, []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 		cfg.MetadataOptions.GetReceivingNamespaces().GetUntyped())
+}
+
+// Non-AI routes on the same gateway have no extproc to strip the injected credential headers, so
+// the extension server removes them at the route level; AI routes must keep them readable.
+func TestEnableRouterLevelExtProc_stripsCredentialHeadersOnNonAIRoutes(t *testing.T) {
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	aiRoute := &routev3.Route{Name: "ai-route"}
+	aiRoute.Metadata = &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+		"envoy-gateway": {Fields: map[string]*structpb.Value{
+			"resources": structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{
+				structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{
+					"annotations": structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{
+						internalapi.AIGatewayGeneratedHTTPRouteAnnotation: structpb.NewStringValue("true"),
+					}}),
+				}}),
+			}}),
+		}},
+	}}
+	plainRoute := &routev3.Route{Name: "plain-route", RequestHeadersToRemove: []string{"x-existing"}}
+	routeConfig := &routev3.RouteConfiguration{
+		Name: "cfg",
+		VirtualHosts: []*routev3.VirtualHost{{
+			Name:   "vh",
+			Routes: []*routev3.Route{aiRoute, plainRoute},
+		}},
+	}
+	enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeConfig, []string{"x-aigw-api-key", "x-existing"})
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Empty(t, aiRoute.RequestHeadersToRemove)
+	require.Equal(t, []string{"x-existing", "x-aigw-api-key"}, plainRoute.RequestHeadersToRemove)
 }

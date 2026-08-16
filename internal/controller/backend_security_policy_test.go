@@ -1378,3 +1378,38 @@ func TestBackendSecurityPolicyController_syncRoutesReferencingInferencePool(t *t
 	}
 	require.ElementsMatch(t, []string{"default/pool-route", "other-ns/cross-ns-route"}, got)
 }
+
+// A reserved override header must produce a NotAccepted condition: pre-CEL objects bypass the
+// CRD rule, and the only other signal is an error log while the backend drops from the config.
+func TestBackendSecurityPolicyController_Reconcile_reservedOverrideHeader(t *testing.T) {
+	eventCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil, nil)
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "reserved-header-bsp", Namespace: "default"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:   aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}},
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "x-ai-eg-tenant-key"},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bsp))
+
+	// No error and no requeue: a retry cannot fix the misconfiguration, and aigw translate
+	// treats reconcile errors as fatal. The condition carries the signal, and the sync fan-out
+	// still ran so the data plane is not stranded.
+	res, err := c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "reserved-header-bsp"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res)
+
+	var updatedBSP aigv1b1.BackendSecurityPolicy
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "reserved-header-bsp"}, &updatedBSP))
+	require.NotEmpty(t, updatedBSP.Status.Conditions)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedBSP.Status.Conditions[0].Type)
+	require.Contains(t, updatedBSP.Status.Conditions[0].Message, "reserved name")
+}

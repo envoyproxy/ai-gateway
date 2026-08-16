@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
@@ -104,13 +105,22 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	// BackendSecurityPolicy List per involved namespace for the whole pass, and every cluster
 	// sees the same snapshot.
 	resolver := backendpolicy.NewResolver(s.k8sClient)
+	aiRouteKeys := make(map[client.ObjectKey]struct{})
 
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(ctx, cluster, resolver); err != nil {
+		if err := s.maybeModifyCluster(ctx, cluster, resolver, aiRouteKeys); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
+	}
+
+	// The credential input headers of this gateway's policies, for stripping off its non-AI
+	// routes below. The injecting filter runs before routing, so a plain HTTPRoute on the same
+	// Gateway receives the per-request credential too and has no extproc to remove it.
+	credentialStripHeaders, err := s.credentialStripHeadersForRoutes(ctx, resolver, aiRouteKeys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect credential strip headers: %w", err)
 	}
 
 	// Add external processor clusters for InferencePool backends.
@@ -122,7 +132,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	req.Clusters = append(req.Clusters, cs...)
 
 	// Modify listeners and routes to support InferencePool backends.
-	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
+	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes, credentialStripHeaders); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
@@ -308,7 +318,9 @@ func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[c
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
 //
 // resolver memoizes the policy lookups across one translation pass; nil makes a one-shot one.
-func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster, resolver *backendpolicy.Resolver) error {
+// aiRouteKeys, when non-nil, collects the AIGatewayRoutes seen during the pass; the caller uses
+// it to strip credential input headers off the gateway's non-AI routes afterwards.
+func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster, resolver *backendpolicy.Resolver, aiRouteKeys map[client.ObjectKey]struct{}) error {
 	clusterName, err := parseAIGatewayClusterName(cluster.Name)
 	if err != nil {
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name, "error", err)
@@ -332,6 +344,10 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		s.log.Error(err, "failed to get AIGatewayRoute object",
 			"namespace", httpRouteNamespace, "name", httpRouteName)
 		return err
+	}
+
+	if aiRouteKeys != nil {
+		aiRouteKeys[client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}] = struct{}{}
 	}
 
 	// Get the backend from the HTTPRoute object.
@@ -652,13 +668,42 @@ func setExtProcForwardingNamespaces(filter *httpconnectionmanagerv3.HttpFilter, 
 	return true, nil
 }
 
+// credentialStripHeadersForRoutes returns the union of fromRequestHeaders input headers across
+// the given AIGatewayRoutes' policies, resolved through the pass's memoized resolver.
+func (s *Server) credentialStripHeadersForRoutes(ctx context.Context, resolver *backendpolicy.Resolver, routeKeys map[client.ObjectKey]struct{}) ([]string, error) {
+	if len(routeKeys) == 0 {
+		return nil, nil
+	}
+	union := make(map[string]struct{})
+	for key := range routeKeys {
+		var route aigv1b1.AIGatewayRoute
+		if err := s.k8sClient.Get(ctx, key, &route); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		headers, err := resolver.CredentialOverrideStripHeaders(ctx, route.Namespace, backendpolicy.RouteBackendRefs(&route))
+		if err != nil {
+			return nil, err
+		}
+		for _, h := range headers {
+			union[h] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(union)), nil
+}
+
 // maybeModifyListenerAndRoutes modifies listeners and routes to support InferencePool backends.
 // This function performs the following operations:
 // 1. Identifies listeners and routes that use InferencePool backends
 // 2. Adds endpoint picker (EPP) external processor filters to relevant listeners
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
-func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+// credentialStripHeaders are removed from every route NOT generated by AI Gateway: those routes
+// have no extproc to strip the injected per-request credential, and the injecting filter runs on
+// the whole listener.
+func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration, credentialStripHeaders []string) error {
 	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
@@ -739,7 +784,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 				s.log.Info("skipping patching of non-existent route config", "route_config", name)
 				continue
 			}
-			_enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeCfg)
+			_enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeCfg, credentialStripHeaders)
 			if err != nil {
 				return fmt.Errorf("failed to enable router level AI Gateway extproc on route config %s: %w", name, err)
 			}
@@ -849,7 +894,7 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 // enableRouterLevelAIGatewayExtProcOnRoute checks if the extproc filter should be enabled for routes
 // that are generated by AIGateway. It modifies the route configuration to enable the extproc filter
 // for those routes. It returns true if any route was modified.
-func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.RouteConfiguration) (bool, error) {
+func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.RouteConfiguration, credentialStripHeaders []string) (bool, error) {
 	enabled := false
 	fcAny, err := toAny(&routev3.FilterConfig{
 		Config: &anypb.Any{},
@@ -861,6 +906,16 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
 			aiGatewayGenerated := s.isRouteGeneratedByAIGateway(route)
+			if !aiGatewayGenerated {
+				// No extproc runs here, so the credential headers a trusted filter injected
+				// would egress to this route's backend; drop them at the route level. AI routes
+				// must keep them on the request so the extproc can read them.
+				for _, h := range credentialStripHeaders {
+					if !slices.Contains(route.RequestHeadersToRemove, h) {
+						route.RequestHeadersToRemove = append(route.RequestHeadersToRemove, h)
+					}
+				}
+			}
 			if aiGatewayGenerated {
 				enabled = true
 				if route.TypedPerFilterConfig == nil {

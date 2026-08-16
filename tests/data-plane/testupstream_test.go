@@ -62,6 +62,8 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamOpenAIBackend,
 			testUpstreamModelNameOverride,
 			testUpstreamAAWSBackend,
+			testUpstreamCredFallbackPrimary,
+			testUpstreamCredFallbackSecondary,
 			testUpstreamDynMdCredBackend,
 			testUpstreamAWSDynMdCredBackend,
 			testUpstreamAzureBackend,
@@ -283,10 +285,28 @@ func TestWithTestUpstream(t *testing.T) {
 			nonExpectedRequestHeaders: awsCredentialOverrideHeaders,
 		},
 		{
-			// A downstream filter (header_to_metadata, standing in for ext_authz) turns
-			// x-test-dynmd-api-key into dynamic metadata; the upstream ext_proc filter forwards
-			// the namespace to the extproc, which must authenticate with the metadata value, not
-			// the configured key. Only a real Envoy proves the forwarding_namespaces link.
+			// The primary backend reads its per-request credential from x-aigw-api-key and always
+			// fails (error server), so Envoy falls back to the secondary while replaying the
+			// original request headers - injected credential included. The secondary has no
+			// credential override; its strip mirrors the gateway-wide union the controller emits into
+			// every backend. The upstream must see the secondary's own static
+			// credential and no trace of the injected one.
+			name:                      "openai - per-request credential header does not leak to the fallback backend",
+			backend:                   "cred-leak-fallback",
+			path:                      "/v1/chat/completions",
+			method:                    http.MethodPost,
+			requestBody:               `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:                   "/v1/chat/completions",
+			responseBody:              `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:                 http.StatusOK,
+			expResponseBody:           `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			requestHeaders:            map[string]string{"x-aigw-api-key": "injected-per-request-key"},
+			expRequestHeaders:         map[string]string{"Authorization": "Bearer secondary-configured-key"},
+			nonExpectedRequestHeaders: []string{"x-aigw-api-key"},
+		},
+		{
+			// The extproc must authenticate with the metadata-sourced value, not the configured
+			// key. Only a real Envoy proves the forwarding_namespaces link.
 			name:                      "openai - per-request credential from dynamic metadata",
 			backend:                   "dynmd-cred",
 			path:                      "/v1/chat/completions",

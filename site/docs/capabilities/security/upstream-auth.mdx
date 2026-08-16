@@ -142,11 +142,21 @@ gateway reads and strips before forwarding the request to the backend it authent
     fromRequestHeaders: {} # reads x-aigw-api-key for type: APIKey
 ```
 
+The gateway strips the configured header from every backend of its AI routes, not just the one
+whose policy reads it, and removes it from any plain HTTPRoute attached to the same Gateway,
+since those have no processor to strip it. The injecting filter runs before routing, and Envoy replays the original
+request headers when it retries or falls back to another backend, so the header has to be
+removed everywhere. This means the header name must not be one that some backend needs to
+receive: setting `header: authorization` on one route strips `Authorization` from all AI traffic
+on the gateway. Stick with the default `x-aigw-*` names where possible. Reserved names (`:*`
+pseudo-headers, `x-ai-eg-*`, `x-envoy-original-path`) are rejected since the gateway cannot
+strip them.
+
 Because any client can set request headers, this source is only safe when the trusted boundary
 overwrites or rejects client-supplied values of the configured header. The header also travels
-with the request through the filter chain, and stripping is configured per backend — so on
-routes with multiple backends (for example provider fallback), prefer `fromDynamicMetadata`,
-which has neither exposure.
+with the request through the filter chain and can surface anywhere request headers do (access
+logs, tracing) — where the producing filter can write dynamic metadata, prefer
+`fromDynamicMetadata`, which has neither exposure.
 
 ### Fallback Behaviour
 
@@ -156,10 +166,9 @@ credential: fall back to the static credential configured in the policy, or, whe
 credential — an access key ID without a secret access key, or the reverse — always fails the
 request rather than falling back, since it indicates a misconfigured credential producer.
 
-Falling back requires something to fall back *to*: if the policy has no static credential —
-for example `GCPCredentials` relying on Application Default Credentials with no credentials
-file or workload identity federation — the controller rejects `credentialOverride` unless
-`fallbackToConfigured: false` is set explicitly.
+If the policy has no static credential to fall back to (for example `GCPCredentials` using
+Application Default Credentials, with no credentials file or workload identity federation),
+`fallbackToConfigured: false` must be set explicitly; the controller rejects the default.
 
 When enabling `fromDynamicMetadata` on a backend already serving traffic, prefer starting with
 `fallbackToConfigured: true` and tightening to `false` afterwards: the processor configuration

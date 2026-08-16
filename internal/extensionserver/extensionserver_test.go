@@ -189,7 +189,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			var buf bytes.Buffer
 			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(t.Context(), tc.c, nil)
+			err = s.maybeModifyCluster(t.Context(), tc.c, nil, nil)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -468,7 +468,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			})
 			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(t.Context(), tc.cluster, nil)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster, nil, nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -554,7 +554,7 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 				LbEndpoints: []*endpointv3.LbEndpoint{{}},
 			}}},
 		}
-		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil))
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil, nil))
 		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[0].Priority)
 		assertBackendName(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata,
 			internalapi.PerRouteRuleRefBackendName("ns", "fallback", "myroute", 0, 1))
@@ -563,7 +563,7 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 
 	t.Run("sets cluster metadata for EDS-managed endpoints", func(t *testing.T) {
 		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0/backend/0"}
-		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil))
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil, nil))
 		assertBackendName(t, cluster.Metadata,
 			internalapi.PerRouteRuleRefBackendName("ns", "primary", "myroute", 0, 0))
 		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
@@ -626,7 +626,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
@@ -649,7 +649,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -692,7 +692,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -741,7 +741,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
@@ -770,7 +770,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -813,7 +813,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster, nil)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
@@ -867,7 +867,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 	}
 
 	t.Run("empty listeners and routes", func(_ *testing.T) {
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 	})
 
@@ -891,7 +891,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should process only normal-listener, not envoy-gateway-listener.
 	})
@@ -918,7 +918,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when no RDS route config name is found.
 	})
@@ -929,7 +929,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			// No DefaultFilterChain set.
 		}
 
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when no default filter chain exists.
 	})
@@ -954,7 +954,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should identify and process InferencePool routes.
 	})
@@ -990,7 +990,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 
 		// Should handle multiple listeners with different route configurations.
@@ -1015,7 +1015,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when referenced route config is not found.
 	})

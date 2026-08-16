@@ -260,3 +260,87 @@ func TestResolverListsEachNamespaceOnce(t *testing.T) {
 	}
 	require.Equal(t, 1, lists)
 }
+
+func TestCredentialOverrideStripHeaders(t *testing.T) {
+	headerPolicy := func(name, backend, header string, poolKind bool, t2 ...aigv1b1.BackendSecurityPolicyType) *aigv1b1.BackendSecurityPolicy {
+		kind := backendpolicy.AIServiceBackendKind
+		group := backendpolicy.AIServiceBackendGroup
+		if poolKind {
+			kind, group = backendpolicy.InferencePoolKind, backendpolicy.InferencePoolGroup
+		}
+		typ := aigv1b1.BackendSecurityPolicyTypeAPIKey
+		if len(t2) > 0 {
+			typ = t2[0]
+		}
+		return &aigv1b1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: typ,
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+					Group: gwapiv1a2.Group(group), Kind: gwapiv1a2.Kind(kind), Name: gwapiv1.ObjectName(backend),
+				}},
+				CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+					FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: header},
+				},
+			},
+		}
+	}
+	c := newClient(t,
+		headerPolicy("apple-default", "apple", "", false),               // Default x-aigw-api-key.
+		headerPolicy("apple-dup", "apple", "X-AIGW-API-KEY", false),     // Lowercased duplicate.
+		headerPolicy("banana-custom", "banana", "x-tenant-cred", false), // Custom name.
+		headerPolicy("unreferenced", "unrelated", "x-other-gw", false),  // Not in refs: excluded.
+		headerPolicy("reserved", "apple", "x-ai-eg-bad", false),         // Unstrippable: skipped.
+		headerPolicy("aws-pool", "my-pool", "", true, aigv1b1.BackendSecurityPolicyTypeAWSCredentials),
+		policy("apple-md", "ns", "apple", backendpolicy.AIServiceBackendKind, "envoy.filters.http.ext_authz"), // Metadata source: no headers.
+	)
+
+	got, err := backendpolicy.NewResolver(c).CredentialOverrideStripHeaders(t.Context(), "ns",
+		[]aigv1b1.AIGatewayRouteRuleBackendRef{
+			backendRef("apple", nil), backendRef("banana", nil), inferencePoolRef("my-pool", nil),
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"x-aigw-api-key",
+		"x-aigw-aws-access-key-id",
+		"x-aigw-aws-secret-access-key",
+		"x-aigw-aws-session-token",
+		"x-tenant-cred",
+	}, got)
+}
+
+func TestOverrideInputHeadersFromSpec(t *testing.T) {
+	// No override / metadata source: nothing, no error.
+	headers, err := backendpolicy.OverrideInputHeadersFromSpec(&aigv1b1.BackendSecurityPolicySpec{Type: aigv1b1.BackendSecurityPolicyTypeAPIKey})
+	require.NoError(t, err)
+	require.Nil(t, headers)
+
+	// Defaulted and lowercased.
+	headers, err = backendpolicy.OverrideInputHeadersFromSpec(&aigv1b1.BackendSecurityPolicySpec{
+		Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+		CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+			FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "X-Custom"},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"x-custom"}, headers)
+
+	// AWS derives three names from the prefix.
+	headers, err = backendpolicy.OverrideInputHeadersFromSpec(&aigv1b1.BackendSecurityPolicySpec{
+		Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+		CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+			FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, headers, 3)
+
+	// Reserved names are rejected.
+	_, err = backendpolicy.OverrideInputHeadersFromSpec(&aigv1b1.BackendSecurityPolicySpec{
+		Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+		CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+			FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "x-ai-eg-tenant-key"},
+		},
+	})
+	require.ErrorContains(t, err, "reserved name")
+}

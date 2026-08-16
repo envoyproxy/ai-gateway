@@ -17,10 +17,12 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 const (
@@ -150,9 +152,11 @@ func (r *Resolver) CredentialOverrideMetadataNamespacesByRef(ctx context.Context
 		}
 		namespaces := make(map[string]struct{})
 		for _, policy := range policies {
-			if policyTargets(policy, key) {
-				namespaces[policy.Spec.CredentialOverride.FromDynamicMetadata.Namespace] = struct{}{}
+			md := policy.Spec.CredentialOverride.FromDynamicMetadata
+			if md == nil || md.Namespace == "" || !policyTargets(policy, key) {
+				continue
 			}
+			namespaces[md.Namespace] = struct{}{}
 		}
 		if len(namespaces) > 0 {
 			perRef[i] = slices.Sorted(maps.Keys(namespaces))
@@ -161,9 +165,9 @@ func (r *Resolver) CredentialOverrideMetadataNamespacesByRef(ctx context.Context
 	return perRef, nil
 }
 
-// overridePolicies returns the namespace's policies with a fromDynamicMetadata source, listing at
-// most once per namespace per Resolver. A policy only ever attaches to backends in its own
-// namespace, so this covers every ref pointing there.
+// overridePolicies returns the namespace's policies with a credentialOverride (either source),
+// listing at most once per namespace per Resolver. A policy only ever attaches to backends in its
+// own namespace, so this covers every ref pointing there.
 func (r *Resolver) overridePolicies(ctx context.Context, namespace string) ([]*aigv1b1.BackendSecurityPolicy, error) {
 	if policies, listed := r.policies[namespace]; listed {
 		return policies, nil
@@ -178,7 +182,7 @@ func (r *Resolver) overridePolicies(ctx context.Context, namespace string) ([]*a
 		if !policy.DeletionTimestamp.IsZero() {
 			continue
 		}
-		if o := policy.Spec.CredentialOverride; o != nil && o.FromDynamicMetadata != nil && o.FromDynamicMetadata.Namespace != "" {
+		if policy.Spec.CredentialOverride != nil {
 			withOverride = append(withOverride, policy)
 		}
 	}
@@ -203,4 +207,119 @@ func RouteBackendRefs(route *aigv1b1.AIGatewayRoute) []aigv1b1.AIGatewayRouteRul
 		refs = append(refs, route.Spec.Rules[i].BackendRefs...)
 	}
 	return refs
+}
+
+// CredentialOverrideStripHeaders returns the sorted, distinct fromRequestHeaders input headers of
+// the policies attached to the given backend references. These are the headers the extproc must
+// strip from every backend so the injected per-request credential never egresses; scoping to the
+// refs keeps one gateway's policies from stripping headers off another gateway's traffic, and the
+// BSP -> backend -> route -> gateway sync chain regenerates the filter config whenever the set
+// changes. Policies with reserved header names contribute nothing; they are rejected elsewhere
+// and cannot be stripped anyway.
+func (r *Resolver) CredentialOverrideStripHeaders(ctx context.Context, routeNamespace string, refs []aigv1b1.AIGatewayRouteRuleBackendRef) ([]string, error) {
+	headers := make(map[string]struct{})
+	for i := range refs {
+		ref := &refs[i]
+		key := backendKey{group: AIServiceBackendGroup, kind: AIServiceBackendKind, name: ref.Name}
+		if ref.IsInferencePool() {
+			key.group, key.kind = InferencePoolGroup, InferencePoolKind
+		}
+		policies, err := r.overridePolicies(ctx, ref.GetNamespace(routeNamespace))
+		if err != nil {
+			return nil, err
+		}
+		for _, policy := range policies {
+			if policy.Spec.CredentialOverride.FromRequestHeaders == nil || !policyTargets(policy, key) {
+				continue
+			}
+			names, err := OverrideInputHeadersFromSpec(&policy.Spec)
+			if err != nil {
+				continue
+			}
+			for _, h := range names {
+				headers[h] = struct{}{}
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(headers)), nil
+}
+
+// DefaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
+// For AWSCredentials this is a prefix, not a full header name: three names are derived from it.
+// See internalapi.AWSCredentialOverrideHeaderNames.
+func DefaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
+	switch t {
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
+		return "x-aigw-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
+		return "x-aigw-anthropic-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
+		return "x-aigw-azure-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
+		return "x-aigw-azure-access-token"
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		return "x-aigw-gcp-access-token"
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
+		return internalapi.AWSCredentialOverrideHeaderPrefix
+	default:
+		return ""
+	}
+}
+
+// DefaultOverrideMetadataKey returns the default metadata key for the given auth type. Same as the
+// header name except for AWSCredentials, whose metadata value is one struct holding all three inputs.
+func DefaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
+	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
+		return internalapi.AWSCredentialOverrideMetadataKey
+	}
+	return DefaultOverrideHeaderName(t)
+}
+
+// ResolvedOverrideHeaderName returns the lowercased header name (or prefix, for AWS) of a
+// fromRequestHeaders source, defaulting per auth type.
+func ResolvedOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType, src *aigv1b1.CredentialOverrideFromRequestHeaders) string {
+	h := src.Header
+	if h == "" {
+		h = DefaultOverrideHeaderName(t)
+	}
+	return strings.ToLower(h)
+}
+
+// OverrideInputHeaders returns the headers a trusted filter injects for this auth type, which are
+// also the ones to strip. Three for AWS, one for the rest.
+func OverrideInputHeaders(t aigv1b1.BackendSecurityPolicyType, headerName string) []string {
+	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
+		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(headerName)
+		return []string{accessKeyID, secretAccessKey, sessionToken}
+	}
+	return []string{headerName}
+}
+
+// OverrideInputHeadersFromSpec derives and validates the input header names for a policy's
+// fromRequestHeaders source; nil, nil for policies without one. This is the single
+// derive-and-validate path shared by the policy controller's status check, the filter config
+// resolution, and the strip resolution, so what gets rejected, resolved, and stripped cannot
+// drift apart.
+func OverrideInputHeadersFromSpec(spec *aigv1b1.BackendSecurityPolicySpec) ([]string, error) {
+	o := spec.CredentialOverride
+	if o == nil || o.FromRequestHeaders == nil {
+		return nil, nil
+	}
+	headers := OverrideInputHeaders(spec.Type, ResolvedOverrideHeaderName(spec.Type, o.FromRequestHeaders))
+	if err := ValidateOverrideInputHeaders(headers); err != nil {
+		return nil, err
+	}
+	return headers, nil
+}
+
+// ValidateOverrideInputHeaders rejects header names the extproc's header mutator refuses to
+// mutate, since the strip for those would silently not happen. The CRD has a CEL rule for the
+// same check, but that does not cover pre-existing objects or standalone mode.
+func ValidateOverrideInputHeaders(headers []string) error {
+	for _, h := range headers {
+		if internalapi.IsReservedRequestHeader(h) {
+			return fmt.Errorf("credentialOverride input header %q uses a reserved name that cannot be stripped before the request reaches the backend", h)
+		}
+	}
+	return nil
 }

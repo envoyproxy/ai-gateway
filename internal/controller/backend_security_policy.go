@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -96,17 +97,37 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	if err != nil {
 		c.logger.Error(err, "failed to reconcile backend security policy", "namespace", req.Namespace, "name", req.Name)
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeNotAccepted, err.Error())
+		if errors.Is(err, errReservedOverrideHeader) {
+			// A user misconfiguration a requeue cannot fix; the condition is the signal. This
+			// also keeps aigw translate/run, which treats reconcile errors as fatal, working on
+			// configs that predate the rule.
+			return ctrl.Result{}, nil
+		}
 	} else {
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
 	}
 	return
 }
 
+// errReservedOverrideHeader marks a credentialOverride header the extproc cannot strip, reported
+// through the status condition and not requeued.
+var errReservedOverrideHeader = errors.New("reserved credentialOverride header")
+
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
 		return res, nil
 	}
+
+	// A reserved override header gets the policy a NotAccepted condition; the CRD CEL rule does
+	// not apply to objects created before it existed. The error is deferred to the end: rotation
+	// must keep running (the static credential is fine, only the override is broken) and the
+	// sync fan-out below must still propagate.
+	var reservedHeaderErr error
+	if _, headerErr := backendpolicy.OverrideInputHeadersFromSpec(&bsp.Spec); headerErr != nil {
+		reservedHeaderErr = fmt.Errorf("%w: %w", errReservedOverrideHeader, headerErr)
+	}
+
 	// Determine if credential rotation is needed
 	requiresRotation := bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAPIKey &&
 		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAzureAPIKey &&
@@ -130,8 +151,10 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 			return res, err
 		}
 	}
-	err = c.syncBackendSecurityPolicy(ctx, bsp)
-	return res, err
+	if err = c.syncBackendSecurityPolicy(ctx, bsp); err != nil {
+		return res, err
+	}
+	return res, reservedHeaderErr
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
