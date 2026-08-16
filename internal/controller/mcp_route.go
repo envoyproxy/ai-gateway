@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -31,7 +30,8 @@ import (
 )
 
 const (
-	defaultMCPPath = "/mcp"
+	defaultMCPPath         = "/mcp"
+	mcpProxyBackendDummyIP = "192.0.2.42" // RFC 5737 TEST-NET-2, used as a dummy IP.
 )
 
 // MCPRouteController implements [reconcile.TypedReconciler].
@@ -295,6 +295,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 						Kind:      ptr.To(gwapiv1.Kind("Backend")),
 						Name:      gwapiv1.ObjectName(backendName),
 						Namespace: ptr.To(gwapiv1.Namespace(mcpRoute.Namespace)),
+						Port:      ptr.To(gwapiv1.PortNumber(internalapi.MCPProxyPort)),
 					},
 				},
 			},
@@ -530,9 +531,6 @@ const mcpProxySharedBackendName = internalapi.MCPGeneratedResourceCommonPrefix +
 // on the next reconcile of any MCPRoute in the namespace. Returns the Backend's name.
 func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespace string) (string, error) {
 	name := mcpProxySharedBackendName
-	desiredEndpoints := []egv1a1.BackendEndpoint{{
-		Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath},
-	}}
 	var backend egv1a1.Backend
 	err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &backend)
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -548,19 +546,20 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespac
 				Labels:    map[string]string{managedByLabel: managedByValue},
 			},
 			Spec: egv1a1.BackendSpec{
-				Endpoints: desiredEndpoints,
+				Endpoints: []egv1a1.BackendEndpoint{
+					{
+						IP: &egv1a1.IPEndpoint{
+							Address: mcpProxyBackendDummyIP,
+							Port:    int32(internalapi.MCPProxyPort),
+						},
+					},
+				},
 			},
 		}
 		c.logger.Info("Creating shared MCP proxy Backend", "namespace", namespace, "name", name)
 		if err = c.client.Create(ctx, &backend); err != nil && !apierrors.IsAlreadyExists(err) {
 			// AlreadyExists: a concurrent MCPRoute reconcile in the same namespace created it; fine.
 			return "", fmt.Errorf("failed to create MCP proxy Backend: %w", err)
-		}
-	} else if backend.Labels[managedByLabel] == managedByValue && !reflect.DeepEqual(backend.Spec.Endpoints, desiredEndpoints) {
-		backend.Spec.Endpoints = desiredEndpoints
-		c.logger.Info("Updating shared MCP proxy Backend", "namespace", namespace, "name", name)
-		if err = c.client.Update(ctx, &backend); err != nil {
-			return "", fmt.Errorf("failed to update MCP proxy Backend: %w", err)
 		}
 	}
 
