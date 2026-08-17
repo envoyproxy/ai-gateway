@@ -3885,7 +3885,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="credentialOverride"
   type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
   required="false"
-  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above. Supported for all types except AWSCredentials."
+  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above.<br />For AWSCredentials the credential is the three-part SigV4 input rather than a single string;<br />see the source types for how each carries it."
 />
 
 
@@ -3977,7 +3977,7 @@ dynamic metadata produced by a trusted filter running earlier in the filter chai
   name="key"
   type="string"
   required="false"
-  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type."
+  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.<br />For every type except AWSCredentials the value must be a string holding the credential.<br />For AWSCredentials it must be a struct, since SigV4 needs three inputs:<br />  accessKeyId<br />  secretAccessKey<br />  sessionToken     (optional; omit for long-lived credentials)<br />Field names are fixed. accessKeyId without secretAccessKey, or the reverse, fails the<br />request instead of falling back. Defaults to `x-aigw-aws-credentials`."
 /><ApiField
   name="fallbackToConfigured"
   type="boolean"
@@ -4004,7 +4004,7 @@ CredentialOverrideFromRequestHeaders sources the per-request credential from a r
   name="header"
   type="string"
   required="false"
-  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token<br />For AWSCredentials this is a prefix, not a single header name, since SigV4 needs three<br />inputs. Defaults to `x-aigw-aws-`, yielding:<br />  x-aigw-aws-access-key-id<br />  x-aigw-aws-secret-access-key<br />  x-aigw-aws-session-token     (optional; omit for long-lived credentials)<br />All three are stripped before the backend sees them. An access key ID without a secret<br />access key, or the reverse, fails the request instead of falling back.<br />Prefer FromDynamicMetadata for AWSCredentials. Headers are client-settable, and a secret<br />access key on the wire is a worse leak than an API key."
 /><ApiField
   name="fallbackToConfigured"
   type="boolean"

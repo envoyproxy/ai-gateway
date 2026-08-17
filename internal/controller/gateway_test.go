@@ -1327,7 +1327,7 @@ func TestResolveCredentialOverride(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "x-aigw-api-key", result.HeaderName)
-		require.Equal(t, "x-aigw-api-key", result.InputHeaderToRemove)
+		require.Equal(t, []string{"x-aigw-api-key"}, result.InputHeadersToRemove)
 		require.True(t, result.FallbackToConfigured)
 	})
 
@@ -1375,7 +1375,7 @@ func TestResolveCredentialOverride(t *testing.T) {
 		require.Equal(t, "envoy.filters.http.ext_authz", result.DynamicMetadataNamespace)
 		require.Equal(t, "upstream_key", result.DynamicMetadataKey)
 		require.True(t, result.FallbackToConfigured)
-		require.Empty(t, result.InputHeaderToRemove, "dynamic metadata source has no strip header")
+		require.Empty(t, result.InputHeadersToRemove, "dynamic metadata source has no strip header")
 	})
 
 	t.Run("fromDynamicMetadata default key for GCPCredentials", func(t *testing.T) {
@@ -1390,6 +1390,55 @@ func TestResolveCredentialOverride(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "x-aigw-gcp-access-token", result.DynamicMetadataKey)
+	})
+
+	t.Run("fromRequestHeaders for AWSCredentials derives three headers from a prefix", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		// HeaderName is the prefix; backendauth derives the same three names.
+		require.Equal(t, "x-aigw-aws-", result.HeaderName)
+		require.Equal(t, []string{
+			"x-aigw-aws-access-key-id",
+			"x-aigw-aws-secret-access-key",
+			"x-aigw-aws-session-token",
+		}, result.InputHeadersToRemove)
+	})
+
+	t.Run("fromRequestHeaders for AWSCredentials honours a custom prefix", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "X-Tenant-AWS-"},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "x-tenant-aws-", result.HeaderName, "prefix is lowercased like any header name")
+		require.Equal(t, []string{
+			"x-tenant-aws-access-key-id",
+			"x-tenant-aws-secret-access-key",
+			"x-tenant-aws-session-token",
+		}, result.InputHeadersToRemove)
+	})
+
+	t.Run("fromDynamicMetadata default key for AWSCredentials is not the header prefix", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{Namespace: "my.filter"},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		// The metadata value is one struct holding all three inputs, so it is a key, not a prefix.
+		require.Equal(t, "x-aigw-aws-credentials", result.DynamicMetadataKey)
+		require.Empty(t, result.InputHeadersToRemove)
 	})
 
 	t.Run("fallbackToConfigured=true with no static credential returns error", func(t *testing.T) {
@@ -1457,7 +1506,123 @@ func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) 
 	require.Equal(t, "thisisapikey", auth.APIKey.Key)
 	require.NotNil(t, auth.CredentialOverride)
 	require.Equal(t, "x-aigw-api-key", auth.CredentialOverride.HeaderName)
-	require.Equal(t, "x-aigw-api-key", auth.CredentialOverride.InputHeaderToRemove)
+	require.Equal(t, []string{"x-aigw-api-key"}, auth.CredentialOverride.InputHeadersToRemove)
+	require.True(t, auth.CredentialOverride.FallbackToConfigured)
+}
+
+func TestStripCredentialOverrideInputHeaders(t *testing.T) {
+	awsOverride := func() *filterapi.BackendAuth {
+		return &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{Region: "us-east-1"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				HeaderName: "x-aigw-aws-",
+				InputHeadersToRemove: []string{
+					"x-aigw-aws-access-key-id",
+					"x-aigw-aws-secret-access-key",
+					"x-aigw-aws-session-token",
+				},
+			},
+		}
+	}
+
+	t.Run("AWS strips all three credential headers", func(t *testing.T) {
+		b := &filterapi.Backend{Auth: awsOverride()}
+		stripCredentialOverrideInputHeaders(b)
+		require.NotNil(t, b.HeaderMutation)
+		require.Equal(t, []string{
+			"x-aigw-aws-access-key-id",
+			"x-aigw-aws-secret-access-key",
+			"x-aigw-aws-session-token",
+		}, b.HeaderMutation.Remove)
+	})
+
+	t.Run("appends to an existing remove list rather than replacing it", func(t *testing.T) {
+		b := &filterapi.Backend{
+			Auth:           awsOverride(),
+			HeaderMutation: &filterapi.HTTPHeaderMutation{Remove: []string{"x-user-supplied"}},
+		}
+		stripCredentialOverrideInputHeaders(b)
+		require.Equal(t, []string{
+			"x-user-supplied",
+			"x-aigw-aws-access-key-id",
+			"x-aigw-aws-secret-access-key",
+			"x-aigw-aws-session-token",
+		}, b.HeaderMutation.Remove)
+	})
+
+	t.Run("single-valued for non-AWS types", func(t *testing.T) {
+		b := &filterapi.Backend{Auth: &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Key: "static"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				HeaderName:           "x-aigw-api-key",
+				InputHeadersToRemove: []string{"x-aigw-api-key"},
+			},
+		}}
+		stripCredentialOverrideInputHeaders(b)
+		require.Equal(t, []string{"x-aigw-api-key"}, b.HeaderMutation.Remove)
+	})
+
+	t.Run("metadata source strips nothing", func(t *testing.T) {
+		// Out-of-band credential: no header to remove, no HeaderMutation to materialize.
+		b := &filterapi.Backend{Auth: &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{Region: "us-east-1"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				DynamicMetadataNamespace: "envoy.filters.http.ext_authz",
+				DynamicMetadataKey:       "x-aigw-aws-credentials",
+			},
+		}}
+		stripCredentialOverrideInputHeaders(b)
+		require.Nil(t, b.HeaderMutation)
+	})
+
+	t.Run("no auth and no override are no-ops", func(t *testing.T) {
+		b := &filterapi.Backend{}
+		stripCredentialOverrideInputHeaders(b)
+		require.Nil(t, b.HeaderMutation)
+
+		b = &filterapi.Backend{Auth: &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: "static"}}}
+		stripCredentialOverrideInputHeaders(b)
+		require.Nil(t, b.HeaderMutation)
+	})
+}
+
+func TestGatewayController_bspToFilterAPIBackendAuth_AWSWithOverride(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const namespace = "ns"
+
+	// No credentialsFile and no OIDC: the extproc uses the default credential chain. This is the
+	// IRSA shape, with no Secret for the controller to read, so it also covers fallbackToConfigured
+	// defaulting to true without one.
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "aws-irsa-with-override", Namespace: namespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:           aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+			AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{Region: "us-east-1"},
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{
+					Namespace: "envoy.filters.http.ext_authz",
+				},
+			},
+		},
+	}))
+
+	bsp := &aigv1b1.BackendSecurityPolicy{}
+	require.NoError(t, fakeClient.Get(t.Context(),
+		client.ObjectKey{Name: "aws-irsa-with-override", Namespace: namespace}, bsp))
+
+	auth, err := c.bspToFilterAPIBackendAuth(t.Context(), bsp)
+	require.NoError(t, err)
+	require.NotNil(t, auth.AWSAuth)
+	require.Equal(t, "us-east-1", auth.AWSAuth.Region)
+	require.Empty(t, auth.AWSAuth.CredentialFileLiteral)
+	// The AWS branch used to return before the override was projected.
+	require.NotNil(t, auth.CredentialOverride)
+	require.Equal(t, "envoy.filters.http.ext_authz", auth.CredentialOverride.DynamicMetadataNamespace)
+	require.Equal(t, "x-aigw-aws-credentials", auth.CredentialOverride.DynamicMetadataKey)
 	require.True(t, auth.CredentialOverride.FallbackToConfigured)
 }
 
