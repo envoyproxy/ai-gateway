@@ -591,7 +591,11 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 		span.RecordClientSession(string(s.clientGatewaySessionID()))
 	}
 
-	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
+	negotiatedVersion := s.mergedProtocolVersion()
+	if p.ProtocolVersion != "" && p.ProtocolVersion < negotiatedVersion {
+		negotiatedVersion = p.ProtocolVersion
+	}
+	result := mcp.InitializeResult{ProtocolVersion: negotiatedVersion, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
 	result.ServerInfo.Version = version.Parse()
 	result.Capabilities = s.mergedCapabilities()
