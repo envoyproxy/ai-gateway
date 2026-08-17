@@ -648,9 +648,22 @@ func decodeCapabilityFlags(hex string) *mcpsdk.ServerCapabilities {
 // If ANY backend supports a capability, the merged result includes it.
 // Sub-fields like ListChanged and Subscribe are OR'd across all backends.
 func (s *session) mergedCapabilities() *mcpsdk.ServerCapabilities {
-	merged := &mcpsdk.ServerCapabilities{}
+	caps := make([]*mcpsdk.ServerCapabilities, 0, len(s.perBackendSessions))
 	for _, entry := range s.perBackendSessions {
-		caps := entry.capabilities
+		caps = append(caps, entry.capabilities)
+	}
+	return unionServerCapabilities(caps)
+}
+
+// unionServerCapabilities computes the union of the given backend capabilities.
+// If ANY backend advertises a capability, the merged result includes it, and
+// sub-fields like ListChanged and Subscribe are OR'd across all backends. Nil
+// entries are ignored. This is the single source of truth for capability
+// aggregation shared by the stateful (initialize) and stateless (server/discover)
+// paths.
+func unionServerCapabilities(all []*mcpsdk.ServerCapabilities) *mcpsdk.ServerCapabilities {
+	merged := &mcpsdk.ServerCapabilities{}
+	for _, caps := range all {
 		if caps == nil {
 			continue
 		}
