@@ -547,10 +547,11 @@ type (
 
 	// compositeSessionEntry is used to track the session and last event ID for each backend in a composite session.
 	compositeSessionEntry struct {
-		backendName  string
-		sessionID    gatewayToMCPServerSessionID
-		lastEventID  string
-		capabilities *mcpsdk.ServerCapabilities
+		backendName     string
+		sessionID       gatewayToMCPServerSessionID
+		lastEventID     string
+		capabilities    *mcpsdk.ServerCapabilities
+		protocolVersion string
 	}
 )
 
@@ -685,6 +686,28 @@ func (s *session) mergedCapabilities() *mcpsdk.ServerCapabilities {
 		}
 	}
 	return merged
+}
+
+// mergedProtocolVersion returns the minimum protocol version across all backends.
+// MCP protocol versions are ISO date strings (YYYY-MM-DD), so lexicographic
+// comparison gives chronological ordering. The minimum is returned because the
+// gateway can only guarantee features supported by all backends.
+// Returns the default version constant if no backend reported a version.
+func (s *session) mergedProtocolVersion() string {
+	var minVersion string
+	for _, entry := range s.perBackendSessions {
+		v := entry.protocolVersion
+		if v == "" {
+			continue
+		}
+		if minVersion == "" || v < minVersion {
+			minVersion = v
+		}
+	}
+	if minVersion == "" {
+		return protocolVersion20250618
+	}
+	return minVersion
 }
 
 // String implements fmt.Stringer.
