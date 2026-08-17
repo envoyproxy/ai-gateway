@@ -294,6 +294,83 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.Equal(t, 1, int(capaCount))
 }
 
+func TestMergedProtocolVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		backends      map[filterapi.MCPBackendName]*compositeSessionEntry
+		clientVersion string
+		want          string
+	}{
+		{
+			name:          "no backends returns default",
+			backends:      map[filterapi.MCPBackendName]*compositeSessionEntry{},
+			clientVersion: "2026-07-28",
+			want:          protocolVersion20250618,
+		},
+		{
+			name: "single backend version is used",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-11-05"},
+			},
+			clientVersion: "2026-07-28",
+			want:          "2025-11-05",
+		},
+		{
+			name: "minimum version across backends",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-11-05"},
+				"b2": {protocolVersion: "2025-06-18"},
+			},
+			clientVersion: "2026-07-28",
+			want:          "2025-06-18",
+		},
+		{
+			name: "empty version treated as unset",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-11-05"},
+				"b2": {protocolVersion: ""},
+			},
+			clientVersion: "2026-07-28",
+			want:          "2025-11-05",
+		},
+		{
+			name: "all empty returns default",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: ""},
+				"b2": {protocolVersion: ""},
+			},
+			clientVersion: "2026-07-28",
+			want:          protocolVersion20250618,
+		},
+		{
+			name: "client version caps the result",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "2025-06-18",
+			want:          "2025-06-18",
+		},
+		{
+			name: "empty client version does not cap",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "",
+			want:          "2026-07-28",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &session{perBackendSessions: tc.backends}
+			got := s.mergedProtocolVersion(tc.clientVersion)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // TestServePOST_InitializeRequest_NegotiatesProtocolVersion verifies that the gateway
 // returns the minimum protocol version across backends, capped by the client's version.
 func TestServePOST_InitializeRequest_NegotiatesProtocolVersion(t *testing.T) {
