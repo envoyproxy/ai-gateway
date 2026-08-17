@@ -2096,7 +2096,7 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"ttlMs":0,"cacheScope":"","contents":null}}`)
 
 	t.Run("no session for known backend", func(t *testing.T) {
 		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
