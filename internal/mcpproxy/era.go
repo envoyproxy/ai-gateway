@@ -41,12 +41,13 @@ const (
 
 // MCP JSON-RPC error codes from the SDK (re-exported for local use).
 const (
+	errCodeParseError                 = -32700
+	errCodeInvalidRequest             = -32600
 	errCodeMethodNotFound             = -32601
 	errCodeInvalidParams              = -32602
 	errCodeHeaderMismatch             = mcp.CodeHeaderMismatch                    // -32020
 	errCodeMissingRequiredCapability  = mcp.CodeMissingRequiredClientCapabilities // -32021
 	errCodeUnsupportedProtocolVersion = mcp.CodeUnsupportedProtocolVersion        // -32022
-	errCodeResourceNotFound           = -32602                                    // was -32002 in legacy
 )
 
 // supportedVersions lists all protocol versions the gateway supports, newest first.
@@ -388,8 +389,9 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 	// NOT be inferred from earlier requests, so it cannot be defaulted.
 	if requestDetails.expectsResponse && !jsonPresent(meta.ClientCapabilities) {
 		return eraDetection{err: &protocolError{
-			Code:       errCodeInvalidParams,
-			Message:    fmt.Sprintf("Invalid params: %q is required", metaClientCapabilities),
+			Code:       errCodeMissingRequiredCapability,
+			Message:    fmt.Sprintf("Missing required client capability: %q", metaClientCapabilities),
+			Data:       map[string]any{"requiredCapabilities": []string{metaClientCapabilities}},
 			HTTPStatus: http.StatusBadRequest,
 		}}
 	}

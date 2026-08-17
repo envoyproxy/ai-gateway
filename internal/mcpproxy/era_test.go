@@ -343,7 +343,8 @@ func TestValidateModernRequest(t *testing.T) {
 			params:          modernMeta(protocolVersion20260728, nil),
 		})
 		require.NotNil(t, got.err)
-		require.Equal(t, errCodeInvalidParams, got.err.Code)
+		require.Equal(t, errCodeMissingRequiredCapability, got.err.Code)
+		require.Equal(t, map[string]any{"requiredCapabilities": []string{metaClientCapabilities}}, got.err.Data)
 		require.Contains(t, got.err.Message, metaClientCapabilities)
 	})
 
@@ -358,7 +359,8 @@ func TestValidateModernRequest(t *testing.T) {
 			params:          params,
 		})
 		require.NotNil(t, got.err)
-		require.Equal(t, errCodeInvalidParams, got.err.Code)
+		require.Equal(t, errCodeMissingRequiredCapability, got.err.Code)
+		require.Equal(t, map[string]any{"requiredCapabilities": []string{metaClientCapabilities}}, got.err.Data)
 		require.Contains(t, got.err.Message, metaClientCapabilities)
 	})
 
