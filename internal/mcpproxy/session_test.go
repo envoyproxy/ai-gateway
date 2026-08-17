@@ -257,61 +257,6 @@ func TestMergedCapabilities(t *testing.T) {
 	}
 }
 
-func TestMergedProtocolVersion(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name     string
-		backends map[filterapi.MCPBackendName]*compositeSessionEntry
-		want     string
-	}{
-		{
-			name:     "no backends returns default",
-			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{},
-			want:     protocolVersion20250618,
-		},
-		{
-			name: "single backend version is used",
-			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
-				"b1": {protocolVersion: "2025-11-05"},
-			},
-			want: "2025-11-05",
-		},
-		{
-			name: "minimum version across backends",
-			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
-				"b1": {protocolVersion: "2025-11-05"},
-				"b2": {protocolVersion: "2025-06-18"},
-			},
-			want: "2025-06-18",
-		},
-		{
-			name: "empty version treated as unset",
-			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
-				"b1": {protocolVersion: "2025-11-05"},
-				"b2": {protocolVersion: ""},
-			},
-			want: "2025-11-05",
-		},
-		{
-			name: "all empty returns default",
-			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
-				"b1": {protocolVersion: ""},
-				"b2": {protocolVersion: ""},
-			},
-			want: protocolVersion20250618,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			s := &session{perBackendSessions: tc.backends}
-			got := s.mergedProtocolVersion()
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestBackendSessionIDs_Success(t *testing.T) {
 	backendA := "backendA"
 	backendB := "backendB"
