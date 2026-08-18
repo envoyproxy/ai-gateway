@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       - uses: dorny/paths-filter@b41dfa943b1939b9b646f67753bfe35cf6e4de03
@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
@@ -70,7 +70,7 @@ jobs:
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-coverage GO_TEST_ARGS='-race'
       - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-26.04'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
         with:
           fail_ci_if_error: true
@@ -89,7 +89,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - macos-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
@@ -115,7 +115,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - macos-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
@@ -140,7 +140,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
@@ -176,7 +176,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
@@ -205,7 +205,7 @@ jobs:
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -243,7 +243,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     name: E2E Test for Upgrades (k8s ${{ matrix.k8s-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -281,7 +281,7 @@ jobs:
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v5
@@ -309,7 +309,7 @@ jobs:
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v5
@@ -335,7 +335,7 @@ jobs:
     needs: changes
     name: E2E Test for aigw CLI
     if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v5
@@ -391,7 +391,7 @@ jobs:
     # Only push the Helm chart to the GHR when merged into the main branch.
     if: github.event_name == 'push'
     needs: [docker_push]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       - name: Login into DockerHub
@@ -407,7 +407,7 @@ jobs:
 
   # Aggregate all the required jobs and make it easier to customize CI required jobs
   ci-required:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs:
       - unittest
       - test_crdcel
