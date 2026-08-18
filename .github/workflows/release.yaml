@@ -13,7 +13,7 @@ jobs:
   release:
     needs: [docker_push]
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write # gh release create requires contents:write
     steps:
