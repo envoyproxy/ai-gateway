@@ -4290,19 +4290,8 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
 request is forwarded to this backend.
 
-Clients often send several values in a single comma-separated header, and upstream providers
-accept different subsets of them — rejecting the whole request with an HTTP 400 when they see a
-value they do not recognize. This drops (or restricts to) specific values while forwarding the
-rest of the header untouched, so one unsupported value does not fail the request.
-
-For example, an Anthropic client such as Claude Code sends every enabled beta in one
-`anthropic-beta` header. Dropping the single value a provider rejects keeps the remaining betas
-working:
-
-	headerValueFilters:
-	- name: anthropic-beta
-	  mode: Denylist
-	  values: ["thinking-token-count-2026-05-13"]
+This drops (or restricts to) specific values from a comma-separated header while forwarding the
+rest untouched, so one unsupported value does not fail the whole request.
 
 Only comma-delimited headers are supported. Values are matched exactly, after surrounding
 whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.

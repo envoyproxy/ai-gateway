@@ -735,21 +735,15 @@ spec:
                   `anthropic-beta` header — a filter naming any other header is accepted but has no effect.
                   Setting it on a backend with any other schema is rejected.
                 items:
-                  description: "HTTPHeaderValueFilter filters individual values out
-                    of a multi-valued request header before the\nrequest is forwarded
-                    to this backend.\n\nClients often send several values in a single
-                    comma-separated header, and upstream providers\naccept different
-                    subsets of them — rejecting the whole request with an HTTP 400
-                    when they see a\nvalue they do not recognize. This drops (or restricts
-                    to) specific values while forwarding the\nrest of the header untouched,
-                    so one unsupported value does not fail the request.\n\nFor example,
-                    an Anthropic client such as Claude Code sends every enabled beta
-                    in one\n`anthropic-beta` header. Dropping the single value a provider
-                    rejects keeps the remaining betas\nworking:\n\n\theaderValueFilters:\n\t-
-                    name: anthropic-beta\n\t  mode: Denylist\n\t  values: [\"thinking-token-count-2026-05-13\"]\n\nOnly
-                    comma-delimited headers are supported. Values are matched exactly,
-                    after surrounding\nwhitespace is trimmed. To remove a header entirely,
-                    use HeaderMutation.Remove instead."
+                  description: |-
+                    HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
+                    request is forwarded to this backend.
+
+                    This drops (or restricts to) specific values from a comma-separated header while forwarding the
+                    rest untouched, so one unsupported value does not fail the whole request.
+
+                    Only comma-delimited headers are supported. Values are matched exactly, after surrounding
+                    whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.
                   properties:
                     mode:
                       default: Denylist
