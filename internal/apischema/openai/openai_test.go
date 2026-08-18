@@ -4736,24 +4736,6 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			expRes: []byte(`{"type":"tool_search_output","id":"tso-123","status":"completed","call_id":null,"execution":"server","tools":[{"type":"namespace","name":"billing","description":"Billing tools.","tools":[{"type":"function","name":"get_invoice","description":"Get invoice details by invoice ID.","defer_loading":true}]}]}`),
 		},
 		{
-			name: "marshal additional_tools",
-			input: ResponseInputItemUnionParam{
-				OfAdditionalTools: &ResponseAdditionalTools{
-					Type: "additional_tools",
-					ID:   "at-123",
-					Role: "developer",
-					Tools: []ResponseToolUnion{
-						{
-							OfToolSearch: &ToolSearchToolParam{
-								Type: "tool_search",
-							},
-						},
-					},
-				},
-			},
-			expRes: []byte(`{"type":"additional_tools","id":"at-123","role":"developer","tools":[{"type":"tool_search","parameters":null}]}`),
-		},
-		{
 			name: "marshal reasoning",
 			input: ResponseInputItemUnionParam{
 				OfReasoning: &ResponseReasoningItem{
@@ -5299,24 +5281,6 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: []byte(`{"type":"tool_search_output","id":"tso-123","status":"completed","call_id":null,"execution":"server","tools":[{"type":"namespace","name":"billing","description":"Billing tools.","tools":[{"type":"function","name":"get_invoice","description":"Get invoice details by invoice ID.","defer_loading":true}]}]}`),
-		},
-		{
-			name: "unmarshal additional_tools",
-			expRes: ResponseInputItemUnionParam{
-				OfAdditionalTools: &ResponseAdditionalTools{
-					Type: "additional_tools",
-					ID:   "at-123",
-					Role: "developer",
-					Tools: []ResponseToolUnion{
-						{
-							OfToolSearch: &ToolSearchToolParam{
-								Type: "tool_search",
-							},
-						},
-					},
-				},
-			},
-			input: []byte(`{"type":"additional_tools","id":"at-123","role":"developer","tools":[{"type":"tool_search","parameters":null}]}`),
 		},
 		{
 			name: "unmarshal reasoning",

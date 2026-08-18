@@ -3954,7 +3954,6 @@ type ResponseInputItemUnionParam struct {
 	OfFunctionCallOutput   *ResponseInputItemFunctionCallOutputParam
 	OfToolSearchCall       *ResponseToolSearchCall
 	OfToolSearchOutput     *ResponseToolSearchOutput
-	OfAdditionalTools      *ResponseAdditionalTools
 	OfReasoning            *ResponseReasoningItem
 	OfCompaction           *ResponseCompactionItemParam
 	OfImageGenerationCall  *ResponseInputItemImageGenerationCallParam
@@ -4004,8 +4003,6 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 		return json.Marshal(r.OfToolSearchCall)
 	case r.OfToolSearchOutput != nil:
 		return json.Marshal(r.OfToolSearchOutput)
-	case r.OfAdditionalTools != nil:
-		return json.Marshal(r.OfAdditionalTools)
 	case r.OfReasoning != nil:
 		return json.Marshal(r.OfReasoning)
 	case r.OfCompaction != nil:
@@ -4158,12 +4155,6 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.OfToolSearchOutput = &tso
-	case "additional_tools":
-		var at ResponseAdditionalTools
-		if err := json.Unmarshal(data, &at); err != nil {
-			return err
-		}
-		r.OfAdditionalTools = &at
 	case "reasoning":
 		var ri ResponseReasoningItem
 		if err := json.Unmarshal(data, &ri); err != nil {
