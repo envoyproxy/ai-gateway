@@ -1,0 +1,4 @@
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'label "ubuntu-26\.04" is unknown' # while waiting for https://github.com/rhysd/actionlint/pull/683
