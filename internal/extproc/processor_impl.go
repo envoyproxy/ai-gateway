@@ -652,9 +652,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		headerSetter.SetRequestHeaders(u.requestHeaders)
 	}
 
-	if f := backend.Backend.AnthropicBetaFilter; f != nil {
-		if filterSetter, ok := u.translator.(translator.AnthropicBetaFilterSetter); ok {
-			filterSetter.SetAnthropicBetaFilter(f.Mode, f.Values)
+	if filters := backend.Backend.HeaderValueFilters; len(filters) > 0 {
+		if filterSetter, ok := u.translator.(translator.HeaderValueFilterSetter); ok {
+			for _, f := range filters {
+				filterSetter.SetHeaderValueFilter(f.Name, f.Mode, f.Values)
+			}
 		}
 	}
 

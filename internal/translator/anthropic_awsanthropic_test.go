@@ -313,10 +313,11 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaHeader(t *te
 	}
 }
 
-func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaFilter(t *testing.T) {
+func TestAnthropicToAWSAnthropicTranslator_RequestBody_HeaderValueFilter(t *testing.T) {
 	tests := []struct {
 		name             string
 		requestHeaders   map[string]string
+		filterHeader     string
 		filterMode       string
 		filterValues     []string
 		wantBody         []string
@@ -329,9 +330,12 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaFilter(t *te
 			wantBody:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
 		},
 		{
+			// Bedrock reads anthropic_beta from the body, so the filtered set has to land there —
+			// filtering only the header would leave the rejected value in the request.
 			name:             "denylist drops the unsupported value from body and header",
 			requestHeaders:   map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
-			filterMode:       "denylist",
+			filterHeader:     "anthropic-beta",
+			filterMode:       "Denylist",
 			filterValues:     []string{"thinking-token-count-2026-05-13"},
 			wantBody:         []string{"advanced-tool-use-2025-11-20"},
 			wantBetaHeader:   "advanced-tool-use-2025-11-20",
@@ -340,8 +344,29 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaFilter(t *te
 		{
 			name:             "allowlist keeps only the sanctioned value",
 			requestHeaders:   map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
-			filterMode:       "allowlist",
+			filterHeader:     "anthropic-beta",
+			filterMode:       "Allowlist",
 			filterValues:     []string{"advanced-tool-use-2025-11-20"},
+			wantBody:         []string{"advanced-tool-use-2025-11-20"},
+			wantBetaHeader:   "advanced-tool-use-2025-11-20",
+			wantHeaderChange: true,
+		},
+		{
+			// The setter is called for every configured filter, so a filter on an unrelated header
+			// must not reach the body's anthropic_beta field.
+			name:           "filter on a different header is ignored",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterHeader:   "x-some-other-header",
+			filterMode:     "Denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
+			wantBody:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+		},
+		{
+			name:             "filter header name matching is case-insensitive",
+			requestHeaders:   map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterHeader:     "Anthropic-Beta",
+			filterMode:       "Denylist",
+			filterValues:     []string{"thinking-token-count-2026-05-13"},
 			wantBody:         []string{"advanced-tool-use-2025-11-20"},
 			wantBetaHeader:   "advanced-tool-use-2025-11-20",
 			wantHeaderChange: true,
@@ -352,8 +377,8 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaFilter(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
 			translator.(RequestHeadersSetter).SetRequestHeaders(tt.requestHeaders)
-			if tt.filterMode != "" || tt.filterValues != nil {
-				translator.(AnthropicBetaFilterSetter).SetAnthropicBetaFilter(tt.filterMode, tt.filterValues)
+			if tt.filterHeader != "" {
+				translator.(HeaderValueFilterSetter).SetHeaderValueFilter(tt.filterHeader, tt.filterMode, tt.filterValues)
 			}
 
 			originalReq := &anthropicschema.MessagesRequest{

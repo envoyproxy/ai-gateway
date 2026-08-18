@@ -474,31 +474,6 @@ spec:
           spec:
             description: Spec defines the details of AIServiceBackend.
             properties:
-              anthropicBetaFilter:
-                description: |-
-                  AnthropicBetaFilter filters values from the `anthropic-beta` request header before sending the
-                  request to this backend. Only applies to Anthropic backends (GCP Vertex and AWS Bedrock).
-                properties:
-                  mode:
-                    description: |-
-                      Mode selects the filtering semantics:
-                        - "denylist": drop the values listed in Values, keep everything else.
-                        - "allowlist": keep only the values listed in Values, drop everything else.
-                    enum:
-                    - denylist
-                    - allowlist
-                    type: string
-                  values:
-                    description: Values is the list of `anthropic-beta` values to
-                      drop (denylist) or keep (allowlist).
-                    items:
-                      type: string
-                    maxItems: 64
-                    type: array
-                    x-kubernetes-list-type: set
-                required:
-                - mode
-                type: object
               backendRef:
                 description: |-
                   BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
@@ -750,6 +725,61 @@ spec:
                     - name
                     x-kubernetes-list-type: map
                 type: object
+              headerValueFilters:
+                description: |-
+                  HeaderValueFilters filter individual values out of multi-valued request headers before sending
+                  the request to this backend, so that one value an upstream provider does not accept does not
+                  fail the whole request. At most one filter per header name.
+                items:
+                  description: "HTTPHeaderValueFilter filters individual values out
+                    of a multi-valued request header before the\nrequest is forwarded
+                    to this backend.\n\nClients often send several values in a single
+                    comma-separated header, and upstream providers\naccept different
+                    subsets of them — rejecting the whole request with an HTTP 400
+                    when they see a\nvalue they do not recognize. This drops (or restricts
+                    to) specific values while forwarding the\nrest of the header untouched,
+                    so one unsupported value does not fail the request.\n\nFor example,
+                    an Anthropic client such as Claude Code sends every enabled beta
+                    in one\n`anthropic-beta` header. Dropping the single value a provider
+                    rejects keeps the remaining betas\nworking:\n\n\theaderValueFilters:\n\t-
+                    name: anthropic-beta\n\t  mode: Denylist\n\t  values: [\"thinking-token-count-2026-05-13\"]\n\nOnly
+                    comma-delimited headers are supported. Values are matched exactly,
+                    after surrounding\nwhitespace is trimmed. To remove a header entirely,
+                    use HeaderMutation.Remove instead."
+                  properties:
+                    mode:
+                      default: Denylist
+                      description: Mode selects the filtering semantics. Defaults
+                        to Denylist.
+                      enum:
+                      - Denylist
+                      - Allowlist
+                      type: string
+                    name:
+                      description: |-
+                        Name is the name of the header whose values are filtered. Header names are
+                        case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                      maxLength: 256
+                      minLength: 1
+                      pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                      type: string
+                    values:
+                      description: |-
+                        Values is the list of header values to drop (Denylist) or keep (Allowlist).
+                        An empty list leaves the header unchanged.
+                      items:
+                        type: string
+                      maxItems: 64
+                      type: array
+                      x-kubernetes-list-type: set
+                  required:
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               schema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from

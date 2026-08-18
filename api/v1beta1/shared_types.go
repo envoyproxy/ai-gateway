@@ -165,25 +165,60 @@ const (
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
 
-// AnthropicBetaFilter filters values from the `anthropic-beta` request header before the request is
-// forwarded to this backend. Anthropic clients (e.g. Claude Code) send all enabled betas in a single
-// comma-separated header, but upstream providers accept different subsets and reject unknown values
-// with an HTTP 400. This lets an operator drop (or restrict to) specific values per backend.
-type AnthropicBetaFilter struct {
-	// Mode selects the filtering semantics:
-	//   - "denylist": drop the values listed in Values, keep everything else.
-	//   - "allowlist": keep only the values listed in Values, drop everything else.
+// HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
+// request is forwarded to this backend.
+//
+// Clients often send several values in a single comma-separated header, and upstream providers
+// accept different subsets of them — rejecting the whole request with an HTTP 400 when they see a
+// value they do not recognize. This drops (or restricts to) specific values while forwarding the
+// rest of the header untouched, so one unsupported value does not fail the request.
+//
+// For example, an Anthropic client such as Claude Code sends every enabled beta in one
+// `anthropic-beta` header. Dropping the single value a provider rejects keeps the remaining betas
+// working:
+//
+//	headerValueFilters:
+//	- name: anthropic-beta
+//	  mode: Denylist
+//	  values: ["thinking-token-count-2026-05-13"]
+//
+// Only comma-delimited headers are supported. Values are matched exactly, after surrounding
+// whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.
+type HTTPHeaderValueFilter struct {
+	// Name is the name of the header whose values are filtered. Header names are
+	// case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=denylist;allowlist
-	Mode string `json:"mode"`
-	// Values is the list of `anthropic-beta` values to drop (denylist) or keep (allowlist).
+	Name gwapiv1.HTTPHeaderName `json:"name"`
+
+	// Mode selects the filtering semantics. Defaults to Denylist.
+	//
+	// +optional
+	// +kubebuilder:default=Denylist
+	Mode HTTPHeaderValueFilterMode `json:"mode,omitempty"`
+
+	// Values is the list of header values to drop (Denylist) or keep (Allowlist).
+	// An empty list leaves the header unchanged.
 	//
 	// +optional
 	// +listType=set
 	// +kubebuilder:validation:MaxItems=64
 	Values []string `json:"values,omitempty"`
 }
+
+// HTTPHeaderValueFilterMode specifies the filtering semantics of an HTTPHeaderValueFilter.
+//
+// +kubebuilder:validation:Enum=Denylist;Allowlist
+type HTTPHeaderValueFilterMode string
+
+const (
+	// HTTPHeaderValueFilterModeDenylist drops the values listed in Values, keeping everything else.
+	// New values the gateway has not been configured for pass through untouched.
+	HTTPHeaderValueFilterModeDenylist HTTPHeaderValueFilterMode = "Denylist"
+	// HTTPHeaderValueFilterModeAllowlist keeps only the values listed in Values, dropping everything
+	// else. New values the gateway has not been configured for are dropped.
+	HTTPHeaderValueFilterModeAllowlist HTTPHeaderValueFilterMode = "Allowlist"
+)
 
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 type HTTPHeaderMutation struct {

@@ -191,12 +191,26 @@ func headerMutationToFilterAPI(m *aigv1b1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
-// anthropicBetaFilterToFilterAPI converts an aigv1b1.AnthropicBetaFilter to filterapi.AnthropicBetaFilter.
-func anthropicBetaFilterToFilterAPI(f *aigv1b1.AnthropicBetaFilter) *filterapi.AnthropicBetaFilter {
-	if f == nil {
+// headerValueFiltersToFilterAPI converts aigv1b1.HTTPHeaderValueFilter to filterapi.HTTPHeaderValueFilter.
+func headerValueFiltersToFilterAPI(filters []aigv1b1.HTTPHeaderValueFilter) []filterapi.HTTPHeaderValueFilter {
+	if len(filters) == 0 {
 		return nil
 	}
-	return &filterapi.AnthropicBetaFilter{Mode: f.Mode, Values: f.Values}
+	ret := make([]filterapi.HTTPHeaderValueFilter, 0, len(filters))
+	for _, f := range filters {
+		mode := f.Mode
+		if mode == "" {
+			// The CRD defaults this, but objects persisted before the default was added still reach us
+			// without it. Fall back to the same value rather than silently disabling the filter.
+			mode = aigv1b1.HTTPHeaderValueFilterModeDenylist
+		}
+		ret = append(ret, filterapi.HTTPHeaderValueFilter{
+			Name:   strings.ToLower(string(f.Name)),
+			Mode:   string(mode),
+			Values: f.Values,
+		})
+	}
+	return ret
 }
 
 // bodyMutationToFilterAPI converts an aigv1b1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
@@ -480,7 +494,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
-					b.AnthropicBetaFilter = anthropicBetaFilterToFilterAPI(backendObj.Spec.AnthropicBetaFilter)
+					b.HeaderValueFilters = headerValueFiltersToFilterAPI(backendObj.Spec.HeaderValueFilters)
 				}
 
 				if bsp != nil {

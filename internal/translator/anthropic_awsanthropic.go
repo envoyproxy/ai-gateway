@@ -45,11 +45,17 @@ type anthropicToAWSAnthropicTranslator struct {
 
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
-	a.anthropicBetas = parseAnthropicBetaHeader(headers)
+	a.anthropicBetas = parseCommaSeparatedHeader(headers, anthropicBetaHeaderName)
 }
 
-// SetAnthropicBetaFilter implements [AnthropicBetaFilterSetter].
-func (a *anthropicToAWSAnthropicTranslator) SetAnthropicBetaFilter(mode string, values []string) {
+// SetHeaderValueFilter implements [HeaderValueFilterSetter]. Only anthropic-beta is handled here:
+// Bedrock reads these values from the request body rather than the header, so the filtered set has
+// to be mirrored into the body's anthropic_beta field by RequestBody below. Filters on any other
+// header are applied by Envoy's header mutation instead.
+func (a *anthropicToAWSAnthropicTranslator) SetHeaderValueFilter(name, mode string, values []string) {
+	if !strings.EqualFold(name, anthropicBetaHeaderName) {
+		return
+	}
 	a.betaFilterMode = mode
 	a.betaFilterValues = values
 }
@@ -88,7 +94,7 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
 
-	betas, betasChanged := filterAnthropicBetas(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues)
+	betas, betasChanged := filterHeaderValues(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues)
 	if len(betas) > 0 {
 		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", betas, sjsonOptionsInPlace)
 		if err != nil {

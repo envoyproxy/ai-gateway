@@ -197,9 +197,9 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
-	// AnthropicBetaFilter filters values from the anthropic-beta request header before sending the
-	// request to the backend. Only applies to Anthropic backends (GCP Vertex and AWS Bedrock). Optional.
-	AnthropicBetaFilter *AnthropicBetaFilter `json:"anthropicBetaFilter,omitempty"`
+	// HeaderValueFilters filter individual values out of multi-valued request headers before sending
+	// the request to the backend. Optional.
+	HeaderValueFilters []HTTPHeaderValueFilter `json:"headerValueFilters,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -328,9 +328,12 @@ func (g GCPAuth) LogValue() slog.Value {
 	)
 }
 
-// AnthropicBetaFilter filters values from the anthropic-beta request header before forwarding upstream.
-// Mode is either "denylist" (drop the listed Values) or "allowlist" (keep only the listed Values).
-type AnthropicBetaFilter struct {
+// HTTPHeaderValueFilter filters individual values out of a multi-valued request header before
+// forwarding upstream. Mode is either "Denylist" (drop the listed Values) or "Allowlist" (keep only
+// the listed Values).
+type HTTPHeaderValueFilter struct {
+	// Name is the lower-cased name of the header whose values are filtered.
+	Name   string   `json:"name"`
 	Mode   string   `json:"mode"`
 	Values []string `json:"values,omitempty"`
 }

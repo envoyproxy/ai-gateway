@@ -38,11 +38,16 @@ type anthropicToGCPAnthropicTranslator struct {
 
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToGCPAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
-	a.anthropicBetas = parseAnthropicBetaHeader(headers)
+	a.anthropicBetas = parseCommaSeparatedHeader(headers, anthropicBetaHeaderName)
 }
 
-// SetAnthropicBetaFilter implements [AnthropicBetaFilterSetter].
-func (a *anthropicToGCPAnthropicTranslator) SetAnthropicBetaFilter(mode string, values []string) {
+// SetHeaderValueFilter implements [HeaderValueFilterSetter]. Only anthropic-beta is handled here,
+// since it is the header this translator forwards upstream itself; filters on any other header are
+// applied by Envoy's header mutation instead.
+func (a *anthropicToGCPAnthropicTranslator) SetHeaderValueFilter(name, mode string, values []string) {
+	if !strings.EqualFold(name, anthropicBetaHeaderName) {
+		return
+	}
 	a.betaFilterMode = mode
 	a.betaFilterValues = values
 }
@@ -78,9 +83,9 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 
 	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
 	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
-	// Vertex forwards the anthropic-beta header verbatim and 400s on unsupported values. When the beta
+	// Vertex forwards the anthropic-beta header verbatim and 400s on unsupported values. When the
 	// filter drops a value, overwrite the forwarded header with the filtered set.
-	if betas, changed := filterAnthropicBetas(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues); changed {
+	if betas, changed := filterHeaderValues(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues); changed {
 		newHeaders = append(newHeaders, internalapi.Header{anthropicBetaHeaderName, strings.Join(betas, ",")})
 	}
 	return

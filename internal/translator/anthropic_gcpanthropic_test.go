@@ -409,7 +409,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, "2023-06-01", modifiedReq["anthropic_version"])
 }
 
-func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
+func TestAnthropicToGCPAnthropicTranslator_HeaderValueFilter(t *testing.T) {
 	parsedReq := &anthropic.MessagesRequest{
 		Model: "claude-3-sonnet-20240229",
 		Messages: []anthropic.MessageParam{
@@ -420,6 +420,7 @@ func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
 	tests := []struct {
 		name           string
 		requestHeaders map[string]string
+		filterHeader   string
 		filterMode     string
 		filterValues   []string
 		wantBetaHeader string
@@ -428,7 +429,8 @@ func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
 		{
 			name:           "no anthropic-beta header sent",
 			requestHeaders: map[string]string{},
-			filterMode:     "denylist",
+			filterHeader:   "anthropic-beta",
+			filterMode:     "Denylist",
 			filterValues:   []string{"thinking-token-count-2026-05-13"},
 			wantOverwrite:  false,
 		},
@@ -440,7 +442,8 @@ func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
 		{
 			name:           "denylist drops the unsupported value",
 			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
-			filterMode:     "denylist",
+			filterHeader:   "anthropic-beta",
+			filterMode:     "Denylist",
 			filterValues:   []string{"thinking-token-count-2026-05-13"},
 			wantBetaHeader: "advanced-tool-use-2025-11-20",
 			wantOverwrite:  true,
@@ -448,15 +451,38 @@ func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
 		{
 			name:           "denylist with no matching value leaves header untouched",
 			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20"},
-			filterMode:     "denylist",
+			filterHeader:   "anthropic-beta",
+			filterMode:     "Denylist",
 			filterValues:   []string{"thinking-token-count-2026-05-13"},
 			wantOverwrite:  false,
 		},
 		{
 			name:           "allowlist keeps only the sanctioned value",
 			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
-			filterMode:     "allowlist",
+			filterHeader:   "anthropic-beta",
+			filterMode:     "Allowlist",
 			filterValues:   []string{"advanced-tool-use-2025-11-20"},
+			wantBetaHeader: "advanced-tool-use-2025-11-20",
+			wantOverwrite:  true,
+		},
+		{
+			// The setter is called for every configured filter, so it must ignore headers it does
+			// not forward itself rather than applying someone else's value list to anthropic-beta.
+			name:           "filter on a different header is ignored",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterHeader:   "x-some-other-header",
+			filterMode:     "Denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
+			wantOverwrite:  false,
+		},
+		{
+			// Header names are case-insensitive, so a filter configured as Anthropic-Beta must still
+			// reach the anthropic-beta handling here.
+			name:           "filter header name matching is case-insensitive",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterHeader:   "Anthropic-Beta",
+			filterMode:     "Denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
 			wantBetaHeader: "advanced-tool-use-2025-11-20",
 			wantOverwrite:  true,
 		},
@@ -466,8 +492,8 @@ func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tr := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
 			tr.(RequestHeadersSetter).SetRequestHeaders(tt.requestHeaders)
-			if tt.filterMode != "" || tt.filterValues != nil {
-				tr.(AnthropicBetaFilterSetter).SetAnthropicBetaFilter(tt.filterMode, tt.filterValues)
+			if tt.filterHeader != "" {
+				tr.(HeaderValueFilterSetter).SetHeaderValueFilter(tt.filterHeader, tt.filterMode, tt.filterValues)
 			}
 
 			headerMutation, _, err := tr.RequestBody(nil, parsedReq, false)
