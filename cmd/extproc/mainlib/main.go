@@ -343,6 +343,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	tokenizeMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTokenize)
 	responsesInputTokensMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponsesInputTokens)
+	countTokensMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCountTokens)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
@@ -378,6 +379,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	// Use /tokenize to be consistent with vLLM: https://github.com/vllm-project/vllm/blob/344b50d5258d7cf3f136416e1dbcd9b5ee99bb00/vllm/entrypoints/serve/tokenize/api_router.py#L37
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/tokenize"), extproc.NewFactory(
 		tokenizeMetricsFactory, tracing.TokenizeTracer(), endpointspec.TokenizeEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages/count_tokens"), extproc.NewFactory(
+		countTokensMetricsFactory, tracing.CountTokensTracer(), endpointspec.MessagesCountTokensEndpointSpec{}))
 
 	// Register the OpenAI Files API endpoints (/v1/files, /v1/files/{id}, /v1/files/{id}/content)
 	// under a single prefix processor that routes by encoded backend id.
