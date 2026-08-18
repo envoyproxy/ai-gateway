@@ -43,15 +43,84 @@ type anthropicToAWSAnthropicTranslator struct {
 	betaFilterValues []string
 }
 
+// awsBedrockSupportedAnthropicBetas is the allowlist of anthropic-beta flags that AWS Bedrock
+// accepts in the anthropic_beta request field. Bedrock rejects the entire request with a 400
+// "invalid beta flag" error if any unrecognized flag is present, so unsupported flags (e.g.
+// ones only the Anthropic API knows) must be stripped rather than forwarded.
+//
+// Every entry was confirmed accepted (HTTP 200) by live probes against Bedrock. Notably,
+// prompt-caching-2024-07-31, extended-cache-ttl-2025-04-11, files-api-2025-04-14,
+// code-execution-2025-05-22, memory-2025-08-18 and thinking-token-count-2026-05-13 were
+// probed and rejected. Extend this set only with flags verified against Bedrock.
+var awsBedrockSupportedAnthropicBetas = map[string]struct{}{
+	"computer-use-2024-10-22":                  {},
+	"computer-use-2025-01-24":                  {},
+	"context-1m-2025-08-07":                    {},
+	"context-management-2025-06-27":            {},
+	"dev-full-thinking-2025-05-14":             {},
+	"fine-grained-tool-streaming-2025-05-14":   {},
+	"interleaved-thinking-2025-05-14":          {},
+	"mcp-client-2025-04-04":                    {},
+	"mcp-client-2025-11-20":                    {},
+	"model-context-window-exceeded-2025-08-26": {},
+	"output-128k-2025-02-19":                   {},
+	"pdfs-2024-09-25":                          {},
+	"search-results-2025-06-09":                {},
+	"token-counting-2024-11-01":                {},
+	"token-efficient-tools-2025-02-19":         {},
+	"tool-search-tool-2025-10-19":              {},
+	"web-search-2025-03-05":                    {},
+}
+
+// anthropicAPIToBedrockBetaAliases maps anthropic-beta flag names that only the Anthropic API
+// accepts onto the equivalent Bedrock flag name. The same feature is often exposed under
+// different flag names depending on the backend, and clients speaking the Anthropic API
+// dialect (e.g. Claude Code) send the Anthropic API name, which would otherwise be stripped
+// by the allowlist above, silently disabling the gated feature.
+//
+// advanced-tool-use-2025-11-20 is the Anthropic API umbrella flag for Tool Search,
+// Programmatic Tool Calling and Tool Use Examples. Bedrock supports only Tool Search,
+// exposed under the older-dated tool-search-tool-2025-10-19; the tool type strings
+// (tool_search_tool_regex_20251119 / tool_search_tool_bm25_20251119) are identical on both.
+// The umbrella flag's non-Bedrock-supported siblings are dropped by the allowlist as usual.
+//
+// Aliases are applied before the allowlist check in SetRequestHeaders.
+var anthropicAPIToBedrockBetaAliases = map[string]string{
+	"advanced-tool-use-2025-11-20": "tool-search-tool-2025-10-19",
+}
+
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
-	a.anthropicBetas = parseCommaSeparatedHeader(headers, anthropicBetaHeaderName)
+	var anthropicBetas []string
+	seen := map[string]struct{}{}
+	for _, beta := range parseCommaSeparatedHeader(headers, anthropicBetaHeaderName) {
+		// Translate Anthropic-API-only flag names to their Bedrock equivalents
+		// before the allowlist check.
+		if alias, ok := anthropicAPIToBedrockBetaAliases[beta]; ok {
+			beta = alias
+		}
+		if _, ok := awsBedrockSupportedAnthropicBetas[beta]; ok {
+			// An alias can collide with an explicitly sent flag (e.g. both
+			// advanced-tool-use-2025-11-20 and tool-search-tool-2025-10-19);
+			// forward each Bedrock flag only once.
+			if _, dup := seen[beta]; dup {
+				continue
+			}
+			seen[beta] = struct{}{}
+			anthropicBetas = append(anthropicBetas, beta)
+		}
+	}
+	a.anthropicBetas = anthropicBetas
 }
 
 // SetHeaderValueFilter implements [HeaderValueFilterSetter]. Only anthropic-beta is handled here:
 // Bedrock reads these values from the request body rather than the header, so the filtered set has
 // to be mirrored into the body's anthropic_beta field by RequestBody below. Filters on any other
 // header are applied by Envoy's header mutation instead.
+//
+// This filter runs on top of the awsBedrockSupportedAnthropicBetas allowlist applied in
+// SetRequestHeaders: that allowlist is the static, code-level set of flags Bedrock is known to
+// accept, while this is the operator's per-backend policy over what remains.
 func (a *anthropicToAWSAnthropicTranslator) SetHeaderValueFilter(name, mode string, values []string) {
 	if !strings.EqualFold(name, anthropicBetaHeaderName) {
 		return
@@ -180,10 +249,10 @@ func (a *anthropicToAWSAnthropicTranslator) convertMessagesEventWrappedInAmazonE
 		}
 
 		a.reflectStreamingEvent(&event)
-		*out = append(*out, sseEventPrefix...)
+		*out = append(*out, sseEventPrefixSpace...)
 		*out = append(*out, event.Type...)
 		*out = append(*out, '\n')
-		*out = append(*out, sseDataPrefix...)
+		*out = append(*out, sseDataPrefixSpace...)
 		*out = append(*out, rawEvent.Bytes...)
 		*out = append(*out, '\n', '\n')
 		lastRead = r.Size() - int64(r.Len())

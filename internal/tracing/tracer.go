@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -31,27 +32,31 @@ type requestTracerImpl[ReqT any, RespT any, RespChunkT any] struct {
 }
 
 var (
-	_ tracingapi.ChatCompletionTracer  = (*chatCompletionTracer)(nil)
-	_ tracingapi.EmbeddingsTracer      = (*embeddingsTracer)(nil)
-	_ tracingapi.CompletionTracer      = (*completionTracer)(nil)
-	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
-	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
-	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
-	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
-	_ tracingapi.TranslationTracer     = (*translationTracer)(nil)
-	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
+	_ tracingapi.ChatCompletionTracer       = (*chatCompletionTracer)(nil)
+	_ tracingapi.EmbeddingsTracer           = (*embeddingsTracer)(nil)
+	_ tracingapi.CompletionTracer           = (*completionTracer)(nil)
+	_ tracingapi.ImageGenerationTracer      = (*imageGenerationTracer)(nil)
+	_ tracingapi.ResponsesTracer            = (*responsesTracer)(nil)
+	_ tracingapi.SpeechTracer               = (*speechTracer)(nil)
+	_ tracingapi.TranscriptionTracer        = (*transcriptionTracer)(nil)
+	_ tracingapi.TranslationTracer          = (*translationTracer)(nil)
+	_ tracingapi.RerankTracer               = (*rerankTracer)(nil)
+	_ tracingapi.ResponsesInputTokensTracer = (*responsesInputTokensTracer)(nil)
+	_ tracingapi.CountTokensTracer          = (*countTokensTracer)(nil)
 )
 
 type (
-	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
-	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
-	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
-	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
-	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
-	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
-	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
-	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
-	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	chatCompletionTracer       = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	embeddingsTracer           = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	completionTracer           = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	imageGenerationTracer      = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	responsesTracer            = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
+	speechTracer               = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	transcriptionTracer        = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	translationTracer          = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
+	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
+	countTokensTracer          = requestTracerImpl[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -236,6 +241,30 @@ func newTokenizeTracer(tracer trace.Tracer, propagator propagation.TextMapPropag
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.TokenizeRecorder) tracingapi.TokenizeSpan {
 			return &tokenizeSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newResponsesInputTokensTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ResponsesInputTokensRecorder, headerAttributes map[string]string) tracingapi.ResponsesInputTokensTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.ResponsesInputTokensRecorder) tracingapi.ResponsesInputTokensSpan {
+			return &responsesInputTokensSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newCountTokensTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.CountTokensRecorder, headerAttributes map[string]string) tracingapi.CountTokensTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.CountTokensRecorder) tracingapi.CountTokensSpan {
+			return &countTokensSpan{span: span, recorder: recorder}
 		},
 	)
 }

@@ -45,6 +45,10 @@ type (
 		MessageTracer() MessageTracer
 		// TokenizeTracer creates spans for tokenize requests.
 		TokenizeTracer() TokenizeTracer
+		// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+		ResponsesInputTokensTracer() ResponsesInputTokensTracer
+		// CountTokensTracer creates spans for Anthropic count tokens requests.
+		CountTokensTracer() CountTokensTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -91,6 +95,10 @@ type (
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeTracer creates spans for tokenize requests.
 	TokenizeTracer = RequestTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+	ResponsesInputTokensTracer = RequestTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
+	// CountTokensTracer creates spans for Anthropic count tokens requests.
+	CountTokensTracer = RequestTracer[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 type (
@@ -128,6 +136,10 @@ type (
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeSpan represents a tokenize request span. The chunk type is unused and therefore set to struct{}.
 	TokenizeSpan = Span[tokenize.Response, struct{}]
+	// ResponsesInputTokensSpan represents an OpenAI /v1/responses/input_tokens request span.
+	ResponsesInputTokensSpan = Span[openai.ResponsesInputTokensResponse, struct{}]
+	// CountTokensSpan represents an Anthropic count tokens request span.
+	CountTokensSpan = Span[anthropicschema.CountTokensResponse, struct{}]
 )
 
 type (
@@ -179,6 +191,10 @@ type (
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeRecorder records attributes to a span according to a semantic convention.
 	TokenizeRecorder = SpanRecorder[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensRecorder records attributes to a span according to a semantic convention.
+	ResponsesInputTokensRecorder = SpanRecorder[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
+	// CountTokensRecorder records attributes to a span according to a semantic convention.
+	CountTokensRecorder = SpanRecorder[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -248,6 +264,16 @@ func (NoopTracing) TokenizeTracer() TokenizeTracer {
 	return NoopTokenizeTracer{}
 }
 
+// ResponsesInputTokensTracer implements Tracing.ResponsesInputTokensTracer.
+func (NoopTracing) ResponsesInputTokensTracer() ResponsesInputTokensTracer {
+	return NoopResponsesInputTokensTracer{}
+}
+
+// CountTokensTracer implements Tracing.CountTokensTracer.
+func (NoopTracing) CountTokensTracer() CountTokensTracer {
+	return NoopCountTokensTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -278,6 +304,10 @@ type (
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// NoopTokenizeTracer implements TokenizeTracer.
 	NoopTokenizeTracer = NoopTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// NoopResponsesInputTokensTracer implements ResponsesInputTokensTracer.
+	NoopResponsesInputTokensTracer = NoopTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
+	// NoopCountTokensTracer implements CountTokensTracer.
+	NoopCountTokensTracer = NoopTracer[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

@@ -294,6 +294,30 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.Equal(t, 1, int(capaCount))
 }
 
+// TestServePOST_InitializeRequest_BackendSelectorDenied verifies that a backendSelector denying
+// every route backend is treated as an authorization decision (403), not a system failure (500).
+func TestServePOST_InitializeRequest_BackendSelectorDenied(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].backendSelector = mustCompileBackendSelector(t, &filterapi.MCPRouteAuthorization{
+		DefaultAction: filterapi.AuthorizationActionDeny,
+	})
+
+	id, err := jsonrpc.MakeID("test-1")
+	require.NoError(t, err)
+	initReq := &jsonrpc.Request{Method: "initialize", ID: id, Params: []byte(`{"protocolVersion": "2024-11-05"}`)}
+	body, err := jsonrpc.EncodeMessage(initReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(internalapi.MCPRouteHeader, "test-route")
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+}
+
 // TestServePOST_JSONRPCRequest tests various jsonrpc.Request body, not jsonrpc.Response.
 func TestServePOST_JSONRPCRequest(t *testing.T) {
 	tests := []struct {
@@ -652,6 +676,40 @@ func TestMergeToolsList_AuthorizationFiltering(t *testing.T) {
 	}
 }
 
+func TestMergeToolsList_MetaResourceURIRewrite(t *testing.T) {
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res: mcp.ListToolsResult{Tools: []*mcp.Tool{
+				{
+					Name: "ui-tool",
+					Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"}},
+				},
+				{Name: "plain-tool"},
+			}},
+		},
+	}
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].toolSelectors = nil
+	proxy.requestHeaders = http.Header{}
+	session := &session{route: "test-route"}
+
+	result := proxy.mergeToolsList(session, responses)
+	require.Len(t, result.Tools, 2)
+	byName := map[string]*mcp.Tool{}
+	for _, tool := range result.Tools {
+		byName[tool.Name] = tool
+	}
+
+	uiTool := byName["backend1__ui-tool"]
+	require.NotNil(t, uiTool)
+	require.Equal(t, "ui://backend1/prefab/tool/renderer.html", uiTool.Meta["ui"].(map[string]any)["resourceUri"])
+
+	plainTool := byName["backend1__plain-tool"]
+	require.NotNil(t, plainTool)
+	require.Nil(t, plainTool.Meta)
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -675,7 +733,16 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 				require.Equal(t, tt.wantBackend, r.Header.Get(internalapi.MCPBackendHeader))
 				require.Equal(t, "tools/call", r.Header.Get(internalapi.MCPMetadataHeaderMethod))
 				require.Equal(t, tt.tool, r.Header.Get(internalapi.MCPMetadataHeaderRequestID))
-				for h := range internalapi.MCPInternalHeadersToMetadata {
+				// The headers a tools/call populates. Resource-scoped headers are asserted in the
+				// resources/read and resources/subscribe tests instead, since a tools/call leaves them unset.
+				for _, h := range []string{
+					internalapi.MCPBackendHeader,
+					internalapi.MCPRouteHeader,
+					sessionIDHeader,
+					internalapi.MCPMetadataHeaderMethod,
+					internalapi.MCPMetadataHeaderRequestID,
+					internalapi.MCPMetadataHeaderToolName,
+				} {
 					require.NotEmpty(t, r.Header.Get(h))
 				}
 
@@ -805,6 +872,28 @@ func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
 	require.Contains(t, rr.Body.String(), "unknown backend unknown-backend")
+}
+
+// TestHandleToolCallRequest_NoSession covers a backend that is configured on the route
+// (getBackendForRoute succeeds) but has no session in this particular session (e.g.
+// excluded by backendSelector). This should be 403 instead of 400 or other error codes.
+func TestHandleToolCallRequest_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+
+	params := &mcp.CallToolParams{Name: "backend2__some-tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	rr := httptest.NewRecorder()
+
+	_, err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
+	require.ErrorIs(t, err, errSessionNotFound)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
 }
 
 func TestHandleToolCallRequest_BackendError(t *testing.T) {
@@ -1163,6 +1252,23 @@ func TestServePOST_PromptsGet(t *testing.T) {
 	require.NotNil(t, tracer.span)
 }
 
+// TestHandlePromptGetRequest_NoSession covers a backend that is configured on the route
+// (getBackendForRoute succeeds) but has no session here, e.g. excluded by backendSelector.
+// This should be 403 instead of 400 or other error codes.
+func TestHandlePromptGetRequest_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	rr := httptest.NewRecorder()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+	_, err := proxy.handlePromptGetRequest(t.Context(), s, rr, &jsonrpc.Request{}, &mcp.GetPromptParams{Name: "backend2__test-prompt"})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+}
+
 func TestServePOST_InvalidToolCallParams(t *testing.T) {
 	tracer := &fakeTracer{}
 	proxy := newTestMCPProxyWithTracer(tracer)
@@ -1270,6 +1376,16 @@ func Test_downstreamResourceURI(t *testing.T) {
 		require.Equal(t, "local+file", parsed.Scheme)
 		require.Equal(t, "/tmp/{file}", parsed.Path)
 	})
+
+	t.Run("downstream ui resource keeps the ui scheme", func(t *testing.T) {
+		downstream := downstreamResourceURI("ui://prefab/tool/renderer.html", "local")
+		require.Equal(t, "ui://local/prefab/tool/renderer.html", downstream)
+		parsed, err := url.Parse(downstream)
+		require.NoError(t, err)
+		require.Equal(t, "ui", parsed.Scheme)
+		require.Equal(t, "local", parsed.Host)
+		require.Equal(t, "/prefab/tool/renderer.html", parsed.Path)
+	})
 }
 
 func Test_upstreamResourceURI(t *testing.T) {
@@ -1298,6 +1414,31 @@ func Test_upstreamResourceURI(t *testing.T) {
 			input:       "file:///tmp/file.txt",
 			expectedErr: "invalid resource URI: file:///tmp/file.txt",
 		},
+		{
+			input:           "ui://local/prefab/tool/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://prefab/tool/renderer.html",
+		},
+		{
+			input:           "ui://local/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://renderer.html",
+		},
+		{
+			// The first path segment coinciding with the backend name decodes unambiguously.
+			input:           "ui://local/local/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://local/renderer.html",
+		},
+		{
+			// A bare ui:// URI that was never namespaced.
+			input:       "ui://renderer.html",
+			expectedErr: "invalid resource URI: ui://renderer.html",
+		},
+		{
+			input:       "ui://",
+			expectedErr: "invalid resource URI: ui://",
+		},
 	}
 
 	for _, tc := range cases {
@@ -1312,6 +1453,196 @@ func Test_upstreamResourceURI(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("round trip", func(t *testing.T) {
+		for _, uri := range []string{
+			"file:///tmp/file.txt",
+			"file:///tmp/{file}",
+			"ui://prefab/tool/renderer.html",
+			"ui://renderer.html",
+			"ui://local/renderer.html", // First segment equal to the backend name must survive.
+		} {
+			backend, upstream, err := upstreamResourceURI(downstreamResourceURI(uri, "local"))
+			require.NoError(t, err)
+			require.Equal(t, "local", backend)
+			require.Equal(t, uri, upstream)
+		}
+	})
+}
+
+func Test_rewriteMetaResourceURIs(t *testing.T) {
+	cases := []struct {
+		name    string
+		meta    mcp.Meta
+		want    mcp.Meta
+		changed bool
+	}{
+		{
+			name:    "rewrites _meta.ui.resourceUri",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"}},
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://backend1/prefab/tool/renderer.html"}},
+			changed: true,
+		},
+		{
+			name:    "rewrites flat _meta[ui/resourceUri]",
+			meta:    mcp.Meta{"ui/resourceUri": "ui://prefab/tool/renderer.html"},
+			want:    mcp.Meta{"ui/resourceUri": "ui://backend1/prefab/tool/renderer.html"},
+			changed: true,
+		},
+		{
+			name: "rewrites both conventions when present",
+			meta: mcp.Meta{
+				"ui":             map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"},
+				"ui/resourceUri": "ui://prefab/tool/renderer.html",
+			},
+			want: mcp.Meta{
+				"ui":             map[string]any{"resourceUri": "ui://backend1/prefab/tool/renderer.html"},
+				"ui/resourceUri": "ui://backend1/prefab/tool/renderer.html",
+			},
+			changed: true,
+		},
+		{
+			name:    "nil meta",
+			meta:    nil,
+			want:    nil,
+			changed: false,
+		},
+		{
+			name:    "empty meta",
+			meta:    mcp.Meta{},
+			want:    mcp.Meta{},
+			changed: false,
+		},
+		{
+			name:    "ui present but resourceUri missing",
+			meta:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			want:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			changed: false,
+		},
+		{
+			name:    "resourceUri is not a string",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			changed: false,
+		},
+		{
+			name:    "ui value is not a map",
+			meta:    mcp.Meta{"ui": "not-a-map"},
+			want:    mcp.Meta{"ui": "not-a-map"},
+			changed: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := rewriteMetaResourceURIs(tc.meta, "backend1")
+			require.Equal(t, tc.changed, changed)
+			require.Equal(t, tc.want, tc.meta)
+		})
+	}
+}
+
+func Test_rewriteToolResultURIs(t *testing.T) {
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("rewrites ResourceLink URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/prefab/link.html", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("rewrites EmbeddedResource URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "ui://prefab/embed.html"}}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/prefab/embed.html", result.Content[0].(*mcp.EmbeddedResource).Resource.URI)
+	})
+
+	t.Run("nil EmbeddedResource.Resource", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.EmbeddedResource{Resource: nil}}}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+
+	t.Run("rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://meta/renderer.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/meta/renderer.html", result.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("non-ui URIs are namespaced with the scheme prefix form", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "file:///tmp/file.txt"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+file:///tmp/file.txt", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("no resource URIs", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "hi"}}}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+}
+
+func Test_maybeResponseModify(t *testing.T) {
+	ctx := t.Context()
+	m := newTestMCPProxy()
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/renderer.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/renderer.html", got.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("rewrites ResourceLink in Content", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/link.html", got.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("no resource URIs leaves result bytes unchanged", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "hi"}}})
+		require.NoError(t, err)
+		before := append([]byte(nil), raw...)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		require.Equal(t, before, []byte(msg.Result))
+	})
+
+	t.Run("non-standard result shape passes through", func(t *testing.T) {
+		raw := []byte(`{"content":"not-an-array"}`)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		require.Equal(t, raw, []byte(msg.Result))
+	})
+
+	t.Run("resources/read rewrites ui Contents URIs keeping the scheme", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{{URI: "ui://prefab/renderer.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
+		var got mcp.ReadResourceResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/renderer.html", got.Contents[0].URI)
+	})
 }
 
 func TestExtractSubject(t *testing.T) {
@@ -1619,6 +1950,34 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 	}
 }
 
+// TestMCPProxy_handleCompletionComplete_NoSession covers a backend that is configured on
+// the route (getBackendForRoute succeeds) but has no session in this particular session
+// (e.g. excluded by backendSelector). Passing a non-nil span reproduces the case that used
+// to panic on a nil *compositeSessionEntry before the session was ever checked for nil.
+func TestMCPProxy_handleCompletionComplete_NoSession(t *testing.T) {
+	reqID, _ := jsonrpc.MakeID("id")
+	proxy := newTestMCPProxy()
+
+	rr := httptest.NewRecorder()
+	span := &fakeSpan{}
+	var err error
+	require.NotPanics(t, func() {
+		_, err = proxy.handleCompletionComplete(t.Context(), &session{
+			reqCtx: proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {sessionID: "test-session"},
+			},
+			route: "test-route",
+		}, rr, &jsonrpc.Request{ID: reqID, Method: "completion/complete"}, &mcp.CompleteParams{
+			Ref: &mcp.CompleteReference{Type: "ref/prompt", Name: "backend2__my-prompt"},
+		}, span)
+	})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	require.Empty(t, span.backends, "must not record a route-to-backend span for a backend with no session")
+}
+
 func TestMCPProxy_handlePing(t *testing.T) {
 	reqID, _ := jsonrpc.MakeID("id")
 
@@ -1708,6 +2067,10 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
+		// The URI has already been rewritten from the client-facing composite form to the upstream one
+		// by this point, so that is what the metadata header carries. Same as mcp_tool_name, which
+		// records the tool name after the backend prefix is stripped.
+		require.Equal(t, "file://foo-resource", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), `"uri":"file://foo-resource"`)
@@ -1734,6 +2097,24 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+
+	t.Run("no session for known backend", func(t *testing.T) {
+		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
+		// session here, e.g. excluded by backendSelector. This should be 403 instead of
+		// 400 or other error codes.
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx:             proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+			route:              "test-route",
+		}
+		_, err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
+			URI: downstreamResourceURI("file://foo-resource", "backend2"),
+		})
+		require.ErrorIs(t, err, errSessionNotFound)
+		require.Equal(t, http.StatusForbidden, rr.Code)
+		require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	})
 }
 
 func TestMCPProxy_maybeUpdateProgressTokenMetadata(t *testing.T) {
@@ -1825,6 +2206,31 @@ func TestMCPProxy_handleClientToServerNotificationsProgress(t *testing.T) {
 			require.Contains(t, rr.Body.String(), tc.expResponseBody)
 		})
 	}
+}
+
+// TestMCPProxy_handleClientToServerNotificationsProgress_NoSession covers a backend that is
+// configured on the route (getBackendForRoute succeeds) but has no session in this particular
+// session (e.g. excluded by backendSelector). Passing a non-nil span reproduces the case that
+// used to panic on a nil *compositeSessionEntry before the session was ever checked for nil.
+func TestMCPProxy_handleClientToServerNotificationsProgress_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	rr := httptest.NewRecorder()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+	params := &mcp.ProgressNotificationParams{ProgressToken: "YWJjZA==__s__backend2"}
+	span := &fakeSpan{}
+	var err error
+	require.NotPanics(t, func() {
+		_, err = proxy.handleClientToServerNotificationsProgress(t.Context(), s, rr,
+			&jsonrpc.Request{Method: "notifications/progress"}, params, span)
+	})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	require.Empty(t, span.backends, "must not record a route-to-backend span for a backend with no session")
 }
 
 func TestMCPProxy_maybeServerToClientRequestModify(t *testing.T) {
@@ -1943,6 +2349,8 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 
 	unknownBackendID, err := jsonrpc.MakeID("aWQ=__s__unknownbackend") // aWQK is the base64 encoded "id".
 	require.NoError(t, err)
+	excludedBackendID, err := jsonrpc.MakeID("aWQ=__s__backend2") // backend2 is configured on test-route but has no session here.
+	require.NoError(t, err)
 	intID, err := jsonrpc.MakeID("1__i__backend1")
 	require.NoError(t, err)
 	strID, err := jsonrpc.MakeID("aWQ=__s__backend1") // aWQK is the base64 encoded "id".
@@ -1950,15 +2358,26 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 	f64ID, err := jsonrpc.MakeID("9a9999999999f13f__f__backend1")
 	require.NoError(t, err)
 	for _, tc := range []struct {
-		name   string
-		msg    *jsonrpc.Response
-		expErr string
-		verify func(t *testing.T, modified *jsonrpc.Response)
+		name    string
+		msg     *jsonrpc.Response
+		expErr  string
+		expCode int
+		verify  func(t *testing.T, modified *jsonrpc.Response)
 	}{
 		{
-			name:   "no backend",
-			msg:    &jsonrpc.Response{ID: unknownBackendID},
-			expErr: `no MCP session found for backend unknownbackend`,
+			// Backend not configured on the route at all: unknown backend, 404.
+			name:    "unknown backend",
+			msg:     &jsonrpc.Response{ID: unknownBackendID},
+			expErr:  `unknown backend unknownbackend`,
+			expCode: http.StatusNotFound,
+		},
+		{
+			// Backend configured on the route but excluded by backendSelector (no session):
+			// authorization decision, 403.
+			name:    "no session for known backend",
+			msg:     &jsonrpc.Response{ID: excludedBackendID},
+			expErr:  `no MCP session found for backend backend2`,
+			expCode: http.StatusForbidden,
 		},
 		{
 			name: "str id",
@@ -2013,7 +2432,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 			}, rr, tc.msg)
 			if tc.expErr != "" {
 				require.ErrorContains(t, err, tc.expErr)
-				require.Equal(t, http.StatusBadRequest, rr.Code)
+				require.Equal(t, tc.expCode, rr.Code)
 				require.Contains(t, rr.Body.String(), tc.expErr)
 				return
 			}
@@ -2081,10 +2500,12 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 					var params mcp.SubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://foo", params.URI)
+					require.Equal(t, "file://foo", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				case *mcp.UnsubscribeParams:
 					var params mcp.UnsubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://bar", params.URI)
+					require.Equal(t, "file://bar", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				default:
 					t.Fatalf("unexpected params type: %T", tc.p)
 				}
@@ -2113,6 +2534,24 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 			require.Equal(t, http.StatusOK, rr.Code)
 		})
 	}
+
+	t.Run("no session for known backend", func(t *testing.T) {
+		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
+		// session here, e.g. excluded by backendSelector. This should be 403 instead of
+		// 400 or other error codes.
+		proxy := newTestMCPProxy()
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx:             proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "a"}},
+			route:              "test-route",
+		}
+		_, err := proxy.handleResourcesSubscribeRequest(t.Context(), s, rr,
+			&jsonrpc.Request{ID: reqID, Method: "resources/subscribe"}, &mcp.SubscribeParams{URI: "backend2+file://foo"}, nil)
+		require.ErrorIs(t, err, errSessionNotFound)
+		require.Equal(t, http.StatusForbidden, rr.Code)
+		require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	})
 }
 
 func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
@@ -2395,6 +2834,79 @@ func Test_checkToolCallError(t *testing.T) {
 				require.Equal(t, tt.backendName, toolErr.backend)
 			} else {
 				require.Nil(t, toolErr)
+			}
+		})
+	}
+}
+
+func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
+	longURI := "file://" + strings.Repeat("a", maxMCPMetadataHeaderValueLen)
+
+	tests := []struct {
+		name    string
+		id      string
+		uri     string
+		wantID  string
+		wantURI string
+	}{
+		{
+			name:    "plain values are set",
+			id:      "req-1",
+			uri:     "file://config.yaml",
+			wantID:  "req-1",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "non-ascii is allowed, http.Transport accepts it",
+			id:      "req-2",
+			uri:     "file://café/résumé.txt",
+			wantID:  "req-2",
+			wantURI: "file://café/résumé.txt",
+		},
+		{
+			name:    "control characters are dropped, not forwarded",
+			id:      "req-3",
+			uri:     "file://a\nb",
+			wantID:  "req-3",
+			wantURI: "",
+		},
+		{
+			name:    "a control character in the JSON-RPC ID drops only that header",
+			id:      "req\r\n4",
+			uri:     "file://config.yaml",
+			wantID:  "",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "oversized values are dropped rather than truncated",
+			id:      "req-5",
+			uri:     longURI,
+			wantID:  "req-5",
+			wantURI: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, "http://backend", nil)
+			require.NoError(t, err)
+			id, err := jsonrpc.MakeID(tt.id)
+			require.NoError(t, err)
+			addMCPHeaders(req,
+				&jsonrpc.Request{ID: id, Method: "resources/read"},
+				&mcp.ReadResourceParams{URI: tt.uri},
+				"route1", "backend1")
+
+			require.Equal(t, tt.wantID, req.Header.Get(internalapi.MCPMetadataHeaderRequestID))
+			require.Equal(t, tt.wantURI, req.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
+			// Whatever was dropped, the request must still be sendable: the headers exist only for
+			// access logging, so they must never be what makes a proxied call fail.
+			require.NoError(t, req.Header.Write(io.Discard))
+			for _, vs := range req.Header {
+				for _, v := range vs {
+					require.NotContains(t, v, "\n")
+					require.NotContains(t, v, "\r")
+				}
 			}
 		})
 	}

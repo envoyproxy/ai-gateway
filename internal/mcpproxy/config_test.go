@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
@@ -314,6 +315,36 @@ func TestLoadConfig_InvalidRegex(t *testing.T) {
 	err := proxy.LoadConfig(t.Context(), config)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to compile include regex")
+}
+
+func TestLoadConfig_InvalidBackendSelectorCEL(t *testing.T) {
+	proxy := &ProxyConfig{
+		mcpProxyConfig:     &mcpProxyConfig{},
+		toolChangeSignaler: newMultiWatcherSignaler(),
+	}
+
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend1"},
+					},
+					BackendSelector: &filterapi.MCPRouteAuthorization{
+						Rules: []filterapi.MCPRouteAuthorizationRule{
+							{CEL: ptr.To("request.")}, // Invalid CEL expression.
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to compile backend selector rules for route route1")
 }
 
 func TestLoadConfig_InvalidExcludeRegex(t *testing.T) {
