@@ -3377,7 +3377,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="headerValueFilters"
   type="[HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter) array"
   required="false"
-  description="HeaderValueFilters filter individual values out of multi-valued request headers before sending<br />the request to this backend, so that one value an upstream provider does not accept does not<br />fail the whole request. At most one filter per header name."
+  description="HeaderValueFilters filter individual values out of multi-valued request headers before sending<br />the request to this backend, so that one value an upstream provider does not accept does not<br />fail the whole request. At most one filter per header name.<br />Only GCPAnthropic and AWSAnthropic backends honor this, and today only for the<br />`anthropic-beta` header — a filter naming any other header is accepted but has no effect.<br />Setting it on a backend with any other schema is rejected."
 />
 
 
