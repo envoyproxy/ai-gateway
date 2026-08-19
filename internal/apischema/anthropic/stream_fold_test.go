@@ -74,6 +74,14 @@ func TestMessagesResponseFromStream_boundaries(t *testing.T) {
 	}{
 		{name: "no chunks", chunks: nil},
 		{name: "empty chunk", chunks: []*MessagesStreamChunk{{}}},
+		{name: "nil chunk", chunks: []*MessagesStreamChunk{nil}},
+		{name: "message stop alone", chunks: []*MessagesStreamChunk{{MessageStop: &MessagesStreamChunkMessageStop{}}}},
+		{
+			name: "content block stop for an unknown index is ignored",
+			chunks: []*MessagesStreamChunk{{
+				ContentBlockStop: &MessagesStreamChunkContentBlockStop{Index: 5},
+			}},
+		},
 		{
 			name: "negative index is ignored",
 			chunks: []*MessagesStreamChunk{{
@@ -121,4 +129,87 @@ func TestMessagesResponseFromStream_indexCap(t *testing.T) {
 			require.Empty(t, resp.Content, "index %d must be rejected", idx)
 		}
 	}
+}
+
+// TestMessagesResponseFromStream_toolUse pins that tool arguments, which arrive
+// as JSON fragments, are only parsed once the block closes. A fragment is not
+// valid JSON on its own, so parsing eagerly would drop the arguments entirely.
+func TestMessagesResponseFromStream_toolUse(t *testing.T) {
+	resp := MessagesResponseFromStream([]*MessagesStreamChunk{
+		{ContentBlockStart: &MessagesStreamChunkContentBlockStart{
+			Index:        0,
+			ContentBlock: MessagesContentBlock{Tool: &ToolUseBlock{ID: "toolu_1", Name: "get_weather"}},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{PartialJSON: `{"ci`},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{PartialJSON: `ty":"Berlin"}`},
+		}},
+		{ContentBlockStop: &MessagesStreamChunkContentBlockStop{Index: 0}},
+		{MessageStop: &MessagesStreamChunkMessageStop{}},
+	})
+
+	require.Len(t, resp.Content, 1)
+	require.Equal(t, map[string]any{"city": "Berlin"}, resp.Content[0].Tool.Input)
+}
+
+// TestMessagesResponseFromStream_toolUseUnparsable pins that a truncated
+// argument stream leaves the input unset rather than half-populated.
+func TestMessagesResponseFromStream_toolUseUnparsable(t *testing.T) {
+	resp := MessagesResponseFromStream([]*MessagesStreamChunk{
+		{ContentBlockStart: &MessagesStreamChunkContentBlockStart{
+			Index:        0,
+			ContentBlock: MessagesContentBlock{Tool: &ToolUseBlock{ID: "toolu_1", Name: "get_weather"}},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{PartialJSON: `{"ci`},
+		}},
+		{ContentBlockStop: &MessagesStreamChunkContentBlockStop{Index: 0}},
+	})
+
+	require.Len(t, resp.Content, 1)
+	require.Nil(t, resp.Content[0].Tool.Input)
+}
+
+// TestMessagesResponseFromStream_thinking pins that reasoning text accumulates
+// and that the signature, which arrives whole on its own delta, replaces rather
+// than appends.
+func TestMessagesResponseFromStream_thinking(t *testing.T) {
+	resp := MessagesResponseFromStream([]*MessagesStreamChunk{
+		{ContentBlockStart: &MessagesStreamChunkContentBlockStart{
+			Index:        0,
+			ContentBlock: MessagesContentBlock{Thinking: &ThinkingBlock{}},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{Thinking: "first "},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{Thinking: "second"},
+		}},
+		{ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
+			Index: 0, Delta: ContentBlockDelta{Signature: "sig-1"},
+		}},
+		{ContentBlockStop: &MessagesStreamChunkContentBlockStop{Index: 0}},
+	})
+
+	require.Len(t, resp.Content, 1)
+	require.Equal(t, "first second", resp.Content[0].Thinking.Thinking)
+	require.Equal(t, "sig-1", resp.Content[0].Thinking.Signature)
+}
+
+// TestMessagesResponseFromStream_usageWithoutMessageStart pins that a stream
+// which never reported input tokens still records the output tokens it did
+// report, rather than dropping usage because there was nothing to merge into.
+func TestMessagesResponseFromStream_usageWithoutMessageStart(t *testing.T) {
+	resp := MessagesResponseFromStream([]*MessagesStreamChunk{{
+		MessageDelta: &MessagesStreamChunkMessageDelta{
+			Delta: MessagesStreamChunkMessageDeltaDelta{StopReason: StopReason("end_turn")},
+			Usage: Usage{OutputTokens: 7},
+		},
+	}})
+
+	require.NotNil(t, resp.Usage)
+	require.Equal(t, float64(7), resp.Usage.OutputTokens)
+	require.Zero(t, resp.Usage.InputTokens)
 }

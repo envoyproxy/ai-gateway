@@ -126,6 +126,68 @@ func TestAnthropicInputMessages(t *testing.T) {
 				`"name":"get_weather","arguments":"{\"city\":\"Berlin\"}"}]}]`,
 		},
 		{
+			// A tool result is recorded by the call it answers. The payload is
+			// the tool's output, which the conventions place on the tool span.
+			name: "tool result block",
+			req: &anthropicschema.MessagesRequest{
+				Messages: []anthropicschema.MessageParam{{
+					Role: "user",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{{
+							ToolResult: &anthropicschema.ToolResultBlockParam{ToolUseID: "toolu_1"},
+						}},
+					},
+				}},
+			},
+			expected: `[{"role":"user","parts":[{"type":"tool_call_response","id":"toolu_1"}]}]`,
+		},
+		{
+			// Images are recorded by type only: the bytes are large and the
+			// conventions define no attribute for them.
+			name: "image block records type without content",
+			req: &anthropicschema.MessagesRequest{
+				Messages: []anthropicschema.MessageParam{{
+					Role: "user",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{{
+							Image: &anthropicschema.ImageBlockParam{Type: "image"},
+						}},
+					},
+				}},
+			},
+			expected: `[{"role":"user","parts":[{"type":"image"}]}]`,
+		},
+		{
+			name: "text block in array form",
+			req: &anthropicschema.MessagesRequest{
+				Messages: []anthropicschema.MessageParam{{
+					Role: "user",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{{
+							Text: &anthropicschema.TextBlockParam{Text: "hello"},
+						}},
+					},
+				}},
+			},
+			expected: `[{"role":"user","parts":[{"type":"text","content":"hello"}]}]`,
+		},
+		{
+			// An empty tool input yields no arguments rather than "{}", so a
+			// consumer can tell "no arguments recorded" from "empty object".
+			name: "tool use without input omits arguments",
+			req: &anthropicschema.MessagesRequest{
+				Messages: []anthropicschema.MessageParam{{
+					Role: "assistant",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{{
+							ToolUse: &anthropicschema.ToolUseBlockParam{ID: "toolu_1", Name: "ping"},
+						}},
+					},
+				}},
+			},
+			expected: `[{"role":"assistant","parts":[{"type":"tool_call","id":"toolu_1","name":"ping"}]}]`,
+		},
+		{
 			// Reasoning content is recorded by type only: it is model-internal
 			// and often large.
 			name: "thinking block records type without content",
@@ -209,6 +271,45 @@ func TestAnthropicOutputMessages(t *testing.T) {
 	require.JSONEq(t,
 		`[{"role":"assistant","parts":[{"type":"text","content":"hi there"}],"finish_reason":"end_turn"}]`,
 		attrs[0].Value.AsString())
+}
+
+// TestAnthropicOutputMessages_blocks pins the response block arms, which are a
+// different union from the request's.
+func TestAnthropicOutputMessages_blocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  []anthropicschema.MessagesContentBlock
+		expected string
+	}{
+		{
+			name: "tool use block",
+			content: []anthropicschema.MessagesContentBlock{{
+				Tool: &anthropicschema.ToolUseBlock{
+					ID:    "toolu_1",
+					Name:  "get_weather",
+					Input: map[string]any{"city": "Berlin"},
+				},
+			}},
+			expected: `[{"role":"assistant","parts":[{"type":"tool_call","id":"toolu_1",` +
+				`"name":"get_weather","arguments":"{\"city\":\"Berlin\"}"}]}]`,
+		},
+		{
+			name:     "thinking block records type without content",
+			content:  []anthropicschema.MessagesContentBlock{{Thinking: &anthropicschema.ThinkingBlock{Thinking: "secret reasoning"}}},
+			expected: `[{"role":"assistant","parts":[{"type":"reasoning"}]}]`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs := messagesAttr(OutputMessages, anthropicOutputMessages(&anthropicschema.MessagesResponse{
+				Role:    "assistant",
+				Content: tc.content,
+			}))
+			require.Len(t, attrs, 1)
+			require.JSONEq(t, tc.expected, attrs[0].Value.AsString())
+		})
+	}
 }
 
 func TestAnthropicOutputMessages_empty(t *testing.T) {

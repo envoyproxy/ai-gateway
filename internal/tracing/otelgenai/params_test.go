@@ -138,6 +138,13 @@ func TestCompletionRequestAttrs(t *testing.T) {
 			},
 		},
 		{
+			name: "stop as string slice",
+			req:  &openai.CompletionRequest{Stop: []string{"A", "B"}},
+			expected: []attribute.KeyValue{
+				attribute.StringSlice(RequestStopSequences, []string{"A", "B"}),
+			},
+		},
+		{
 			name:     "empty stop string is omitted",
 			req:      &openai.CompletionRequest{Stop: ""},
 			expected: nil,

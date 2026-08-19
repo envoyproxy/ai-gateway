@@ -103,6 +103,30 @@ func TestChatCompletionChunkMessages_toolCallFragments(t *testing.T) {
 		attrs[0].Value.AsString())
 }
 
+// TestChatCompletionChunkMessages_finishReason pins that the folded message
+// carries the finish reason, which arrives on its own trailing chunk rather
+// than alongside the content it terminates.
+func TestChatCompletionChunkMessages_finishReason(t *testing.T) {
+	chunks := []*openai.ChatCompletionResponseChunk{
+		{Choices: []openai.ChatCompletionResponseChunkChoice{{
+			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+				Role:    openai.ChatMessageRoleAssistant,
+				Content: ptr("hi there"),
+			},
+		}}},
+		{Choices: []openai.ChatCompletionResponseChunkChoice{{
+			Delta:        &openai.ChatCompletionResponseChunkChoiceDelta{},
+			FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+		}}},
+	}
+
+	attrs := messagesAttr(OutputMessages, chatCompletionChunkMessages(chunks))
+	require.Len(t, attrs, 1)
+	require.JSONEq(t,
+		`[{"role":"assistant","parts":[{"type":"text","content":"hi there"}],"finish_reason":"stop"}]`,
+		attrs[0].Value.AsString())
+}
+
 // TestChatCompletionChunkMessages_toolCallFragmentsOutOfOrder pins that
 // fragments are attributed by the index the provider sends, not by their
 // position within a chunk. Every chunk after the first carries the calls in a

@@ -6,6 +6,7 @@
 package otelgenai
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,10 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
@@ -216,6 +220,25 @@ func TestRecorders_operations(t *testing.T) {
 		{name: "speech", spanName: mustStartName(t, NewSpeechRecorder(cfg), &openai.SpeechRequest{Model: "m"}), expectedOperation: "speech m"},
 		{name: "transcription", spanName: mustStartName(t, NewTranscriptionRecorder(cfg), &openai.TranscriptionRequest{Model: "m"}), expectedOperation: "transcription m"},
 		{name: "translation", spanName: mustStartName(t, NewTranslationRecorder(cfg), &openai.TranslationRequest{Model: "m"}), expectedOperation: "translation m"},
+		{name: "rerank", spanName: mustStartName(t, NewRerankRecorder(cfg), &cohere.RerankV2Request{Model: "m"}), expectedOperation: "rerank m"},
+		// Anthropic messages are chat completions, so they share the chat
+		// operation rather than minting an "anthropic" one.
+		{name: "message", spanName: mustStartName(t, NewMessageRecorder(cfg), &anthropic.MessagesRequest{Model: "m"}), expectedOperation: "chat m"},
+		{name: "responses", spanName: mustStartName(t, NewResponsesRecorder(cfg), &openai.ResponseRequest{Model: "m"}), expectedOperation: "chat m"},
+		// The tokenize union carries the model on whichever request shape it
+		// holds, and neither when it is empty.
+		{name: "tokenize completion", spanName: mustStartName(t, NewTokenizeRecorder(cfg), &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{Model: "m"},
+		}), expectedOperation: "tokenize m"},
+		{name: "tokenize chat", spanName: mustStartName(t, NewTokenizeRecorder(cfg), &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{Model: "m"},
+		}), expectedOperation: "tokenize m"},
+		{name: "tokenize neither", spanName: mustStartName(t, NewTokenizeRecorder(cfg), &tokenize.RequestUnion{}), expectedOperation: "tokenize"},
+		// Both token counting endpoints report tokenize: no inference runs, so
+		// reporting chat would inflate chat span counts with requests that
+		// never reached a model.
+		{name: "responses input tokens", spanName: mustStartName(t, NewResponsesInputTokensRecorder(cfg), &openai.ResponseRequest{Model: "m"}), expectedOperation: "tokenize m"},
+		{name: "count tokens", spanName: mustStartName(t, NewCountTokensRecorder(cfg), &anthropic.CountTokensRequest{Model: "m"}), expectedOperation: "tokenize m"},
 	}
 
 	for _, tc := range tests {
@@ -223,6 +246,342 @@ func TestRecorders_operations(t *testing.T) {
 			require.Equal(t, tc.expectedOperation, tc.spanName)
 		})
 	}
+}
+
+// TestCompletionRecorder_RecordResponse pins the legacy completions mapping.
+// Usage is a pointer on this API, so a response that omits it must not emit
+// zero token counts.
+func TestCompletionRecorder_RecordResponse(t *testing.T) {
+	r := NewCompletionRecorder(NewConfig())
+
+	tests := []struct {
+		name     string
+		resp     *openai.CompletionResponse
+		expected []attribute.KeyValue
+	}{
+		{
+			name: "identity and usage",
+			resp: &openai.CompletionResponse{
+				ID:    "cmpl-1",
+				Model: "gpt-3.5-turbo-instruct",
+				Usage: &openai.Usage{PromptTokens: 5, CompletionTokens: 3},
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseID, "cmpl-1"),
+				attribute.String(ResponseModel, "gpt-3.5-turbo-instruct"),
+				attribute.Int(UsageInputTokens, 5),
+				attribute.Int(UsageOutputTokens, 3),
+			},
+		},
+		{
+			name:     "absent usage",
+			resp:     &openai.CompletionResponse{ID: "cmpl-2"},
+			expected: []attribute.KeyValue{attribute.String(ResponseID, "cmpl-2")},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				r.RecordResponse(span, tc.resp)
+				return false
+			})
+			testotel.RequireAttributesEqual(t, tc.expected, span.Attributes)
+			require.Equal(t, codes.Ok, span.Status.Code)
+		})
+	}
+}
+
+// TestCompletionRecorder_RecordResponseChunks pins that streaming reuses the
+// unary mapping. Completion chunks are whole responses rather than deltas, so
+// the last one that arrived is the response.
+func TestCompletionRecorder_RecordResponseChunks(t *testing.T) {
+	r := NewCompletionRecorder(NewConfig())
+
+	tests := []struct {
+		name     string
+		chunks   []*openai.CompletionResponse
+		expected []attribute.KeyValue
+	}{
+		{
+			name: "last chunk wins",
+			chunks: []*openai.CompletionResponse{
+				{ID: "cmpl-1", Model: "first"},
+				{ID: "cmpl-1", Model: "last", Usage: &openai.Usage{PromptTokens: 5, CompletionTokens: 3}},
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseID, "cmpl-1"),
+				attribute.String(ResponseModel, "last"),
+				attribute.Int(UsageInputTokens, 5),
+				attribute.Int(UsageOutputTokens, 3),
+			},
+		},
+		{
+			// A nil trailer must not erase what the stream already reported.
+			name: "trailing nil is skipped",
+			chunks: []*openai.CompletionResponse{
+				{ID: "cmpl-2", Model: "real"},
+				nil,
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseID, "cmpl-2"),
+				attribute.String(ResponseModel, "real"),
+			},
+		},
+		{name: "no chunks", chunks: nil},
+		{name: "only nil chunks", chunks: []*openai.CompletionResponse{nil}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				r.RecordResponseChunks(span, tc.chunks)
+				return false
+			})
+			testotel.RequireAttributesEqual(t, tc.expected, span.Attributes)
+			// A stream that carried nothing usable is still a successful
+			// response, not an error.
+			require.Equal(t, codes.Ok, span.Status.Code)
+		})
+	}
+}
+
+func TestEmbeddingsRecorder_RecordRequest(t *testing.T) {
+	r := NewEmbeddingsRecorder(NewConfig())
+
+	tests := []struct {
+		name           string
+		encodingFormat *string
+		expected       []attribute.KeyValue
+	}{
+		{
+			name:           "encoding format",
+			encodingFormat: ptr("base64"),
+			expected: []attribute.KeyValue{
+				attribute.String(OperationName, "embeddings"),
+				attribute.String(RequestModel, "text-embedding-3-small"),
+				attribute.StringSlice(RequestEncodingFormats, []string{"base64"}),
+			},
+		},
+		{
+			name: "absent encoding format",
+			expected: []attribute.KeyValue{
+				attribute.String(OperationName, "embeddings"),
+				attribute.String(RequestModel, "text-embedding-3-small"),
+			},
+		},
+		{
+			name:           "empty encoding format is omitted",
+			encodingFormat: ptr(""),
+			expected: []attribute.KeyValue{
+				attribute.String(OperationName, "embeddings"),
+				attribute.String(RequestModel, "text-embedding-3-small"),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &openai.EmbeddingRequest{EmbeddingBaseRequest: openai.EmbeddingBaseRequest{
+				Model:          "text-embedding-3-small",
+				EncodingFormat: tc.encodingFormat,
+			}}
+			span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				r.RecordRequest(span, req, nil)
+				return false
+			})
+			testotel.RequireAttributesEqual(t, tc.expected, span.Attributes)
+		})
+	}
+}
+
+// TestEmbeddingsRecorder_RecordResponse pins that the dimension count is only
+// reported when the vectors arrived as floats. Base64 vectors would need
+// decoding to be measured, and a wrong dimension count is worse than none.
+func TestEmbeddingsRecorder_RecordResponse(t *testing.T) {
+	r := NewEmbeddingsRecorder(NewConfig())
+
+	tests := []struct {
+		name     string
+		resp     *openai.EmbeddingResponse
+		expected []attribute.KeyValue
+	}{
+		{
+			name: "float vectors report dimensions",
+			resp: &openai.EmbeddingResponse{
+				Model: "text-embedding-3-small",
+				Usage: openai.EmbeddingUsage{PromptTokens: 8, TotalTokens: 8},
+				Data:  []openai.Embedding{{Embedding: openai.EmbeddingUnion{Value: []float64{0.1, 0.2, 0.3}}}},
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseModel, "text-embedding-3-small"),
+				attribute.Int(UsageInputTokens, 8),
+				attribute.Int(EmbeddingsDimensionCount, 3),
+			},
+		},
+		{
+			name: "base64 vectors omit dimensions",
+			resp: &openai.EmbeddingResponse{
+				Model: "text-embedding-3-small",
+				Usage: openai.EmbeddingUsage{PromptTokens: 8},
+				Data:  []openai.Embedding{{Embedding: openai.EmbeddingUnion{Value: "ZmFrZQ=="}}},
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseModel, "text-embedding-3-small"),
+				attribute.Int(UsageInputTokens, 8),
+			},
+		},
+		{
+			name: "empty vector omits dimensions",
+			resp: &openai.EmbeddingResponse{
+				Model: "text-embedding-3-small",
+				Data:  []openai.Embedding{{Embedding: openai.EmbeddingUnion{Value: []float64{}}}},
+			},
+			expected: []attribute.KeyValue{
+				attribute.String(ResponseModel, "text-embedding-3-small"),
+			},
+		},
+		{name: "empty response", resp: &openai.EmbeddingResponse{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				r.RecordResponse(span, tc.resp)
+				return false
+			})
+			testotel.RequireAttributesEqual(t, tc.expected, span.Attributes)
+			require.Equal(t, codes.Ok, span.Status.Code)
+		})
+	}
+}
+
+// TestResponsesInputTokensRecorder_records pins that the endpoint reports the
+// token count it returns and nothing about the request beyond the model: no
+// inference runs, so sampling parameters and messages have no meaning here.
+func TestResponsesInputTokensRecorder_records(t *testing.T) {
+	r := NewResponsesInputTokensRecorder(&Config{CaptureMessageContent: true})
+
+	req := &openai.ResponseRequest{Model: "gpt-5-nano", Instructions: "be brief", Temperature: ptr(0.3)}
+	reqSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		r.RecordRequest(span, req, nil)
+		return false
+	})
+	testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+		attribute.String(OperationName, "tokenize"),
+		attribute.String(RequestModel, "gpt-5-nano"),
+	}, reqSpan.Attributes)
+
+	respSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		r.RecordResponse(span, &openai.ResponsesInputTokensResponse{InputTokens: 42})
+		return false
+	})
+	testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+		attribute.Int(UsageInputTokens, 42),
+	}, respSpan.Attributes)
+	require.Equal(t, codes.Ok, respSpan.Status.Code)
+}
+
+// TestCountTokensRecorder_records pins that Anthropic's count_tokens describes
+// the conversation it is counting exactly as the messages endpoint would, and
+// that the content stays behind the same opt-in.
+func TestCountTokensRecorder_records(t *testing.T) {
+	const secret = "SENSITIVE-PROMPT-TEXT"
+	req := &anthropic.CountTokensRequest{
+		Model:    "claude-sonnet-5",
+		System:   &anthropic.SystemPrompt{Text: secret},
+		Messages: []anthropic.MessageParam{anthropicUserMessage(secret)},
+		Tools: []anthropic.ToolUnion{
+			{Tool: &anthropic.Tool{Type: "custom", Name: "get_weather"}},
+		},
+	}
+
+	t.Run("content captured", func(t *testing.T) {
+		r := NewCountTokensRecorder(&Config{CaptureMessageContent: true})
+		span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+			r.RecordRequest(span, req, nil)
+			return false
+		})
+		testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+			attribute.String(OperationName, "tokenize"),
+			attribute.String(RequestModel, "claude-sonnet-5"),
+			attribute.String(InputMessages, `[{"role":"user","parts":[{"type":"text","content":"`+secret+`"}]}]`),
+			attribute.String(SystemInstructions, `[{"type":"text","content":"`+secret+`"}]`),
+			attribute.String(ToolDefinitions, `[{"type":"custom","name":"get_weather"}]`),
+		}, span.Attributes)
+	})
+
+	t.Run("content withheld by default", func(t *testing.T) {
+		r := NewCountTokensRecorder(NewConfig())
+		span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+			r.RecordRequest(span, req, nil)
+			return false
+		})
+		testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+			attribute.String(OperationName, "tokenize"),
+			attribute.String(RequestModel, "claude-sonnet-5"),
+		}, span.Attributes)
+	})
+
+	t.Run("response is the token count", func(t *testing.T) {
+		r := NewCountTokensRecorder(NewConfig())
+		span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+			r.RecordResponse(span, &anthropic.CountTokensResponse{InputTokens: 42})
+			return false
+		})
+		testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+			attribute.Int(UsageInputTokens, 42),
+		}, span.Attributes)
+		require.Equal(t, codes.Ok, span.Status.Code)
+	})
+}
+
+// TestRecorder_RecordResponseOnError pins that the shared error path carries
+// the recorder's own config, so an endpoint constructed without content capture
+// cannot leak a provider error body that echoes the prompt.
+func TestRecorder_RecordResponseOnError(t *testing.T) {
+	const body = `{"error":{"message":"the prompt was: my secret"}}`
+
+	for _, tc := range []struct {
+		name    string
+		capture bool
+	}{
+		{name: "capture off omits body", capture: false},
+		{name: "capture on includes body", capture: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewChatCompletionRecorder(&Config{CaptureMessageContent: tc.capture})
+			span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				r.RecordResponseOnError(span, 429, []byte(body))
+				return false
+			})
+
+			testotel.RequireAttributesEqual(t, []attribute.KeyValue{
+				attribute.String(ErrorType, "429"),
+			}, span.Attributes)
+			require.Equal(t, codes.Error, span.Status.Code)
+			require.Equal(t, tc.capture, strings.Contains(span.Status.Description, "my secret"))
+		})
+	}
+}
+
+// TestRecorders_nilConfigReadsEnv pins that a nil config falls back to the
+// environment rather than to the compiled default. Passing nil is how the
+// gateway's own wiring would inherit the operator's opt-in.
+func TestRecorders_nilConfigReadsEnv(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	t.Setenv(EnvCaptureMessageContent, "true")
+
+	r := NewChatCompletionRecorder(nil)
+	span := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		r.RecordRequest(span, &openai.ChatCompletionRequest{
+			Model:    "gpt-5-nano",
+			Messages: []openai.ChatCompletionMessageParamUnion{userMessage("hello")},
+		}, nil)
+		return false
+	})
+
+	require.True(t, hasAttr(span.Attributes, InputMessages))
 }
 
 func mustStartName[ReqT, RespT, ChunkT any](t *testing.T, r tracingapi.SpanRecorder[ReqT, RespT, ChunkT], req *ReqT) string {

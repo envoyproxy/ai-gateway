@@ -67,6 +67,19 @@ func TestChatInputMessages(t *testing.T) {
 			expected: `[{"role":"tool","parts":[{"type":"tool_call_response","content":"72F","id":"call_1"}]}]`,
 		},
 		{
+			// The call id still identifies which call this answers, so the part
+			// is kept even when the tool returned nothing.
+			name: "tool response without content keeps the call id",
+			req: &openai.ChatCompletionRequest{Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfTool: &openai.ChatCompletionToolMessageParam{
+					Role:       openai.ChatMessageRoleTool,
+					ToolCallID: "call_1",
+					Content:    openai.ContentUnion{Value: ""},
+				}},
+			}},
+			expected: `[{"role":"tool","parts":[{"type":"tool_call_response","id":"call_1"}]}]`,
+		},
+		{
 			name: "empty content yields empty parts",
 			req: &openai.ChatCompletionRequest{Messages: []openai.ChatCompletionMessageParamUnion{
 				userMessage(""),

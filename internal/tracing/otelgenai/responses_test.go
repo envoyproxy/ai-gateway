@@ -136,6 +136,27 @@ func TestResponsesOutputMessages(t *testing.T) {
 				`"name":"get_weather","arguments":"{\"city\":\"Berlin\"}"}]}]`,
 		},
 		{
+			// A generated image is recorded by type only: the payload is
+			// base64 bytes and the conventions define no attribute for them.
+			name: "image generation recorded by type only",
+			resp: &openai.Response{Output: []openai.ResponseOutputItemUnion{{
+				OfImageGenerationCall: &openai.ResponseOutputItemImageGenerationCall{},
+			}}},
+			expected: `[{"role":"assistant","parts":[{"type":"image"}]}]`,
+		},
+		{
+			// The content union also has a bare string form, which older
+			// providers return in place of the content array.
+			name: "string content",
+			resp: &openai.Response{Output: []openai.ResponseOutputItemUnion{{
+				OfOutputMessage: &openai.ResponseOutputMessage{
+					Role:    "assistant",
+					Content: openai.ResponseOutputMessageContentUnion{OfString: ptr("hi there")},
+				},
+			}}},
+			expected: `[{"role":"assistant","parts":[{"type":"text","content":"hi there"}]}]`,
+		},
+		{
 			name: "reasoning recorded by type only",
 			resp: &openai.Response{Output: []openai.ResponseOutputItemUnion{{
 				OfReasoning: &openai.ResponseReasoningItem{},
@@ -147,6 +168,34 @@ func TestResponsesOutputMessages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			attrs := messagesAttr(OutputMessages, responsesOutputMessages(tc.resp))
+			if tc.expected == "" {
+				require.Empty(t, attrs)
+				return
+			}
+			require.Len(t, attrs, 1)
+			require.JSONEq(t, tc.expected, attrs[0].Value.AsString())
+		})
+	}
+}
+
+// TestResponsesSystemInstructions pins that the instructions field maps to its
+// own attribute rather than being folded into the conversation, because this
+// API models it separately.
+func TestResponsesSystemInstructions(t *testing.T) {
+	tests := []struct {
+		name         string
+		instructions string
+		expected     string
+	}{
+		{name: "absent", instructions: "", expected: ""},
+		{name: "present", instructions: "be brief", expected: `[{"type":"text","content":"be brief"}]`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs := partsAttr(SystemInstructions, responsesSystemInstructions(&openai.ResponseRequest{
+				Instructions: tc.instructions,
+			}))
 			if tc.expected == "" {
 				require.Empty(t, attrs)
 				return

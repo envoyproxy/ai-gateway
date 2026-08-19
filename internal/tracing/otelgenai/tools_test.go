@@ -46,6 +46,13 @@ func TestChatToolDefinitions(t *testing.T) {
 			}}},
 			expected: `[{"type":"google_search","name":""}]`,
 		},
+		{
+			// A tool with neither a type nor a name describes nothing, so it
+			// is dropped rather than emitted as an empty object.
+			name:     "tool with neither type nor name is dropped",
+			req:      &openai.ChatCompletionRequest{Tools: []openai.Tool{{}}},
+			expected: "",
+		},
 	}
 
 	for _, tc := range tests {
@@ -78,6 +85,29 @@ func TestAnthropicToolDefinitions(t *testing.T) {
 	require.Equal(t, "Look up the weather", defs[0].Description)
 	require.Equal(t, "bash", defs[1].Name)
 	require.Equal(t, "bash_20250124", defs[1].Type)
+}
+
+// TestAnthropicToolDefinitions_variants pins every arm of the tool union. The
+// provider-native tools are fixed capabilities, so they are recorded by type
+// and name; only a custom tool carries a schema.
+func TestAnthropicToolDefinitions_variants(t *testing.T) {
+	defs := anthropicToolDefinitions(&anthropicschema.MessagesRequest{
+		Tools: []anthropicschema.ToolUnion{
+			{WebSearchTool: &anthropicschema.WebSearchTool{Type: "web_search_20250305", Name: "web_search"}},
+			{TextEditorTool20250124: &anthropicschema.TextEditorTool20250124{Type: "text_editor_20250124", Name: "str_replace_editor"}},
+			{TextEditorTool20250429: &anthropicschema.TextEditorTool20250429{Type: "text_editor_20250429", Name: "str_replace_based_edit_tool"}},
+			{TextEditorTool20250728: &anthropicschema.TextEditorTool20250728{Type: "text_editor_20250728", Name: "str_replace_based_edit_tool"}},
+			// An unset union must not contribute a blank definition.
+			{},
+		},
+	})
+
+	require.Equal(t, []toolDefinition{
+		{Type: "web_search_20250305", Name: "web_search"},
+		{Type: "text_editor_20250124", Name: "str_replace_editor"},
+		{Type: "text_editor_20250429", Name: "str_replace_based_edit_tool"},
+		{Type: "text_editor_20250728", Name: "str_replace_based_edit_tool"},
+	}, defs)
 }
 
 // TestAnthropicToolDefinitions_schema pins how the input schema is carried. An
@@ -160,6 +190,14 @@ func TestCompletionMessages(t *testing.T) {
 			name:     "token array reports its length",
 			prompt:   []int64{1, 2, 3},
 			expected: `[{"role":"user","parts":[{"type":"text","content":"<3 tokens>"}]}]`,
+		},
+		{
+			// A batch of pre-tokenized prompts becomes one message each, so the
+			// batch size stays visible.
+			name:   "nested token arrays report each length",
+			prompt: [][]int64{{1, 2, 3}, {4, 5}},
+			expected: `[{"role":"user","parts":[{"type":"text","content":"<3 tokens>"}]},` +
+				`{"role":"user","parts":[{"type":"text","content":"<2 tokens>"}]}]`,
 		},
 		{name: "unsupported type", prompt: 42, expected: ""},
 	}

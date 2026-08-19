@@ -181,6 +181,27 @@ func TestTracer_StartSpanAndInjectMeta_ParentTraceContext(t *testing.T) {
 	}
 }
 
+// TestTracer_StartSpanAndInjectMeta_unsampled pins that an unsampled request
+// still gets trace context injected into its _meta. Dropping the injection would
+// break propagation to the backend for the whole trace, not just this span, so
+// the nil span and the populated meta must both hold.
+func TestTracer_StartSpanAndInjectMeta_unsampled(t *testing.T) {
+	tp := trace.NewTracerProvider(trace.WithSampler(trace.NeverSample()))
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, mcpVocabularyOTel(false))
+
+	reqID, _ := jsonrpc.MakeID("id")
+	p := &mcp.InitializeParams{}
+	span := tracer.StartSpanAndInjectMeta(
+		t.Context(),
+		&jsonrpc.Request{ID: reqID, Method: "initialize"},
+		p,
+		make(http.Header),
+	)
+
+	require.Nil(t, span)
+	require.NotEmpty(t, p.GetMeta(), "trace context must be injected even when unsampled")
+}
+
 func Test_otelMCPParamsAttributes(t *testing.T) {
 	cases := []struct {
 		p        mcp.Params
@@ -188,6 +209,21 @@ func Test_otelMCPParamsAttributes(t *testing.T) {
 	}{
 		{
 			p: &mcp.InitializeParams{},
+		},
+		{
+			// The client identity is not defined by the OTel conventions, but
+			// it is what tells an operator which client opened the session, so
+			// it is kept under the gateway-specific mcp.client.* keys.
+			p: &mcp.InitializeParams{ClientInfo: &mcp.Implementation{
+				Name:    "claude",
+				Title:   "Claude Desktop",
+				Version: "1.0.0",
+			}},
+			expected: []attribute.KeyValue{
+				attribute.String("mcp.client.name", "claude"),
+				attribute.String("mcp.client.title", "Claude Desktop"),
+				attribute.String("mcp.client.version", "1.0.0"),
+			},
 		},
 		{
 			p: &mcp.ListToolsParams{},
