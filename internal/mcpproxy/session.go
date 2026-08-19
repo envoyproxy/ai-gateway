@@ -698,7 +698,6 @@ func (s *session) mergedCapabilities() *mcpsdk.ServerCapabilities {
 	return merged
 }
 
-
 // String implements fmt.Stringer.
 func (g gatewayToMCPServerSessionID) String() string { return string(g) }
 
