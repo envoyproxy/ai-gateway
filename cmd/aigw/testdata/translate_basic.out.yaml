@@ -192,11 +192,11 @@ metadata:
   name: envoy-ai-gateway-basic-default-21a9f8f801bd
 stringData:
   index.yaml: |
-    checksum: 715d03a335eb2a5e469e0fd1a022b4bf0b064e2ee2bf5f5c431dbdc3f30498c5
+    checksum: cd798e6cd5c470c0fa58338ada712ca62e110a90a01741ee2f6e2f74a84e970e
     parts:
     - name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
       path: parts/000
-      sizeBytes: 1022
+      sizeBytes: 1254
     uuid: aigw-translate
     version: dev
 ---
@@ -205,7 +205,7 @@ kind: Secret
 metadata:
   name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
 data:
-  chunk: YmFja2VuZHM6Ci0gYXV0aDoKICAgIGFwaUtleToKICAgICAga2V5OiBhcGlLZXkKICBtb2RlbE5hbWVPdmVycmlkZTogIiIKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtb3BlbmFpL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8wL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogT3BlbkFJCiAgICBwcmVmaXg6IHYxCi0gYXV0aDoKICAgIGF3czoKICAgICAgY3JlZGVudGlhbEZpbGVMaXRlcmFsOiB8CiAgICAgICAgW2RlZmF1bHRdCiAgICAgICAgYXdzX2FjY2Vzc19rZXlfaWQgPSBBV1NfQUNDRVNTX0tFWV9JRAogICAgICAgIGF3c19zZWNyZXRfYWNjZXNzX2tleSA9IEFXU19TRUNSRVRfQUNDRVNTX0tFWQogICAgICByZWdpb246IHVzLWVhc3QtMQogIG1vZGVsTmFtZU92ZXJyaWRlOiB1cy5tZXRhLmxsYW1hMy0yLTFiLWluc3RydWN0LXYxOjAKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtYXdzL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8xL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogQVdTQmVkcm9jawotIG1vZGVsTmFtZU92ZXJyaWRlOiAiIgogIG5hbWU6IGRlZmF1bHQvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy10ZXN0dXBzdHJlYW0vcm91dGUvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy9ydWxlLzIvcmVmLzAKICBzY2hlbWE6CiAgICBuYW1lOiBPcGVuQUkKICAgIHByZWZpeDogdjEKbW9kZWxzOgotIENyZWF0ZWRBdDogIjIwMjUtMDUtMjNUMDA6MDA6MDBaIgogIE5hbWU6IGdwdC00by1taW5pCiAgT3duZWRCeTogb3BlbmFpCi0gQ3JlYXRlZEF0OiAiMjAyNS0wNS0yM1QwMDowMDowMFoiCiAgTmFtZTogbGxhbWEzLTItMWItaW5zdHJ1Y3QtdjEKICBPd25lZEJ5OiBhd3MKLSBDcmVhdGVkQXQ6ICIyMDI1LTA1LTIzVDAwOjAwOjAwWiIKICBOYW1lOiBzb21lLWNvb2wtc2VsZi1ob3N0ZWQtbW9kZWwKICBPd25lZEJ5OiBFbnZveSBBSSBHYXRld2F5CnV1aWQ6IGFpZ3ctdHJhbnNsYXRlCnZlcnNpb246IGRldgo=
+  chunk: YmFja2VuZHM6Ci0gYXV0aDoKICAgIGFwaUtleToKICAgICAga2V5OiBhcGlLZXkKICBtb2RlbE5hbWVPdmVycmlkZTogIiIKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtb3BlbmFpL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8wL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogT3BlbkFJCiAgICBwcmVmaXg6IHYxCi0gYXV0aDoKICAgIGF3czoKICAgICAgY3JlZGVudGlhbEZpbGVMaXRlcmFsOiB8CiAgICAgICAgW2RlZmF1bHRdCiAgICAgICAgYXdzX2FjY2Vzc19rZXlfaWQgPSBBV1NfQUNDRVNTX0tFWV9JRAogICAgICAgIGF3c19zZWNyZXRfYWNjZXNzX2tleSA9IEFXU19TRUNSRVRfQUNDRVNTX0tFWQogICAgICByZWdpb246IHVzLWVhc3QtMQogIG1vZGVsTmFtZU92ZXJyaWRlOiB1cy5tZXRhLmxsYW1hMy0yLTFiLWluc3RydWN0LXYxOjAKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtYXdzL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8xL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogQVdTQmVkcm9jawotIG1vZGVsTmFtZU92ZXJyaWRlOiAiIgogIG5hbWU6IGRlZmF1bHQvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy10ZXN0dXBzdHJlYW0vcm91dGUvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy9ydWxlLzIvcmVmLzAKICBzY2hlbWE6CiAgICBuYW1lOiBPcGVuQUkKICAgIHByZWZpeDogdjEKbW9kZWxzOgotIENyZWF0ZWRBdDogIjIwMjUtMDUtMjNUMDA6MDA6MDBaIgogIERpc3BsYXlOYW1lOiBncHQtNG8tbWluaQogIE1heElucHV0VG9rZW5zOiBudWxsCiAgTWF4VG9rZW5zOiBudWxsCiAgTmFtZTogZ3B0LTRvLW1pbmkKICBPd25lZEJ5OiBvcGVuYWkKLSBDcmVhdGVkQXQ6ICIyMDI1LTA1LTIzVDAwOjAwOjAwWiIKICBEaXNwbGF5TmFtZTogbGxhbWEzLTItMWItaW5zdHJ1Y3QtdjEKICBNYXhJbnB1dFRva2VuczogbnVsbAogIE1heFRva2VuczogbnVsbAogIE5hbWU6IGxsYW1hMy0yLTFiLWluc3RydWN0LXYxCiAgT3duZWRCeTogYXdzCi0gQ3JlYXRlZEF0OiAiMjAyNS0wNS0yM1QwMDowMDowMFoiCiAgRGlzcGxheU5hbWU6IHNvbWUtY29vbC1zZWxmLWhvc3RlZC1tb2RlbAogIE1heElucHV0VG9rZW5zOiBudWxsCiAgTWF4VG9rZW5zOiBudWxsCiAgTmFtZTogc29tZS1jb29sLXNlbGYtaG9zdGVkLW1vZGVsCiAgT3duZWRCeTogRW52b3kgQUkgR2F0ZXdheQp1dWlkOiBhaWd3LXRyYW5zbGF0ZQp2ZXJzaW9uOiBkZXYK
 ---
 apiVersion: v1
 kind: Secret
@@ -240,12 +240,21 @@ stringData:
         prefix: v1
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"
+      DisplayName: gpt-4o-mini
+      MaxInputTokens: null
+      MaxTokens: null
       Name: gpt-4o-mini
       OwnedBy: openai
     - CreatedAt: "2025-05-23T00:00:00Z"
+      DisplayName: llama3-2-1b-instruct-v1
+      MaxInputTokens: null
+      MaxTokens: null
       Name: llama3-2-1b-instruct-v1
       OwnedBy: aws
     - CreatedAt: "2025-05-23T00:00:00Z"
+      DisplayName: some-cool-self-hosted-model
+      MaxInputTokens: null
+      MaxTokens: null
       Name: some-cool-self-hosted-model
       OwnedBy: Envoy AI Gateway
     uuid: aigw-translate

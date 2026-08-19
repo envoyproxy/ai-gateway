@@ -54,8 +54,8 @@ type Config struct {
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
 
-// Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
-// and is used to populate the "/models" endpoint in OpenAI-compatible APIs.
+// Model corresponds to the model object in the OpenAI- and Anthropic-compatible APIs
+// and is used to populate the "/models" and "/anthropic/v1/models" endpoints.
 type Model struct {
 	// Name will be exported as the field of "ID" in OpenAI-compatible APIs.
 	Name string
@@ -63,6 +63,15 @@ type Model struct {
 	OwnedBy string
 	// createdAt will be exported as the field of "Created" in OpenAI-compatible API "/models".
 	CreatedAt time.Time
+	// DisplayName will be exported as the field of "display_name" in the Anthropic-compatible API
+	// "/anthropic/v1/models". Not used by the OpenAI-compatible API, which has no equivalent field.
+	DisplayName string
+	// MaxInputTokens, when non-nil, will be exported as the field of "max_input_tokens" in the
+	// Anthropic-compatible API "/anthropic/v1/models". Not used by the OpenAI-compatible API.
+	MaxInputTokens *int64
+	// MaxTokens, when non-nil, will be exported as the field of "max_tokens" in the Anthropic-compatible
+	// API "/anthropic/v1/models". Not used by the OpenAI-compatible API.
+	MaxTokens *int64
 }
 
 // GlobalLLMRequestCost specifies gateway-level default request cost configuration.

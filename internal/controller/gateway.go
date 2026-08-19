@@ -406,9 +406,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 					model := filterapi.Model{
-						Name:      h.Value,
-						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
-						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+						Name:           h.Value,
+						CreatedAt:      ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
+						OwnedBy:        ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+						DisplayName:    ptr.Deref(rule.ModelsDisplayName, h.Value),
+						MaxInputTokens: rule.ModelsMaxInputTokens,
+						MaxTokens:      rule.ModelsMaxTokens,
 					}
 					ec.Models = append(ec.Models, model)
 					if len(hostnames) > 0 {

@@ -592,6 +592,89 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 	require.ElementsMatch(t, []string{"scoped-model", "unscoped-model"}, gotHostModels)
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_ModelsDisplayNameAndTokenLimits verifies that
+// ModelsDisplayName, ModelsMaxInputTokens, and ModelsMaxTokens on a rule propagate to the
+// corresponding filterapi.Model, and that omitting them preserves today's defaults (DisplayName
+// falls back to the model name, MaxInputTokens/MaxTokens stay nil).
+func TestGatewayController_reconcileFilterConfigSecret_ModelsDisplayNameAndTokenLimits(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	maxInputTokens := int64(1_000_000)
+	maxTokens := int64(8192)
+	route := aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+					Matches: []aigv1b1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{
+							{Name: internalapi.ModelNameHeaderKeyDefault, Value: "claude-opus-5"},
+						}},
+					},
+					ModelsDisplayName:    ptr.To("Claude Opus 5"),
+					ModelsMaxInputTokens: &maxInputTokens,
+					ModelsMaxTokens:      &maxTokens,
+				},
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "orange"}},
+					Matches: []aigv1b1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{
+							{Name: internalapi.ModelNameHeaderKeyDefault, Value: "claude-haiku-4-5"},
+						}},
+					},
+					// ModelsDisplayName/ModelsMaxInputTokens/ModelsMaxTokens intentionally left unset.
+				},
+			},
+		},
+	}
+	for _, b := range []*aigv1b1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		require.NoError(t, fakeClient.Create(t.Context(), b))
+	}
+
+	const someNamespace = "some-namespace"
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw-hostname", gwNamespace, someNamespace,
+		[]aigv1b1.AIGatewayRoute{route}, nil, "foouuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective, "expected filter config to be effective")
+
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw-hostname", gwNamespace)
+	require.Len(t, fc.Models, 2)
+
+	byName := make(map[string]filterapi.Model, len(fc.Models))
+	for _, m := range fc.Models {
+		byName[m.Name] = m
+	}
+
+	opus := byName["claude-opus-5"]
+	require.Equal(t, "Claude Opus 5", opus.DisplayName)
+	require.Equal(t, &maxInputTokens, opus.MaxInputTokens)
+	require.Equal(t, &maxTokens, opus.MaxTokens)
+
+	haiku := byName["claude-haiku-4-5"]
+	require.Equal(t, "claude-haiku-4-5", haiku.DisplayName, "DisplayName should fall back to the model name when unset")
+	require.Nil(t, haiku.MaxInputTokens)
+	require.Nil(t, haiku.MaxTokens)
+}
+
 // TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUnscopedModelsEmpty
 // regression-locks the gate added to avoid duplicating Models into UnscopedModels when no route is
 // hostname-scoped. Without the gate, every existing golden YAML that didn't expect an

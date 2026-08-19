@@ -120,11 +120,18 @@ func NewAnthropicModelsProcessor(config *filterapi.RuntimeConfig, requestHeaders
 		Data: make([]anthropic.Model, 0, len(selectedModels)),
 	}
 	for _, m := range selectedModels {
+		displayName := m.DisplayName
+		if displayName == "" {
+			// Defensive: the controller always sets this, but guard against configs built by other means.
+			displayName = m.Name
+		}
 		modelList.Data = append(modelList.Data, anthropic.Model{
-			ID:          m.Name,
-			Type:        "model",
-			DisplayName: m.Name,
-			CreatedAt:   m.CreatedAt.UTC().Format(time.RFC3339),
+			ID:             m.Name,
+			Type:           "model",
+			DisplayName:    displayName,
+			CreatedAt:      m.CreatedAt.UTC().Format(time.RFC3339),
+			MaxInputTokens: m.MaxInputTokens,
+			MaxTokens:      m.MaxTokens,
 		})
 	}
 	if len(modelList.Data) > 0 {
