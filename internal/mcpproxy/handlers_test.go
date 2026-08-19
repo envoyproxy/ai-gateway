@@ -710,6 +710,29 @@ func TestMergeToolsList_MetaResourceURIRewrite(t *testing.T) {
 	require.Nil(t, plainTool.Meta)
 }
 
+func TestMergeToolsList_PreservesExplicitFalseToolHints(t *testing.T) {
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res: mcp.ListToolsResult{Tools: []*mcp.Tool{
+				{
+					Name:        "write-tool",
+					Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+				},
+			}},
+		},
+	}
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].toolSelectors = nil
+	proxy.requestHeaders = http.Header{}
+
+	result := proxy.mergeToolsList(&session{route: "test-route"}, responses)
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"readOnlyHint":false`)
+	require.Contains(t, string(encoded), `"idempotentHint":false`)
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -2096,7 +2119,13 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+	var response struct {
+		Result struct {
+			Contents []*mcp.ResourceContents `json:"contents"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Empty(t, response.Result.Contents)
 
 	t.Run("no session for known backend", func(t *testing.T) {
 		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
@@ -2910,4 +2939,61 @@ func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestServePOST_InitializeRequest_ForwardsExtensions asserts a backend's extensions capability
+// reaches the client. Without it a backend that advertises an extension, e.g. MCP Apps
+// (io.modelcontextprotocol/ui), appears to support none once it is behind the proxy, so the client
+// never negotiates it and ignores the ui metadata the backend puts on its tools.
+func TestServePOST_InitializeRequest_ForwardsExtensions(t *testing.T) {
+	const initializeWithExtensions = `{
+"jsonrpc": "2.0",
+"id": 1,
+"result": {
+"protocolVersion": "2025-06-18",
+"capabilities": {
+"tools": {"listChanged": true},
+"extensions": {"io.modelcontextprotocol/ui": {}}
+},
+"serverInfo": {"name": "ui-backend", "version": "1.0.0"}
+}
+}`
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "test-session-123")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(initializeWithExtensions))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(testServer.Close)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = testServer.URL
+
+	id, err := jsonrpc.MakeID("test-1")
+	require.NoError(t, err)
+	initReq := &jsonrpc.Request{Method: "initialize", ID: id, Params: []byte(`{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}`)}
+	body, err := jsonrpc.EncodeMessage(initReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(internalapi.MCPRouteHeader, "test-route")
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+
+	var resp struct {
+		Result struct {
+			Capabilities struct {
+				Extensions map[string]any `json:"extensions"`
+			} `json:"capabilities"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Contains(t, resp.Result.Capabilities.Extensions, "io.modelcontextprotocol/ui")
 }
