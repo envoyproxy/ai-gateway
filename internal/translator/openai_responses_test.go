@@ -255,6 +255,30 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		require.Equal(t, uint32(0), reasoningTokens)
 	})
 
+	t.Run("non-streaming response with tool search output", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+		respJSON := []byte(`{
+			"id":"resp_tool_search",
+			"object":"response",
+			"created_at":1787101200,
+			"status":"completed",
+			"model":"gpt-5.1-codex",
+			"output":[{
+				"type":"tool_search_output",
+				"id":"tso_123",
+				"call_id":"call_123",
+				"execution":"server",
+				"status":"completed",
+				"tools":[{"type":"function","name":"get_weather"}],
+				"created_by":"model"
+			}]
+		}`)
+
+		_, _, _, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(respJSON), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-5.1-codex", responseModel)
+	})
+
 	t.Run("non-streaming response with reasoning tokens", func(t *testing.T) {
 		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
 

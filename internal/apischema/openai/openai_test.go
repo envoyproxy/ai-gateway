@@ -4689,6 +4689,36 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			expRes: []byte(`{"type": "function_call_output", "call_id": "call-789", "id": "rs-123", "output": "output"}`),
 		},
 		{
+			name: "marshal tool_search_call",
+			input: ResponseInputItemUnionParam{
+				OfToolSearchCall: &ResponseToolSearchCall{
+					Type:      "tool_search_call",
+					Arguments: map[string]any{"query": "weather tools"},
+					CallID:    "call-789",
+					ID:        "ts-123",
+					Execution: "client",
+					Status:    "completed",
+				},
+			},
+			expRes: []byte(`{"type":"tool_search_call","arguments":{"query":"weather tools"},"call_id":"call-789","id":"ts-123","execution":"client","status":"completed"}`),
+		},
+		{
+			name: "marshal tool_search_output",
+			input: ResponseInputItemUnionParam{
+				OfToolSearchOutput: &ResponseToolSearchOutputItem{
+					Type:      "tool_search_output",
+					CallID:    "call-789",
+					ID:        "tso-123",
+					Execution: "client",
+					Status:    "completed",
+					Tools: []ResponseToolUnion{
+						{OfFunction: &FunctionToolParam{Type: "function", Name: "get_weather"}},
+					},
+				},
+			},
+			expRes: []byte(`{"type":"tool_search_output","tools":[{"type":"function","name":"get_weather"}],"call_id":"call-789","id":"tso-123","execution":"client","status":"completed"}`),
+		},
+		{
 			name: "marshal reasoning",
 			input: ResponseInputItemUnionParam{
 				OfReasoning: &ResponseReasoningItem{
@@ -5178,6 +5208,36 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: []byte(`{"type": "function_call_output", "call_id": "call-789", "id": "rs-123", "output": "output"}`),
+		},
+		{
+			name: "unmarshal tool_search_call",
+			expRes: ResponseInputItemUnionParam{
+				OfToolSearchCall: &ResponseToolSearchCall{
+					Type:      "tool_search_call",
+					Arguments: map[string]any{"query": "weather tools"},
+					CallID:    "call-789",
+					ID:        "ts-123",
+					Execution: "client",
+					Status:    "completed",
+				},
+			},
+			input: []byte(`{"type":"tool_search_call","arguments":{"query":"weather tools"},"call_id":"call-789","id":"ts-123","execution":"client","status":"completed"}`),
+		},
+		{
+			name: "unmarshal tool_search_output",
+			expRes: ResponseInputItemUnionParam{
+				OfToolSearchOutput: &ResponseToolSearchOutputItem{
+					Type:      "tool_search_output",
+					CallID:    "call-789",
+					ID:        "tso-123",
+					Execution: "client",
+					Status:    "completed",
+					Tools: []ResponseToolUnion{
+						{OfFunction: &FunctionToolParam{Type: "function", Name: "get_weather"}},
+					},
+				},
+			},
+			input: []byte(`{"type":"tool_search_output","tools":[{"type":"function","name":"get_weather"}],"call_id":"call-789","id":"tso-123","execution":"client","status":"completed"}`),
 		},
 		{
 			name: "unmarshal reasoning",
@@ -9556,6 +9616,38 @@ func TestResponseOutputItemUnionMarshalJSON(t *testing.T) {
 			},
 		},
 		{
+			name:   "tool search call",
+			expect: []byte(`{"type":"tool_search_call","arguments":{"query":"weather tools"},"call_id":"call-789","id":"ts-123","execution":"server","status":"completed","created_by":"model"}`),
+			input: ResponseOutputItemUnion{
+				OfToolSearchCall: &ResponseToolSearchCall{
+					Type:      "tool_search_call",
+					Arguments: map[string]any{"query": "weather tools"},
+					CallID:    "call-789",
+					ID:        "ts-123",
+					Execution: "server",
+					Status:    "completed",
+					CreatedBy: "model",
+				},
+			},
+		},
+		{
+			name:   "tool search output",
+			expect: []byte(`{"type":"tool_search_output","tools":[{"type":"function","name":"get_weather"}],"call_id":"call-789","id":"tso-123","execution":"server","status":"completed","created_by":"model"}`),
+			input: ResponseOutputItemUnion{
+				OfToolSearchOutput: &ResponseToolSearchOutputItem{
+					Type:      "tool_search_output",
+					CallID:    "call-789",
+					ID:        "tso-123",
+					Execution: "server",
+					Status:    "completed",
+					CreatedBy: "model",
+					Tools: []ResponseToolUnion{
+						{OfFunction: &FunctionToolParam{Type: "function", Name: "get_weather"}},
+					},
+				},
+			},
+		},
+		{
 			name: "compaction",
 			input: ResponseOutputItemUnion{
 				OfCompaction: &ResponseCompactionItem{
@@ -9877,6 +9969,38 @@ func TestResponseOutputItemUnionUnmarshalJSON(t *testing.T) {
 								{Type: "url", URL: "https://example.com"},
 							},
 						},
+					},
+				},
+			},
+		},
+		{
+			name:  "tool search call",
+			input: []byte(`{"type":"tool_search_call","arguments":{"query":"weather tools"},"call_id":"call-789","id":"ts-123","execution":"server","status":"completed","created_by":"model"}`),
+			expect: ResponseOutputItemUnion{
+				OfToolSearchCall: &ResponseToolSearchCall{
+					Type:      "tool_search_call",
+					Arguments: map[string]any{"query": "weather tools"},
+					CallID:    "call-789",
+					ID:        "ts-123",
+					Execution: "server",
+					Status:    "completed",
+					CreatedBy: "model",
+				},
+			},
+		},
+		{
+			name:  "tool search output",
+			input: []byte(`{"type":"tool_search_output","tools":[{"type":"function","name":"get_weather"}],"call_id":"call-789","id":"tso-123","execution":"server","status":"completed","created_by":"model"}`),
+			expect: ResponseOutputItemUnion{
+				OfToolSearchOutput: &ResponseToolSearchOutputItem{
+					Type:      "tool_search_output",
+					CallID:    "call-789",
+					ID:        "tso-123",
+					Execution: "server",
+					Status:    "completed",
+					CreatedBy: "model",
+					Tools: []ResponseToolUnion{
+						{OfFunction: &FunctionToolParam{Type: "function", Name: "get_weather"}},
 					},
 				},
 			},
