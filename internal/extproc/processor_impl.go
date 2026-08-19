@@ -572,6 +572,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
 		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+		// Remove content-encoding header if original body encoded but was mutated in the processor.
+		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 		if u.parent.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
