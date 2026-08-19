@@ -13,6 +13,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
@@ -77,6 +78,39 @@ func TestAnthropicToolDefinitions(t *testing.T) {
 	require.Equal(t, "Look up the weather", defs[0].Description)
 	require.Equal(t, "bash", defs[1].Name)
 	require.Equal(t, "bash_20250124", defs[1].Type)
+}
+
+// TestAnthropicToolDefinitions_schema pins how the input schema is carried. An
+// absent schema must not emit "parameters":null, which a consumer reads as "the
+// tool takes no arguments" rather than "the schema was not declared".
+func TestAnthropicToolDefinitions_schema(t *testing.T) {
+	tests := []struct {
+		name     string
+		schema   json.RawMessage
+		expected string
+	}{
+		{
+			name:     "absent schema omits parameters",
+			expected: `[{"type":"custom","name":"get_weather"}]`,
+		},
+		{
+			name:     "schema is carried as-is",
+			schema:   json.RawMessage(`{"type":"object","additionalProperties":false}`),
+			expected: `[{"type":"custom","name":"get_weather","parameters":{"type":"object","additionalProperties":false}}]`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs := toolDefinitionsAttr(anthropicToolDefinitions(&anthropicschema.MessagesRequest{
+				Tools: []anthropicschema.ToolUnion{
+					{Tool: &anthropicschema.Tool{Type: "custom", Name: "get_weather", InputSchema: tc.schema}},
+				},
+			}))
+			require.Len(t, attrs, 1)
+			require.JSONEq(t, tc.expected, attrs[0].Value.AsString())
+		})
+	}
 }
 
 // TestToolDefinitions_gatedByCapture pins that tool schemas are treated as

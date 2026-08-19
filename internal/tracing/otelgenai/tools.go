@@ -75,12 +75,19 @@ func anthropicTools(in []anthropicschema.ToolUnion) []toolDefinition {
 	for i := range in {
 		switch tool := &in[i]; {
 		case tool.Tool != nil:
-			defs = append(defs, toolDefinition{
+			def := toolDefinition{
 				Type:        tool.Tool.Type,
 				Name:        tool.Tool.Name,
 				Description: tool.Tool.Description,
-				Parameters:  tool.Tool.InputSchema,
-			})
+			}
+			// Assigning an absent schema would emit "parameters":null, because
+			// a nil json.RawMessage held in an any field is a non-nil
+			// interface and omitempty does not drop it. A null there reads as
+			// "takes no arguments" rather than "no schema was declared".
+			if len(tool.Tool.InputSchema) > 0 {
+				def.Parameters = tool.Tool.InputSchema
+			}
+			defs = append(defs, def)
 		case tool.BashTool != nil:
 			defs = append(defs, toolDefinition{Type: tool.BashTool.Type, Name: tool.BashTool.Name})
 		case tool.WebSearchTool != nil:
