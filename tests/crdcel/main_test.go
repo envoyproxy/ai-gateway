@@ -195,6 +195,9 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
+		// AWSCredentials used to be rejected outright by a CEL rule, because SigV4 needs three
+		// inputs and the override plumbing carried one string.
+		{name: "aws_credential_override.yaml"},
 		{name: "gcp_oidc.yaml"},
 		{name: "anthropic-apikey.yaml"},
 		{name: "google-apikey.yaml"},

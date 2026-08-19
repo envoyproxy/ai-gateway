@@ -573,13 +573,32 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 }
 
 func Test_isSensitiveHeader(t *testing.T) {
-	// The default keys plus any x-aigw-* header must be treated as sensitive so that
-	// upstream auth headers and per-request credential overrides are redacted in debug logs.
-	for _, key := range []string{"authorization", "Authorization", "x-api-key", "x-goog-api-key", "X-Goog-Api-Key", "x-aigw-goog-api-key"} {
-		require.True(t, isSensitiveHeader(key, sensitiveHeaderKeys), "expected %q to be sensitive", key)
-	}
-	for _, key := range []string{"content-type", "x-ai-eg-model", ":path"} {
-		require.False(t, isSensitiveHeader(key, sensitiveHeaderKeys), "expected %q to not be sensitive", key)
+	for _, tc := range []struct {
+		key  string
+		want bool
+	}{
+		{"authorization", true},
+		{"Authorization", true},
+		{"x-api-key", true},
+		{"x-goog-api-key", true},
+		{"X-Goog-Api-Key", true},
+		{"x-aigw-goog-api-key", true},
+		// x-aigw- headers carry per-request credential overrides.
+		{"x-aigw-api-key", true},
+		{"x-aigw-aws-secret-access-key", true},
+		// The prefix is configurable, so keeping an existing injector's names must not lose
+		// redaction. Match on the credential-part suffix.
+		{"x-aws-secret-access-key", true},
+		{"x-aws-access-key-id", true},
+		{"x-aws-session-token", true},
+		{"X-Tenant-AWS-Secret-Access-Key", true},
+		{"content-type", false},
+		{"x-request-id", false},
+		{"user-agent", false},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			require.Equal(t, tc.want, isSensitiveHeader(tc.key, sensitiveHeaderKeys))
+		})
 	}
 }
 
