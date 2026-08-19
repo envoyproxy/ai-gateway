@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,23 +31,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-// Caching hints applied to gateway-generated cacheable results (2026-07-28
-// caching spec). Servers MUST include caching hints (ttlMs/cacheScope) on
-// complete results for server/discover, tools/list, prompts/list,
-// resources/list, resources/templates/list, and resources/read.
-//
-// TODO: come up with a proper multiplexing-aware caching strategy. When the
-// gateway aggregates results from N backends, each backend can advertise its
-// own ttlMs/cacheScope and there is no single correct way to fold them into one
-// aggregated hint. For now, we mark TTL as 0 and cacheScope as private.
 const (
-	// defaultTTLMs marks aggregated results as immediately stale so clients
-	// re-fetch every time. Safe default until a multiplexing-aware TTL exists.
-	defaultTTLMs = 0
-
-	// defaultCacheScope keeps aggregated results private so they are never
-	// shared across authorization contexts.
-	defaultCacheScope = "private"
+	defaultTTLMs      = 0
+	defaultCacheScope = "public"
 
 	protocolVersion20251125 = "2025-11-25"
 	protocolVersion20260728 = "2026-07-28"
@@ -249,8 +236,6 @@ func (m *mcpRequestContext) handleServerDiscover(ctx context.Context, w http.Res
 	}
 	merged := mergeDiscoverResults(results)
 	merged.Instructions = fmt.Sprintf("Envoy AI Gateway — MCP proxy aggregating %d backends", len(routeConfig.backends))
-	merged.TTLMs = defaultTTLMs
-	merged.CacheScope = defaultCacheScope
 	writeJSONRPCResult(w, req.ID, merged)
 	return handlerResult{}, nil
 }
@@ -298,13 +283,39 @@ func discoverParams() []byte {
 // initialize path
 func mergeDiscoverResults(results []*mcp.DiscoverResult) *mcp.DiscoverResult {
 	caps := make([]*mcp.ServerCapabilities, 0, len(results))
+	cacheables := make([]mcp.Cacheable, 0, len(results))
 	for _, r := range results {
+		if r == nil {
+			continue
+		}
 		caps = append(caps, r.Capabilities)
+		cacheables = append(cacheables, r.Cacheable)
 	}
+	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
 	return &mcp.DiscoverResult{
-		SupportedVersions: supportedVersions,
+		SupportedVersions: mergeSupportedProtocolVersionsFromBackends(results),
 		Capabilities:      unionServerCapabilities(caps),
+		Cacheable: mcp.Cacheable{
+			TTLMs:      ttlMs,
+			CacheScope: cacheScope,
+		},
 	}
+}
+
+// mergeSupportedProtocolVersionsFromBackends merges the supported protocol versions from all servers.
+func mergeSupportedProtocolVersionsFromBackends(results []*mcp.DiscoverResult) []string {
+	versions := make([]string, 0, len(results))
+	for _, r := range results {
+		if r == nil {
+			continue
+		}
+		for _, v := range r.SupportedVersions {
+			if !slices.Contains(versions, v) {
+				versions = append(versions, v)
+			}
+		}
+	}
+	return versions
 }
 
 // handleModernToolsList handles tools/list on the modern stateless path (P1.7).
@@ -327,8 +338,6 @@ func (m *mcpRequestContext) handleModernToolsList(ctx context.Context, w http.Re
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](ctx, m, req, route, routeConfig)
 	result := m.mergeToolsList(&session{route: route}, responses)
-	result.TTLMs = defaultTTLMs
-	result.CacheScope = defaultCacheScope
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -348,8 +357,6 @@ func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w htt
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourcesResult](ctx, m, req, route, routeConfig)
 	result := m.mergeResourceList(&session{route: route}, responses)
-	result.TTLMs = defaultTTLMs
-	result.CacheScope = defaultCacheScope
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -367,8 +374,6 @@ func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Contex
 	}
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourceTemplatesResult](ctx, m, req, route, routeConfig)
 	result := m.mergeResourcesTemplateList(&session{route: route}, responses)
-	result.TTLMs = defaultTTLMs
-	result.CacheScope = defaultCacheScope
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -388,8 +393,6 @@ func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListPromptsResult](ctx, m, req, route, routeConfig)
 	result := m.mergePromptsList(&session{route: route}, responses)
-	result.TTLMs = defaultTTLMs
-	result.CacheScope = defaultCacheScope
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -657,4 +660,40 @@ func isSupportedVersion(v string) bool {
 		}
 	}
 	return false
+}
+
+// mergeCachingHintsFromBackends merges caching hints from multiple backends.
+//
+// Caching hints applied to gateway-generated cacheable results (2026-07-28
+// caching spec). Servers MUST include caching hints (ttlMs/cacheScope) on
+// complete results for server/discover, tools/list, prompts/list,
+// resources/list, resources/templates/list, and resources/read.
+//
+// TODO: come up with a proper multiplexing-aware caching strategy. Ideal way
+// would be to coalesce and shield the backends using an internal cache slice
+// so that fan-out requests don't crush downstream servers every time the shortest TTL expires.
+func mergeCachingHintsFromBackends(results []mcp.Cacheable) (int, string) {
+	ttlMs := defaultTTLMs
+	cacheScope := defaultCacheScope
+	hasTTL := false
+	for _, result := range results {
+		backendTTL := result.TTLMs
+		if backendTTL < 0 {
+			backendTTL = 0
+		}
+		if !hasTTL || backendTTL < ttlMs {
+			ttlMs = backendTTL
+			hasTTL = true
+		}
+
+		// Use the strictest scope across backends. Any non-public scope falls back
+		// to private to prevent proxy responses from being cached too broadly.
+		if result.CacheScope != "" && result.CacheScope != defaultCacheScope {
+			cacheScope = "private"
+		}
+	}
+	if len(results) == 0 {
+		return defaultTTLMs, defaultCacheScope
+	}
+	return ttlMs, cacheScope
 }

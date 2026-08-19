@@ -230,7 +230,7 @@ func TestHandleServerDiscover_MergesBackends(t *testing.T) {
 	require.Contains(t, result, "instructions")
 	require.Contains(t, string(result["instructions"]), "aggregating 2 backends")
 	require.Equal(t, "0", string(result["ttlMs"]))
-	require.Equal(t, `"private"`, string(result["cacheScope"]))
+	require.Equal(t, `"public"`, string(result["cacheScope"]))
 }
 
 func TestHandleServerDiscover_PartialFailureStillMerges(t *testing.T) {
@@ -659,12 +659,53 @@ func TestModernParamsForHeaderMetadata(t *testing.T) {
 
 func TestMergeDiscoverResults(t *testing.T) {
 	merged := mergeDiscoverResults([]*mcp.DiscoverResult{
-		{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}},
-		{Capabilities: &mcp.ServerCapabilities{Prompts: &mcp.PromptCapabilities{}}},
+		{
+			SupportedVersions: []string{protocolVersion20260728, protocolVersion20251125},
+			Capabilities:      &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+		},
+		{
+			SupportedVersions: []string{protocolVersion20250618},
+			Capabilities:      &mcp.ServerCapabilities{Prompts: &mcp.PromptCapabilities{}},
+		},
 	})
 	require.Equal(t, supportedVersions, merged.SupportedVersions)
 	require.NotNil(t, merged.Capabilities.Tools)
 	require.NotNil(t, merged.Capabilities.Prompts)
+}
+
+func TestMergeCachingHintsFromBackends(t *testing.T) {
+	t.Run("empty defaults", func(t *testing.T) {
+		ttlMs, scope := mergeCachingHintsFromBackends(nil)
+		require.Equal(t, defaultTTLMs, ttlMs)
+		require.Equal(t, defaultCacheScope, scope)
+	})
+
+	t.Run("positive ttl picks minimum", func(t *testing.T) {
+		ttlMs, scope := mergeCachingHintsFromBackends([]mcp.Cacheable{
+			{TTLMs: 2000, CacheScope: "public"},
+			{TTLMs: 500, CacheScope: "public"},
+		})
+		require.Equal(t, 500, ttlMs)
+		require.Equal(t, "public", scope)
+	})
+
+	t.Run("negative ttl clamped and scope tightened", func(t *testing.T) {
+		ttlMs, scope := mergeCachingHintsFromBackends([]mcp.Cacheable{
+			{TTLMs: -100, CacheScope: "public"},
+			{TTLMs: 1500, CacheScope: "private"},
+		})
+		require.Equal(t, 0, ttlMs)
+		require.Equal(t, "private", scope)
+	})
+
+	t.Run("empty cacheScope treated as public default", func(t *testing.T) {
+		ttlMs, scope := mergeCachingHintsFromBackends([]mcp.Cacheable{
+			{TTLMs: 1200},
+			{TTLMs: 1500, CacheScope: "public"},
+		})
+		require.Equal(t, 1200, ttlMs)
+		require.Equal(t, "public", scope)
+	})
 }
 
 func TestDiscoverParams(t *testing.T) {
