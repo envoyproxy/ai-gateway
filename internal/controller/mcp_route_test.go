@@ -403,6 +403,7 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 		Spec: aigv1b1.MCPRouteSpec{
 			SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{OAuth: &aigv1b1.MCPRouteOAuth{}},
 			Path:           ptr.To("/mcp"),
+			Headers:        []gwapiv1.HTTPHeaderMatch{{Name: "x-match", Value: "yes"}},
 			ParentRefs:     []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
 			BackendRefs:    []aigv1b1.MCPRouteBackendRef{{}},
 		},
@@ -419,6 +420,9 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 	require.Equal(t, "/.well-known/oauth-protected-resource/mcp", ptr.Deref(oauthRules[0].Matches[0].Path.Value, ""))
 	require.Equal(t, "/.well-known/oauth-authorization-server/mcp", ptr.Deref(oauthRules[1].Matches[0].Path.Value, ""))
 	require.Equal(t, "/.well-known/openid-configuration/mcp", ptr.Deref(oauthRules[2].Matches[0].Path.Value, ""))
+	for _, rule := range oauthRules {
+		require.Equal(t, mcpRoute.Spec.Headers, rule.Matches[0].Headers)
+	}
 }
 
 func Test_newHTTPRoute_MCP_Hostnames(t *testing.T) {
