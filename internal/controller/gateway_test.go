@@ -345,8 +345,8 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{
 						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "apple"},
-							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
-							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
+							{Name: "invalid-bsp-backend"},  // Emitted as unresolved: the BSP is invalid.
+							{Name: "non-existent-backend"}, // Emitted as unresolved: the backend does not exist.
 						},
 						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 							{

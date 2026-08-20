@@ -451,7 +451,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						c.logger.Error(err, "failed to get backend security policy for inference pool",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
-						continue
+						markUnresolved(&b, err)
 					}
 				} else {
 					var backendObj *aigv1b1.AIServiceBackend
@@ -460,29 +460,29 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						if isCtxErr(err) {
 							return false, fmt.Errorf("reconcile interrupted while reading backend %s: %w", backendRef.Name, err)
 						}
-						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
+						c.logger.Error(err, "failed to get backend or backend security policy",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
-						continue
+						markUnresolved(&b, err)
+					} else {
+						// Extract HeaderMutation from both route and backend levels
+						routeHeaderMutation := backendRef.HeaderMutation
+						backendHeaderMutation := backendObj.Spec.HeaderMutation
+
+						// Merge with route-level taking precedence over backend-level
+						mergedHeaderMutation := mergeHeaderMutations(routeHeaderMutation, backendHeaderMutation)
+
+						// Convert to FilterAPI format
+						b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
+
+						routeBodyMutation := backendRef.BodyMutation
+						backendBodyMutation := backendObj.Spec.BodyMutation
+						// Merge with route-level taking precedence over backend-level
+						mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
+						b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
+
+						b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					}
-
-					// Extract HeaderMutation from both route and backend levels
-					routeHeaderMutation := backendRef.HeaderMutation
-					backendHeaderMutation := backendObj.Spec.HeaderMutation
-
-					// Merge with route-level taking precedence over backend-level
-					mergedHeaderMutation := mergeHeaderMutations(routeHeaderMutation, backendHeaderMutation)
-
-					// Convert to FilterAPI format
-					b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
-
-					routeBodyMutation := backendRef.BodyMutation
-					backendBodyMutation := backendObj.Spec.BodyMutation
-					// Merge with route-level taking precedence over backend-level
-					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
-					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
-
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				}
 
 				if bsp != nil {
@@ -491,10 +491,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						if isCtxErr(err) {
 							return false, fmt.Errorf("reconcile interrupted while reading auth for backend security policy %s: %w", bsp.Name, err)
 						}
-						c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
+						c.logger.Error(err, "failed to get backend auth from backend security policy",
 							"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
-						continue
+						markUnresolved(&b, err)
+						b.Auth = nil
 					}
 					stripCredentialOverrideInputHeaders(&b)
 				}

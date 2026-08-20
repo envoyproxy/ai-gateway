@@ -49,10 +49,11 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, stderrLogger)
+	fakeClient, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
+	warnUnresolvedBackendRefs(ctx, fakeClient, stderr)
 
 	// Emit the translated objects.
 	for i := range httpRoutes.Items {
@@ -328,6 +329,30 @@ func translateCustomResourceObjects(
 		}
 	}
 	return
+}
+
+// warnUnresolvedBackendRefs writes a warning to stderr for every AIGatewayRoute that was
+// programmed with backend references the controller could not resolve.
+//
+// In a cluster the ResolvedRefs condition is how an operator finds these. There is no
+// `kubectl describe` here, so without this the only trace would be an info log and exit code 0,
+// with a placeholder Backend in the output and nothing saying why. It is a warning rather than an
+// error because the rest of the route is serving.
+func warnUnresolvedBackendRefs(ctx context.Context, fakeClient client.Client, stderr io.Writer) {
+	var routes aigv1b1.AIGatewayRouteList
+	if err := fakeClient.List(ctx, &routes); err != nil {
+		return // Nothing to report on; the caller already surfaced any real listing failure.
+	}
+	for i := range routes.Items {
+		route := &routes.Items[i]
+		for _, cond := range route.Status.Conditions {
+			if cond.Type != aigv1b1.ConditionTypeResolvedRefs || cond.Status != metav1.ConditionFalse {
+				continue
+			}
+			_, _ = fmt.Fprintf(stderr, "warning: AIGatewayRoute %s/%s: %s\n",
+				route.Namespace, route.Name, cond.Message)
+		}
+	}
 }
 
 // mustExtractAndAppend extracts the object from the unstructured object and appends it to the slice.
