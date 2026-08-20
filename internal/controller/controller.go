@@ -19,11 +19,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -576,38 +578,69 @@ const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
 // be a recoverable error. For example, onDeletionFn only propagates the deletion of the object to other resources.
 // See the call sites of this function for examples.
 func handleFinalizer[objType client.Object](
-	ctx context.Context, client client.Client,
+	ctx context.Context, k8sClient client.Client,
 	logger logr.Logger,
 	o objType,
 	onDeletionFn func(ctx context.Context, o objType) error,
-) (onDelete bool) {
+) (bool, error) {
 	if o.GetDeletionTimestamp().IsZero() {
 		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
-			if err := client.Update(ctx, o); err != nil {
-				// This shouldn't happen in normal operation, but if it does, we log the error.
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				latest := o.DeepCopyObject().(objType)
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}, latest); err != nil {
+					if apierrors.IsNotFound(err) {
+						return nil
+					}
+					return err
+				}
+				if ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+					return nil
+				}
+				base := latest.DeepCopyObject().(objType)
+				ctrlutil.AddFinalizer(latest, aiGatewayControllerFinalizer)
+				return k8sClient.Patch(ctx, latest, client.MergeFrom(base))
+			})
+			if err != nil {
 				logger.Error(err, "Failed to add finalizer to object",
 					"namespace", o.GetNamespace(), "name", o.GetName())
+				return false, err
 			}
 		}
-		return false
+		return false, nil
 	}
 	if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-		ctrlutil.RemoveFinalizer(o, aiGatewayControllerFinalizer)
+		// Run cleanup once before attempting finalizer removal retries.
+		// Keeping this out of the retry loop avoids duplicate side effects when updates conflict.
 		if onDeletionFn != nil {
 			if err := onDeletionFn(ctx, o); err != nil {
-				// onDeletionFn can return an error, but it should not be a recoverable error.
-				logger.Error(err, "Failed to handle finalizer deletion",
-					"namespace", o.GetNamespace(), "name", o.GetName())
+				return true, err
 			}
 		}
-		if err := client.Update(ctx, o); err != nil {
-			// This shouldn't happen in normal operation, but if it does, we log the error.
-			logger.Error(err, "Failed to remove finalizer from object",
+
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			latest := o.DeepCopyObject().(objType)
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}, latest); err != nil {
+				if apierrors.IsNotFound(err) {
+					// Object is already deleted; nothing left to finalize.
+					return nil
+				}
+				return err
+			}
+			if !ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+				// Another reconciler removed it first.
+				return nil
+			}
+			base := latest.DeepCopyObject().(objType)
+			ctrlutil.RemoveFinalizer(latest, aiGatewayControllerFinalizer)
+			return k8sClient.Patch(ctx, latest, client.MergeFrom(base))
+		})
+		if err != nil {
+			logger.Error(err, "Failed to remove finalizer from object after retries",
 				"namespace", o.GetNamespace(), "name", o.GetName())
+			return true, err
 		}
 	}
-	return true
+	return true, nil
 }
 
 // isKubernetes133OrLater returns true if the Kubernetes version is 1.33 or later.

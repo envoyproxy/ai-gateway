@@ -75,9 +75,13 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 	}
 	c.logger.Info("Reconciling QuotaPolicy", "namespace", req.Namespace, "name", req.Name)
 
-	if handleFinalizer(ctx, c.client, c.logger, &quotaPolicy, func(ctx context.Context, _ *aigv1a1.QuotaPolicy) error {
+	onDelete, err := handleFinalizer(ctx, c.client, c.logger, &quotaPolicy, func(ctx context.Context, _ *aigv1a1.QuotaPolicy) error {
 		return c.deleteQuotaPolicyConfig(ctx, req.NamespacedName)
-	}) {
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if onDelete {
 		return ctrl.Result{}, nil
 	}
 
