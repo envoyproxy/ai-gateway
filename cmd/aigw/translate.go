@@ -224,13 +224,14 @@ func translateCustomResourceObjects(
 	fakeClient = builder.Build()
 	fakeClientSet = fake2.NewClientset()
 
-	// Store the user-defined secrets in the fake client set so that Gateway controller can read them.
+	// Store the user-defined secrets in both fakes so that the controllers can read them.
 	userDefinedSecretKeys := map[string]struct{}{}
 	for _, s := range usedDefinedSecrets {
 		if _, err = fakeClientSet.CoreV1().Secrets(s.Namespace).Create(ctx, s, metav1.CreateOptions{}); err != nil {
 			err = fmt.Errorf("error creating secret: %w", err)
 			return
 		}
+		mustCreate(ctx, fakeClient, s.DeepCopy(), logger)
 		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
 	}
 
@@ -248,8 +249,11 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent, eventChanBuffer),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()), "envoy-gateway-system",
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
+		true, func() string {
 			return "aigw-translate"
+		}, &controller.Options{
+			ExtProcImage:    "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			ExtProcLogLevel: "debug",
 		}, false,
 	)
 	// Pre-create Gateways (without reconciling) before reconciling resources so that

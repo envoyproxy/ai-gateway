@@ -82,6 +82,12 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	toolCallIndex     int64
+	// streamedToolCall records whether any tool call has been emitted so far in
+	// the streaming response. Newer Gemini models (e.g. gemini-3.5-flash,
+	// gemini-3.1-flash-lite) stream the terminal STOP on a separate chunk that no
+	// longer carries the functionCall part, so the finish_reason must be derived
+	// from the whole stream, not just the current chunk.
+	streamedToolCall bool
 	// Redaction configuration for debug logging
 	debugLogEnabled bool
 	enableRedaction bool
@@ -308,8 +314,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 			continue
 		}
 
-		// Remove "data: " prefix from SSE format if present.
-		line := bytes.TrimPrefix(part, sseDataPrefix)
+		// Remove the "data:" field prefix from SSE format if present.
+		line, ok := cutSSEDataPrefix(part)
+		if !ok {
+			line = part
+		}
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
@@ -405,16 +414,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 					Text: thoughtSummary,
 				}
 			}
-			// the model can not respond with both tool calls and text, so it's safe to assign it directly.
-			if signature != "" {
-				if delta.ReasoningContent != nil {
-					delta.ReasoningContent.Signature = signature
-				} else {
-					delta.ReasoningContent = &openai.StreamReasoningContent{
-						Signature: signature,
-					}
-				}
-			}
 
 			if content != "" {
 				delta.Content = &content
@@ -428,23 +427,41 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 			}
 			delta.ToolCalls = toolCalls
 
-			// Handle signature from tool calls (if not already set from thought text)
+			// Thought signatures (from thought parts or tool-call parts; the model cannot
+			// respond with both) are not representable in the plain-string
+			// reasoning_content, so they are surfaced via thinking_blocks instead.
 			if toolCallSignature != "" {
 				signature = toolCallSignature
-				if delta.ReasoningContent != nil {
-					delta.ReasoningContent.Signature = signature
-				} else {
-					delta.ReasoningContent = &openai.StreamReasoningContent{
-						Signature: signature,
-					}
-				}
+			}
+			if signature != "" {
+				delta.ThinkingBlocks = []openai.ThinkingBlock{{
+					Type: "thinking", Thinking: thoughtSummary, Signature: signature,
+				}}
 			}
 
 			choice.Delta = delta
 		} else {
 			choice.Delta = &openai.ChatCompletionResponseChunkChoiceDelta{}
 		}
+
+		// Track whether a tool call has been streamed at any point in the response.
+		if len(toolCalls) > 0 {
+			o.streamedToolCall = true
+		}
+
 		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
+		// Newer Gemini models (e.g. gemini-3.5-flash, gemini-3.1-flash-lite) stream
+		// the terminal STOP on a separate chunk whose parts no longer contain the
+		// functionCall (e.g. an empty text part), so the per-chunk toolCalls slice
+		// is empty and geminiFinishReasonToOpenAI maps it to "stop". If a tool call
+		// was streamed in an earlier chunk, the correct OpenAI finish_reason for the
+		// completion is still "tool_calls". Older Gemini models carried the
+		// functionCall and STOP in the same chunk, so this only affects the newer
+		// split-chunk shape.
+		if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonStop && o.streamedToolCall {
+			choice.FinishReason = openai.ChatCompletionChoicesFinishReasonToolCalls
+		}
+
 		choices = append(choices, choice)
 	}
 

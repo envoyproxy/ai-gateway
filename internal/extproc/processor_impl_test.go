@@ -136,10 +136,66 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Len(t, setHeaders, 3)
 		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[0].AppendAction)
 		require.Equal(t, internalapi.OriginalPathHeader, setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
 		require.Equal(t, internalapi.EnvoyOriginalPathHeader, setHeaders[2].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
+	})
+
+	t.Run("original path headers overwrite pre-existing values", func(t *testing.T) {
+		// A client-supplied or pre-existing original-path header must not shadow the
+		// gateway's own value: extproc is the authoritative writer of these headers.
+		headers := map[string]string{
+			":path":                             "/foo",
+			internalapi.OriginalPathHeader:      "/client-supplied",
+			internalapi.EnvoyOriginalPathHeader: "/client-supplied",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok)
+		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+		require.Len(t, setHeaders, 3)
+		require.Equal(t, internalapi.OriginalPathHeader, setHeaders[1].Header.Key)
+		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[1].AppendAction)
+		require.Equal(t, internalapi.EnvoyOriginalPathHeader, setHeaders[2].Header.Key)
+		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[2].AppendAction)
+		// The in-place request header map is updated too, not just the mutation.
+		require.Equal(t, "/foo", headers[internalapi.EnvoyOriginalPathHeader])
+	})
+
+	t.Run("model header overwrites pre-existing value", func(t *testing.T) {
+		// x-ai-eg-model is owned by the gateway, so a client-supplied value must be
+		// overwritten rather than appended (which would produce a multi-value header).
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "client-supplied",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok)
+		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
+		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[0].AppendAction)
+		// The in-place request header map is updated too, not just the mutation.
+		require.Equal(t, "some-model", headers[internalapi.ModelNameHeaderKeyDefault])
 	})
 
 	t.Run("span creation", func(t *testing.T) {
@@ -227,6 +283,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
+			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseHeaders(t.Context(), nil)
@@ -263,7 +320,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Empty(t, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
+		require.Equal(t, []string{"content-length"}, commonRes.HeaderMutation.RemoveHeaders)
 		require.Equal(t, &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}, res.ModeOverride)
 	})
 	t.Run("error/streaming", func(t *testing.T) {
@@ -368,7 +426,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
 		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["ai_service_backend_name"].GetStringValue())
 		require.Equal(t, "some_route", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["route_name"].GetStringValue())
 		require.Equal(t, "some_model", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["response_model"].GetStringValue())
 	})
@@ -476,6 +534,45 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	// (the nil check on upstreamFilter at ProcessResponseHeaders/ProcessResponseBody
 	// must fall through to passThroughProcessor).
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend pins that
+// the resolved backend reaches the span, and that recording it is optional: the
+// backend is only known after routing, and only some semantic conventions record
+// it, so the span is type-asserted rather than required to implement it.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend(t *testing.T) {
+	setBackend := func(t *testing.T, span tracingapi.ChatCompletionSpan) {
+		t.Helper()
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{":path": "/foo"},
+			metrics:        &mockMetrics{},
+		}
+		// The schema is unsupported so translator creation fails, but the
+		// backend is recorded before that, which is what this asserts.
+		err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   "some-backend",
+				Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			},
+		}, "test-route", &chatCompletionProcessorRouterFilter{span: span})
+		require.Error(t, err)
+	}
+
+	t.Run("span that records backends", func(t *testing.T) {
+		span := &mockBackendChatCompletionSpan{}
+		setBackend(t, span)
+		require.Equal(t, []tracingapi.Backend{
+			{Schema: "some-schema", Name: "some-backend"},
+		}, span.backends)
+	})
+
+	t.Run("span that does not", func(t *testing.T) {
+		setBackend(t, &mockChatCompletionSpan{})
+	})
+
+	t.Run("no span at all", func(t *testing.T) {
+		setBackend(t, nil)
+	})
 }
 
 // Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
@@ -590,6 +687,61 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})
+			t.Run("local reply is not reprocessed as an upstream response", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				// retErr doubles as a probe: if the response path translated this local reply,
+				// ResponseError would return it and ProcessResponseBody would fail.
+				tr := &mockTranslator{t: t, retErr: fmt.Errorf("%w: missing required field", internalapi.ErrInvalidRequestBody), expRequestBody: &body}
+				mm := &mockMetrics{}
+				span := &mockChatCompletionSpan{}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+						span:                   span,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					logger:         slog.Default(),
+				}
+
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.NoError(t, err)
+				immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+				require.True(t, ok)
+				require.Equal(t, typev3.StatusCode(422), immediateResp.ImmediateResponse.Status.Code)
+				require.True(t, p.parent.localReplyEmitted, "the gateway answered the request itself")
+
+				// The span is ended where the local reply is produced, since the response path skips it.
+				require.Equal(t, 1, span.endedOnErrorCount)
+				require.Equal(t, 422, span.errorStatusCode)
+				require.Equal(t, immediateResp.ImmediateResponse.Body, span.errorBody)
+
+				// Envoy delivers the local reply back through the response path.
+				headersResp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{
+					Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("422")}},
+				})
+				require.NoError(t, err)
+				require.Nil(t, headersResp.GetResponseHeaders().GetResponse(), "the headers of the local reply must be left untouched")
+
+				bodyResp, err := p.ProcessResponseBody(t.Context(),
+					&extprocv3.HttpBody{Body: immediateResp.ImmediateResponse.Body, EndOfStream: true})
+				require.NoError(t, err, "the local reply must not be translated as an upstream error")
+				require.Nil(t, bodyResp.GetResponseBody().GetResponse(), "the body written by the gateway must be left untouched")
+
+				// Completion was already recorded when the local reply was produced.
+				mm.RequireRequestFailure(t)
+				require.Equal(t, 1, span.endedOnErrorCount, "the span must not be ended twice")
+				require.Zero(t, span.endedCount)
+			})
 			t.Run("auth handler error", func(t *testing.T) {
 				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
@@ -654,7 +806,20 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.True(t, ok, "response should be an ImmediateResponse")
 				require.Equal(t, typev3.StatusCode(401), immediateResp.ImmediateResponse.Status.Code)
 				require.Contains(t, string(immediateResp.ImmediateResponse.Body), "missing upstream credential")
+				require.True(t, p.parent.localReplyEmitted)
 
+				// Envoy delivers the local reply back through the response path.
+				headersResp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{
+					Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("401")}},
+				})
+				require.NoError(t, err)
+				require.Nil(t, headersResp.GetResponseHeaders().GetResponse())
+				bodyResp, err := p.ProcessResponseBody(t.Context(),
+					&extprocv3.HttpBody{Body: immediateResp.ImmediateResponse.Body, EndOfStream: true})
+				require.NoError(t, err)
+				require.Nil(t, bodyResp.GetResponseBody().GetResponse())
+
+				// The completion recorded below stays at one despite that second pass.
 				mm.RequireRequestFailure(t)
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
@@ -708,6 +873,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 				require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
 				require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+				// The internal AWS signing-host header is stripped before egress so a client can't spoof it.
+				require.Contains(t, commonRes.HeaderMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
 
 				md := resp.DynamicMetadata
 				require.NotNil(t, md)
@@ -1094,7 +1261,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
-		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key", internalapi.UpstreamHostHeader}, headerMutation.RemoveHeaders)
 		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
 		require.Equal(t, "secret", p.requestHeaders["authorization"])
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
@@ -1155,6 +1322,37 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_SpoofedUpstreamHostStrippedOnRetry(t *testing.T) {
+	body := openai.ChatCompletionRequest{Model: "test-model"}
+	raw := []byte(`{"model":"test-model"}`)
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		// A downstream client spoofed the internal upstream-host header; it must never reach the
+		// upstream provider, on a retry same as on the initial request.
+		requestHeaders: map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
+		metrics:        &mockMetrics{},
+		translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
+		handler:        &mockBackendAuthHandler{},
+		parent: &chatCompletionProcessorRouterFilter{
+			upstreamFilterCount:    2, // simulate retry scenario
+			originalRequestBody:    &body,
+			originalRequestBodyRaw: raw,
+			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:                 &filterapi.RuntimeConfig{},
+		},
+	}
+	require.True(t, p.onRetry())
+
+	resp, err := p.ProcessRequestHeaders(context.Background(), nil)
+	require.NoError(t, err)
+
+	headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
+	require.Contains(t, headerMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
+	for _, h := range headerMutation.SetHeaders {
+		require.NotEqual(t, internalapi.UpstreamHostHeader, h.Header.Key, "spoofed upstream-host header must not be re-set")
+	}
 }
 
 func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
@@ -1683,7 +1881,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.Equal(t, "us.anthropic.claude-sonnet-4.5-v2", inner.Fields["model_name_override"].GetStringValue())
 	})
 
-	t.Run("sets backend_name when provided", func(t *testing.T) {
+	t.Run("sets ai_service_backend_name when provided", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
@@ -1692,10 +1890,11 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.NotNil(t, md)
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Equal(t, "ns/backend-a", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ns/backend-a", inner.Fields["ai_service_backend_name"].GetStringValue())
+		require.Nil(t, inner.Fields["backend_name"], "emitted in the request headers phase instead")
 	})
 
-	t.Run("omits backend_name when empty", func(t *testing.T) {
+	t.Run("omits ai_service_backend_name when empty", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
@@ -1704,7 +1903,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.NotNil(t, md)
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Nil(t, inner.Fields["backend_name"])
+		require.Nil(t, inner.Fields["ai_service_backend_name"])
 	})
 
 	t.Run("includes token usage costs alongside model_name_override", func(t *testing.T) {
@@ -1725,7 +1924,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 		require.Equal(t, "claude-sonnet", inner.Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "default/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "default/backend", inner.Fields["ai_service_backend_name"].GetStringValue())
 		require.Equal(t, float64(100), inner.Fields["output_tokens"].GetNumberValue())
 		require.Equal(t, float64(50), inner.Fields["input_tokens"].GetNumberValue())
 	})
@@ -1742,6 +1941,59 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		// model_name_override should still be present, just with empty value.
 		require.Empty(t, inner.Fields["model_name_override"].GetStringValue())
 	})
+}
+
+func Test_buildBackendDynamicMetadata(t *testing.T) {
+	t.Run("empty backend name yields no metadata", func(t *testing.T) {
+		require.Nil(t, buildBackendDynamicMetadata(""))
+	})
+
+	t.Run("emits the full per-route rule ref name", func(t *testing.T) {
+		name := internalapi.PerRouteRuleRefBackendName("ns", "backend", "route", 0, 1)
+		md := buildBackendDynamicMetadata(name)
+		require.NotNil(t, md)
+		require.Equal(t, name, md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+			GetStructValue().Fields["backend_name"].GetStringValue())
+	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_backendMetadata(t *testing.T) {
+	const backendName = "ns/backend/route/route-a/rule/0/ref/1"
+
+	for _, tc := range []struct {
+		name            string
+		retBodyMutation []byte // drives the CONTINUE vs CONTINUE_AND_REPLACE branch.
+	}{
+		{name: "body replaced", retBodyMutation: []byte("some body")},
+		{name: "body untouched", retBodyMutation: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := bodyFromModel(t, "some-model", false, nil)
+			var expBody openai.ChatCompletionRequest
+			require.NoError(t, json.Unmarshal(body, &expBody))
+
+			p := &chatCompletionProcessorUpstreamFilter{
+				parent: &chatCompletionProcessorRouterFilter{
+					config:                 &filterapi.RuntimeConfig{},
+					logger:                 slog.Default(),
+					originalRequestBodyRaw: body,
+					originalRequestBody:    &expBody,
+					originalModel:          "some-model",
+				},
+				requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "some-model"},
+				metrics:        &mockMetrics{},
+				translator:     &mockTranslator{t: t, expRequestBody: &expBody, retBodyMutation: tc.retBodyMutation},
+				backendName:    backendName,
+			}
+
+			resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+			require.NoError(t, err)
+			require.NotNil(t, resp.DynamicMetadata)
+			require.Equal(t, backendName, resp.DynamicMetadata.
+				Fields[internalapi.AIGatewayFilterMetadataNamespace].
+				GetStructValue().Fields["backend_name"].GetStringValue())
+		})
+	}
 }
 
 func Test_mergeDynamicMetadata(t *testing.T) {

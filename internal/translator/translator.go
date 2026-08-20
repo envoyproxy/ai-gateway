@@ -14,6 +14,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -29,6 +30,11 @@ const (
 	eventStreamContentType  = "text/event-stream"
 	openAIBackendError      = "OpenAIBackendError"
 	awsBedrockBackendError  = "AWSBedrockBackendError"
+
+	// Count-tokens route paths per backend.
+	anthropicCountTokensPath        = "/v1/messages/count_tokens" // #nosec G101 -- Native Anthropic Messages count_tokens path, not a credential.
+	awsBedrockCountTokensPathFormat = "/model/%s/count-tokens"    // #nosec G101 -- AWS Bedrock CountTokens path format (modelId placeholder), not a credential.
+	gcpCountTokensModel             = "count-tokens"              // GCP Vertex AI virtual model for count-tokens.
 )
 
 // Translator translates the request and response messages between the client
@@ -132,6 +138,12 @@ type (
 	OpenAIAudioTranscriptionTranslator = Translator[openai.TranscriptionRequest, tracingapi.TranscriptionSpan]
 	// OpenAIAudioTranslationTranslator translates the OpenAI's /v1/audio/translations endpoint.
 	OpenAIAudioTranslationTranslator = Translator[openai.TranslationRequest, tracingapi.TranslationSpan]
+	// TokenizeTranslator translates the tokenize endpoint.
+	TokenizeTranslator = Translator[tokenize.RequestUnion, tracingapi.TokenizeSpan]
+	// OpenAIResponsesInputTokensTranslator translates the OpenAI's /v1/responses/input_tokens endpoint.
+	OpenAIResponsesInputTokensTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesInputTokensSpan]
+	// AnthropicCountTokensTranslator translates the Anthropic's /v1/messages/count_tokens endpoint.
+	AnthropicCountTokensTranslator = Translator[anthropicschema.CountTokensRequest, tracingapi.CountTokensSpan]
 )
 
 var (

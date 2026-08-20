@@ -75,7 +75,7 @@ func Test_Examples_Basic(t *testing.T) {
 
 		for _, tc := range []examplesBasicChatCompletionsTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", skip: !cc.OpenAIValid},
-			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: !cc.AWSValid},
+			{name: "aws", modelName: internaltesting.AWSBedrockModelName, skip: !cc.AWSValid},
 		} {
 			tc.run(t, egSelector)
 		}
@@ -166,7 +166,7 @@ func Test_Examples_Basic(t *testing.T) {
 		})
 
 		// Test Anthropic Messages API (/v1/messages) translated to AWS Bedrock Converse API.
-		// This reuses the existing AWSBedrock route for us.meta.llama3-2-1b-instruct-v1:0 from aws.yaml.
+		// This reuses the existing AWSBedrock route for us.amazon.nova-micro-v1:0 from aws.yaml.
 		t.Run("aws_bedrock_anthropic_messages", func(t *testing.T) {
 			cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
 			internaltesting.RequireEventuallyNoError(t, func() error {
@@ -182,7 +182,7 @@ func Test_Examples_Basic(t *testing.T) {
 				)
 
 				msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-					Model:     "us.meta.llama3-2-1b-instruct-v1:0",
+					Model:     internaltesting.AWSBedrockModelName,
 					MaxTokens: 256,
 					Messages: []anthropic.MessageParam{
 						anthropic.NewUserMessage(anthropic.NewTextBlock("Say this is a test.")),
