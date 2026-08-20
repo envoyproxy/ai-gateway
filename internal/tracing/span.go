@@ -56,6 +56,7 @@ type (
 	transcriptionSpan        = span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	translationSpan          = span[openai.TranslationResponse, struct{}]
 	rerankSpan               = span[cohereschema.RerankV2Response, struct{}]
+	embedSpan                = span[cohereschema.EmbedV2Response, struct{}]
 	messageSpan              = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	tokenizeSpan             = span[tokenize.Response, struct{}]
 	responsesInputTokensSpan = span[openai.ResponsesInputTokensResponse, struct{}]

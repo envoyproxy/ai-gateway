@@ -109,6 +109,8 @@ type (
 	MessagesEndpointSpec struct{}
 	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
 	RerankEndpointSpec struct{}
+	// EmbedEndpointSpec implements EndpointSpec for /v2/embed.
+	EmbedEndpointSpec struct{}
 	// SpeechEndpointSpec implements EndpointSpec for /v1/audio/speech.
 	SpeechEndpointSpec struct{}
 	// TranscriptionEndpointSpec implements EndpointSpec for /v1/audio/transcriptions.
@@ -513,6 +515,39 @@ func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.Reran
 		redacted.Documents[i] = redaction.RedactString(doc)
 	}
 	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (EmbedEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *cohereschema.EmbedV2Request, bool, []byte, error) {
+	var req cohereschema.EmbedV2Request
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/embed: %w", internalapi.ErrMalformedRequest, err)
+	}
+	return req.Model, &req, false, nil, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (EmbedEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *cohereschema.EmbedV2Request, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (EmbedEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereEmbedTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaCohere:
+		return translator.NewEmbedCohereToCohereTranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (EmbedEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.EmbedV2Request) (redactedReq *cohereschema.EmbedV2Request, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
