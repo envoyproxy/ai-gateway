@@ -536,6 +536,45 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
 }
 
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend pins that
+// the resolved backend reaches the span, and that recording it is optional: the
+// backend is only known after routing, and only some semantic conventions record
+// it, so the span is type-asserted rather than required to implement it.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend(t *testing.T) {
+	setBackend := func(t *testing.T, span tracingapi.ChatCompletionSpan) {
+		t.Helper()
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{":path": "/foo"},
+			metrics:        &mockMetrics{},
+		}
+		// The schema is unsupported so translator creation fails, but the
+		// backend is recorded before that, which is what this asserts.
+		err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   "some-backend",
+				Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			},
+		}, "test-route", &chatCompletionProcessorRouterFilter{span: span})
+		require.Error(t, err)
+	}
+
+	t.Run("span that records backends", func(t *testing.T) {
+		span := &mockBackendChatCompletionSpan{}
+		setBackend(t, span)
+		require.Equal(t, []tracingapi.Backend{
+			{Schema: "some-schema", Name: "some-backend"},
+		}, span.backends)
+	})
+
+	t.Run("span that does not", func(t *testing.T) {
+		setBackend(t, &mockChatCompletionSpan{})
+	})
+
+	t.Run("no span at all", func(t *testing.T) {
+		setBackend(t, nil)
+	})
+}
+
 // Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
 // verifies that when SetBackend fails due to an unsupported schema, subsequent
 // response processing does not panic. Before the fix for #1941, upstreamFilter
