@@ -76,6 +76,40 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
 
+	// ResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied
+	// to the response from the backend before returning to the client.
+	// Only field removal is supported on the response path.
+	// +optional
+	ResponseBodyMutation *HTTPResponseBodyMutation `json:"responseBodyMutation,omitempty"`
+
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
+}
+
+// HTTPResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied
+// to the response from the backend before returning to the client. Only field removal is supported on
+// the response path.
+type HTTPResponseBodyMutation struct {
+	// Remove the given JSON field(s) from the HTTP response body before returning to the client.
+	// The value of Remove is a list of top-level field names to remove.
+	//
+	// Input:
+	//   {
+	//     "model": "gpt-4",
+	//     "service_tier": "default",
+	//     "internal_flag": true
+	//   }
+	//
+	// Config:
+	//   remove: ["service_tier", "internal_flag"]
+	//
+	// Output:
+	//   {
+	//     "model": "gpt-4"
+	//   }
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=16
+	Remove []string `json:"remove,omitempty"`
 }
