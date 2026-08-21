@@ -567,7 +567,12 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 func (s *Server) metadataForwardingNamespacesForSnapshot(ctx context.Context, routes []*routev3.RouteConfiguration) ([]string, error) {
 	gateways := gatewaysInSnapshot(routes)
 	if len(gateways) == 0 {
-		s.log.Error(nil, "cannot tell which Gateway this xDS snapshot belongs to; forwarding no dynamic metadata, so credentialOverride.fromDynamicMetadata falls back to the configured credential")
+		routeConfigs := make([]string, 0, len(routes))
+		for _, r := range routes {
+			routeConfigs = append(routeConfigs, r.GetName())
+		}
+		s.log.Error(nil, "cannot tell which Gateway this xDS snapshot belongs to; forwarding no dynamic metadata, so credentialOverride.fromDynamicMetadata falls back to the configured credential",
+			"route_configs", routeConfigs)
 		return nil, nil
 	}
 	var namespaces []string
