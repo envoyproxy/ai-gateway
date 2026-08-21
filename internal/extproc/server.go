@@ -33,7 +33,7 @@ import (
 
 var (
 	sensitiveHeaderRedactedValue = []byte("[REDACTED]")
-	sensitiveHeaderKeys          = []string{"authorization", "x-api-key"}
+	sensitiveHeaderKeys          = []string{"authorization", "x-api-key", "x-goog-api-key"}
 )
 
 // contextKey is a type for context keys to avoid collisions.
@@ -291,18 +291,19 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			}
 		}
 		if s.debugLogEnabled && resp != nil && resp.Response != nil {
-			// Header mutations always carry injected backend credentials (e.g. the
-			// upstream Authorization), so they are redacted whenever debug logging
-			// is on — independent of enableRedaction, which only controls body
-			// content. This mirrors redactRequestBodyResponse above.
-			var logContent any
+			// This response carries the backend credential the auth handler just injected, and
+			// go/clear-text-logging taints it wholesale — it cannot see sanitization applied
+			// first, so redacting before logging still fails the scan for every auth handler
+			// added. Log only values not derived from the credential. Incoming header names are
+			// logged with sensitive values redacted by filterSensitiveHeadersForLogging above.
 			switch val := resp.Response.(type) {
 			case *extprocv3.ProcessingResponse_RequestHeaders:
-				logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys, s.enableRedaction)
+				setHeaderCount := len(val.RequestHeaders.GetResponse().GetHeaderMutation().GetSetHeaders())
+				l.Debug("request headers processed", slog.Int("set_header_count", setHeaderCount))
 			case *extprocv3.ProcessingResponse_ImmediateResponse:
-				logContent = val
+				l.Debug("request headers processed: immediate response",
+					slog.Int("status", int(val.ImmediateResponse.GetStatus().GetCode())))
 			}
-			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
@@ -513,37 +514,6 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 		}
 	}
 	return filteredHeaders
-}
-
-// redactProcessingResponseRequestHeaders creates a safe-to-log copy of the request headers processing response.
-// Used exclusively for debug logging without modifying the actual response sent to Envoy.
-//
-// Header mutations are always redacted (API keys, authorization tokens) — a backend
-// credential injected here must never reach the debug log, regardless of the
-// [Server.enableRedaction] flag, which only governs the more expensive body-content
-// redaction. When redactBody is false, the body mutation is logged as-is (mirroring
-// [redactRequestBodyResponse]); when true, it is redacted too.
-func redactProcessingResponseRequestHeaders(resp *extprocv3.ProcessingResponse_RequestHeaders, logger *slog.Logger, sensitiveKeys []string, redactBody bool) *extprocv3.ProcessingResponse_RequestHeaders {
-	if resp == nil || resp.RequestHeaders == nil || resp.RequestHeaders.Response == nil {
-		return &extprocv3.ProcessingResponse_RequestHeaders{}
-	}
-	originalHeaderMutation := resp.RequestHeaders.GetResponse().GetHeaderMutation()
-	var bodyMutation *extprocv3.BodyMutation
-	if redactBody {
-		bodyMutation = redactBodyMutation(resp.RequestHeaders.Response.GetBodyMutation())
-	} else {
-		bodyMutation = resp.RequestHeaders.Response.GetBodyMutation()
-	}
-
-	return &extprocv3.ProcessingResponse_RequestHeaders{
-		RequestHeaders: &extprocv3.HeadersResponse{
-			Response: &extprocv3.CommonResponse{
-				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
-				BodyMutation:    bodyMutation,
-				ClearRouteCache: resp.RequestHeaders.Response.GetClearRouteCache(),
-			},
-		},
-	}
 }
 
 // redactHeaderMutation creates a copy of header mutations with sensitive header values redacted.

@@ -18,6 +18,7 @@ In this getting started guide you'll find quickstart setups to connect to the fo
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
 - [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
 - [GCP VertexAI](./gcp-vertexai.md) - Access GCP Gemini and Anthropic models on VertexAI
+- [Google AI Studio](./google-ai-studio.md) - Generate images with Gemini using a Google AI Studio API key
 
 :::tip
 To learn how to connect to providers see [Connecting to AI Providers](/docs/capabilities/llm-integrations/connect-providers) and you can view all [Supported Providers](/docs/capabilities/llm-integrations/supported-providers).
@@ -47,3 +48,4 @@ Choose your provider to get started:
 - [Connect AWS Bedrock](./aws-bedrock.md)
 - [Connect Azure OpenAI](./azure-openai.md)
 - [Connect GCP VertexAI](./gcp-vertexai.md)
+- [Connect Google AI Studio](./google-ai-studio.md)

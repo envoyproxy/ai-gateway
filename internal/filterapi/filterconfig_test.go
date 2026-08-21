@@ -98,6 +98,12 @@ func TestAnthropicAPIKeyAuthLogValue(t *testing.T) {
 	require.Equal(t, "[REDACTED]", attrs["key"])
 }
 
+func TestGoogleAPIKeyAuthLogValue(t *testing.T) {
+	a := filterapi.GoogleAPIKeyAuth{Key: "google-ai-secret-key"}
+	attrs := logAttrs(a.LogValue())
+	require.Equal(t, "[REDACTED]", attrs["key"])
+}
+
 func TestAzureAuthLogValue(t *testing.T) {
 	a := filterapi.AzureAuth{AccessToken: "my-access-token"}
 	attrs := logAttrs(a.LogValue())

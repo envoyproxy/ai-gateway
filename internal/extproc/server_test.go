@@ -580,6 +580,9 @@ func Test_isSensitiveHeader(t *testing.T) {
 		{"authorization", true},
 		{"Authorization", true},
 		{"x-api-key", true},
+		{"x-goog-api-key", true},
+		{"X-Goog-Api-Key", true},
+		{"x-aigw-goog-api-key", true},
 		// x-aigw- headers carry per-request credential overrides.
 		{"x-aigw-api-key", true},
 		{"x-aigw-aws-secret-access-key", true},
@@ -651,95 +654,10 @@ func Test_filterRequestBodyResponseHeaders(t *testing.T) {
 	})
 }
 
-func Test_redactProcessingResponseRequestHeaders(t *testing.T) {
-	buf := internaltesting.CaptureOutput("test")[0]
-	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestHeaders{
-			RequestHeaders: &extprocv3.HeadersResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: []*corev3.HeaderValueOption{
-							{Header: &corev3.HeaderValue{
-								Key:      ":path",
-								RawValue: []byte("/v1/chat/completions"),
-							}},
-							{Header: &corev3.HeaderValue{
-								Key:      "Authorization",
-								RawValue: []byte("Bearer secret-backend-key"),
-							}},
-						},
-						RemoveHeaders: []string{"x-envoy-original-path"},
-					},
-					BodyMutation: &extprocv3.BodyMutation{
-						Mutation: &extprocv3.BodyMutation_Body{
-							Body: []byte(`{"prompt":"secret prompt"}`),
-						},
-					},
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}
-	rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-
-	t.Run("redactBody=false redacts headers only", func(t *testing.T) {
-		filtered := redactProcessingResponseRequestHeaders(rh, logger, []string{"authorization"}, false)
-		require.NotNil(t, filtered)
-		filteredMutation := filtered.RequestHeaders.Response.GetHeaderMutation()
-		require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
-		// The injected backend credential must be redacted even with redactBody off.
-		require.Equal(t, []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/v1/chat/completions")}},
-			{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
-		}, filteredMutation.GetSetHeaders())
-		require.NotContains(t, buf.String(), "secret-backend-key")
-
-		// Body stays raw when redactBody is false.
-		require.JSONEq(t, `{"prompt":"secret prompt"}`, string(filtered.RequestHeaders.Response.GetBodyMutation().GetBody()))
-		// ClearRouteCache is preserved.
-		require.True(t, filtered.RequestHeaders.Response.GetClearRouteCache())
-
-		// Original response is not modified.
-		originalMutation := rh.RequestHeaders.Response.GetHeaderMutation()
-		require.Equal(t, []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/v1/chat/completions")}},
-			{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("Bearer secret-backend-key")}},
-		}, originalMutation.GetSetHeaders())
-	})
-
-	t.Run("redactBody=true redacts headers and body", func(t *testing.T) {
-		filtered := redactProcessingResponseRequestHeaders(rh, logger, []string{"authorization"}, true)
-		require.NotNil(t, filtered)
-		filteredMutation := filtered.RequestHeaders.Response.GetHeaderMutation()
-		require.Equal(t, []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/v1/chat/completions")}},
-			{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
-		}, filteredMutation.GetSetHeaders())
-
-		bodyStr := string(filtered.RequestHeaders.Response.GetBodyMutation().GetBody())
-		require.Contains(t, bodyStr, "[REDACTED LENGTH=")
-		require.NotContains(t, bodyStr, "secret prompt")
-
-		// Original body still unmodified.
-		require.JSONEq(t, `{"prompt":"secret prompt"}`, string(rh.RequestHeaders.Response.GetBodyMutation().GetBody()))
-	})
-
-	t.Run("handle nil response", func(t *testing.T) {
-		filtered := redactProcessingResponseRequestHeaders(nil, logger, []string{"authorization"}, false)
-		require.NotNil(t, filtered)
-		require.Equal(t, &extprocv3.ProcessingResponse_RequestHeaders{}, filtered)
-	})
-}
-
-// TestServer_processMsg_RedactsCredentialMutation asserts that a backend
-// credential injected via the request-headers header mutation is redacted in the
-// "request headers processed" debug log even when enableRedaction is false —
-// header/credential redaction must be independent of the body-content redaction
-// flag.
-func TestServer_processMsg_RedactsCredentialMutation(t *testing.T) {
+// TestServer_processMsg_OmitsCredentialMutationFromLog asserts that a backend credential injected
+// via the request-headers header mutation reaches Envoy but never the debug log, even when
+// enableRedaction is false — credential logging must not depend on the body-content redaction flag.
+func TestServer_processMsg_OmitsCredentialMutationFromLog(t *testing.T) {
 	buf := internaltesting.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -782,9 +700,10 @@ func TestServer_processMsg_RedactsCredentialMutation(t *testing.T) {
 	// The actual response sent to Envoy is unchanged.
 	require.Equal(t, []byte("Bearer secret-backend-key"),
 		resp.GetRequestHeaders().GetResponse().GetHeaderMutation().GetSetHeaders()[0].Header.RawValue)
-	// But the debug log must not leak the credential.
-	require.Contains(t, buf.String(), "[REDACTED]")
+	// The mutation is summarized as a count rather than logged, see the CodeQL note in processMsg.
+	require.Contains(t, buf.String(), "set_header_count=1")
 	require.NotContains(t, buf.String(), "secret-backend-key")
+	require.NotContains(t, buf.String(), "Authorization")
 }
 
 func Test_redactRequestBodyResponseFull(t *testing.T) {

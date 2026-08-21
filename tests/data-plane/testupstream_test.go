@@ -65,6 +65,7 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
+			testUpstreamGoogleAIStudioBackend,
 			testUpstreamAWSAnthropicBackend,
 			testUpstreamBodyMutationBackend,
 			testUpstreamBodyMutationAnthropicBackend,
@@ -177,6 +178,98 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `backend timeout`,
 			expStatus:       http.StatusServiceUnavailable,
 			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
+		},
+		{
+			name:              "google-ai-studio - /v1/images/generations",
+			backend:           "google-ai-studio",
+			path:              "/v1/images/generations",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"gemini-2.5-flash-image","prompt":"a cat wearing sunglasses","n":2}`,
+			expPath:           "/v1beta/models/gemini-2.5-flash-image:generateContent",
+			expRequestHeaders: map[string]string{"x-goog-api-key": fakeGoogleAIStudioAPIKey},
+			expRequestBody:    `{"contents":[{"parts":[{"text":"a cat wearing sunglasses"}],"role":"user"}],"tools":null,"generationConfig":{"candidateCount":2,"responseModalities":["IMAGE","TEXT"]}}`,
+			// Gemini returns the image as raw inlineData bytes; "AQID" is base64 for 0x01,0x02,0x03.
+			responseBody: `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQID"}}]}}],"modelVersion":"gemini-2.5-flash-image","usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":1292,"thoughtsTokenCount":30,"totalTokenCount":1330,"promptTokensDetails":[{"modality":"TEXT","tokenCount":8}]}}`,
+			expStatus:    http.StatusOK,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				var resp openai.ImageGenerationResponse
+				require.NoError(t, json.Unmarshal(body, &resp))
+				require.Len(t, resp.Data, 1)
+				require.Equal(t, "AQID", resp.Data[0].B64JSON)
+				require.NotNil(t, resp.Usage)
+				require.Equal(t, 1330, resp.Usage.TotalTokens)
+				require.Equal(t, 8, resp.Usage.InputTokens)
+				// Thinking tokens are billed as output, so they land in output_tokens.
+				require.Equal(t, 1322, resp.Usage.OutputTokens)
+				require.Equal(t, &openai.ImageGenerationInputTokensDetails{TextTokens: 8}, resp.Usage.InputTokensDetails)
+			},
+		},
+		{
+			name:            "google-ai-studio - /v1/images/generations - non json upstream error mapped to OpenAI",
+			backend:         "google-ai-studio",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-2.5-flash-image","prompt":"a cat"}`,
+			expPath:         "/v1beta/models/gemini-2.5-flash-image:generateContent",
+			responseHeaders: "content-type:text/plain",
+			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:    `backend timeout`,
+			expStatus:       http.StatusServiceUnavailable,
+			expResponseBody: `{"error":{"type":"GoogleAIStudioBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
+		},
+		{
+			// The model is client controlled, so it must not be able to steer the request at a
+			// different endpoint on the same host while the API key is still attached. Encoding
+			// it is not enough here: Envoy unescapes %2F before forwarding, so the traversal
+			// would reach the upstream intact. The gateway rejects it instead.
+			name:        "google-ai-studio - /v1/images/generations - path traversal in model rejected",
+			backend:     "google-ai-studio",
+			path:        "/v1/images/generations",
+			method:      http.MethodPost,
+			requestBody: `{"model":"../../v1beta/files","prompt":"a cat"}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				require.Contains(t, string(body), "invalid model name")
+			},
+		},
+		{
+			// Google's error envelope has a numeric "code" and no "type", so it has to be
+			// converted rather than passed through to an OpenAI client.
+			name:            "google-ai-studio - /v1/images/generations - google error envelope mapped to OpenAI",
+			backend:         "google-ai-studio",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-2.5-flash-image","prompt":"a cat"}`,
+			expPath:         "/v1beta/models/gemini-2.5-flash-image:generateContent",
+			responseHeaders: "content-type:application/json",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"error":{"code":400,"message":"API key not valid","status":"INVALID_ARGUMENT"}}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"error":{"type":"INVALID_ARGUMENT","message":"API key not valid","code":"400"},"type":"error"}`,
+		},
+		{
+			// Gemini only returns inline bytes, so the gateway rejects response_format=url
+			// before the request reaches the backend.
+			name:        "google-ai-studio - /v1/images/generations - unsupported response_format",
+			backend:     "google-ai-studio",
+			path:        "/v1/images/generations",
+			method:      http.MethodPost,
+			requestBody: `{"model":"gemini-2.5-flash-image","prompt":"a cat","response_format":"url"}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				require.Contains(t, string(body), "unsupported response_format")
+			},
+		},
+		{
+			name:        "google-ai-studio - /v1/images/generations - n out of range",
+			backend:     "google-ai-studio",
+			path:        "/v1/images/generations",
+			method:      http.MethodPost,
+			requestBody: `{"model":"gemini-2.5-flash-image","prompt":"a cat","n":11}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				require.Contains(t, string(body), "n must be between 1 and 10")
+			},
 		},
 		{
 			name:            "unknown path",

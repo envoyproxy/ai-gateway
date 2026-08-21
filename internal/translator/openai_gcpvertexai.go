@@ -611,6 +611,15 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
+	return convertGoogleErrorToOpenAI(respHeaders, body, gcpVertexAIBackendError)
+}
+
+// convertGoogleErrorToOpenAI maps Google's error envelope to the OpenAI error shape; Vertex AI and
+// the Gemini Developer API both use it. backendErrorType is reported when the body is not that
+// envelope, since there is then no status string to carry over.
+func convertGoogleErrorToOpenAI(respHeaders map[string]string, body io.Reader, backendErrorType string) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
+) {
 	var buf []byte
 	buf, err = io.ReadAll(body)
 	if err != nil {
@@ -623,7 +632,7 @@ func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Read
 	openaiError := openai.Error{
 		Type: "error",
 		Error: openai.ErrorType{
-			Type: gcpVertexAIBackendError,
+			Type: backendErrorType,
 			Code: &statusCode,
 		},
 	}

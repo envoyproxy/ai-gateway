@@ -187,6 +187,10 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "gcp_with_apikey.yaml",
 			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
 		},
+		{
+			name:   "google_with_apikey.yaml",
+			expErr: "When type is GoogleAPIKey, only googleAPIKey field should be set",
+		},
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
@@ -196,6 +200,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "aws_credential_override.yaml"},
 		{name: "gcp_oidc.yaml"},
 		{name: "anthropic-apikey.yaml"},
+		{name: "google-apikey.yaml"},
 		{name: "targetrefs_basic.yaml"},
 		{name: "targetrefs_multiple.yaml"},
 		{name: "targetrefs_inferencepool.yaml"},
