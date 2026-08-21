@@ -746,7 +746,7 @@ type mockClient struct {
 }
 
 // Patch implements the client.Client interface for the mock client.
-func (m *mockClient) Patch(ctx context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+func (m *mockClient) Patch(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
 	// Capture the patched object for test verification.
 	if o, ok := obj.(*aigv1b1.AIGatewayRoute); ok {
 		m.updatedObj = o.DeepCopy()
@@ -757,7 +757,7 @@ func (m *mockClient) Patch(ctx context.Context, obj client.Object, _ client.Patc
 	return nil
 }
 
-func (m *mockClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
+func (m *mockClient) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
 	if m.getNotFound {
 		return apierrors.NewNotFound(schema.GroupResource{Group: "aigateway.envoyproxy.io", Resource: "aigatewayroutes"}, key.Name)
 	}

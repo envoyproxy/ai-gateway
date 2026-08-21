@@ -171,8 +171,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	filters := generateHTTPRouteFilters(aiGatewayRoute)
 	for _, base := range filters {
 		var f egv1a1.HTTPRouteFilter
-		if err := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); err != nil {
-			if apierrors.IsNotFound(err) {
+		if getErr := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); getErr != nil {
+			if apierrors.IsNotFound(getErr) {
 				if err = ctrlutil.SetControllerReference(aiGatewayRoute, base, c.client.Scheme()); err != nil {
 					panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRouteFilter: %w", err))
 				}
@@ -182,7 +182,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 				}
 				c.logger.Info("Created HTTPRouteFilter", "name", base.Name, "namespace", base.Namespace)
 			} else {
-				return fmt.Errorf("failed to get HTTPRouteFilter %s: %w", base.Name, err)
+				return fmt.Errorf("failed to get HTTPRouteFilter %s: %w", base.Name, getErr)
 			}
 		}
 	}
