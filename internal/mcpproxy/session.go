@@ -683,6 +683,16 @@ func (s *session) mergedCapabilities() *mcpsdk.ServerCapabilities {
 				merged.Completions = &mcpsdk.CompletionCapabilities{}
 			}
 		}
+		for id, ext := range caps.Extensions {
+			if merged.Extensions == nil {
+				merged.Extensions = make(map[string]any, len(caps.Extensions))
+			}
+			// First backend to declare an extension wins, so the merge is stable regardless of
+			// map iteration order.
+			if _, ok := merged.Extensions[id]; !ok {
+				merged.Extensions[id] = ext
+			}
+		}
 	}
 	return merged
 }

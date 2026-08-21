@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -457,6 +458,40 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mm.RequireRequestFailure(t)
 	})
 
+	// Verify the stale content-encoding header is removed when a compressed error body is replaced
+	// with the uncompressed translated error.
+	t.Run("non-2xx status removes content-encoding", func(t *testing.T) {
+		var compressed bytes.Buffer
+		gz := gzip.NewWriter(&compressed)
+		_, err := gz.Write([]byte("error-body"))
+		require.NoError(t, err)
+		require.NoError(t, gz.Close())
+
+		expHeadMut := []internalapi.Header{{"foo", "bar"}}
+		expBodyMut := []byte("translated-error-body")
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t,
+			// The translator must receive the decompressed body.
+			expResponseBody:   &extprocv3.HttpBody{Body: []byte("error-body")},
+			retHeaderMutation: expHeadMut,
+			retBodyMutation:   expBodyMut,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:       mt,
+			metrics:          mm,
+			responseHeaders:  map[string]string{":status": "500", "content-encoding": "gzip"},
+			responseEncoding: "gzip",
+			parent:           &chatCompletionProcessorRouterFilter{},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: compressed.Bytes(), EndOfStream: true})
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		require.Equal(t, "translated-error-body", string(commonRes.BodyMutation.GetBody()))
+		require.Contains(t, commonRes.HeaderMutation.RemoveHeaders, "content-encoding")
+		mm.RequireRequestFailure(t)
+	})
+
 	// Verify streaming only records completion on EndOfStream.
 	t.Run("streaming completion only at end", func(t *testing.T) {
 		mm := &mockMetrics{}
@@ -534,6 +569,45 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	// (the nil check on upstreamFilter at ProcessResponseHeaders/ProcessResponseBody
 	// must fall through to passThroughProcessor).
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend pins that
+// the resolved backend reaches the span, and that recording it is optional: the
+// backend is only known after routing, and only some semantic conventions record
+// it, so the span is type-asserted rather than required to implement it.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_recordsBackend(t *testing.T) {
+	setBackend := func(t *testing.T, span tracingapi.ChatCompletionSpan) {
+		t.Helper()
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{":path": "/foo"},
+			metrics:        &mockMetrics{},
+		}
+		// The schema is unsupported so translator creation fails, but the
+		// backend is recorded before that, which is what this asserts.
+		err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   "some-backend",
+				Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			},
+		}, "test-route", &chatCompletionProcessorRouterFilter{span: span})
+		require.Error(t, err)
+	}
+
+	t.Run("span that records backends", func(t *testing.T) {
+		span := &mockBackendChatCompletionSpan{}
+		setBackend(t, span)
+		require.Equal(t, []tracingapi.Backend{
+			{Schema: "some-schema", Name: "some-backend"},
+		}, span.backends)
+	})
+
+	t.Run("span that does not", func(t *testing.T) {
+		setBackend(t, &mockChatCompletionSpan{})
+	})
+
+	t.Run("no span at all", func(t *testing.T) {
+		setBackend(t, nil)
+	})
 }
 
 // Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
