@@ -20,6 +20,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -644,6 +645,94 @@ func Test_handleFinalizer(t *testing.T) {
 			require.Equal(t, tc.expectCallback, callbackExecuted)
 		})
 	}
+}
+
+type finalizerGetErrorClient struct {
+	client.Client
+	err          error
+	allowGets    int
+	markDeleting bool
+}
+
+func (c *finalizerGetErrorClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if c.allowGets > 0 {
+		c.allowGets--
+		if err := c.Client.Get(ctx, key, obj, opts...); err != nil {
+			return err
+		}
+		if c.markDeleting {
+			now := metav1.Now()
+			obj.SetFinalizers([]string{aiGatewayControllerFinalizer})
+			obj.SetDeletionTimestamp(&now)
+		}
+		return nil
+	}
+	return c.err
+}
+
+func Test_finalizerErrorIsPropagatedByControllers(t *testing.T) {
+	finalizerErr := fmt.Errorf("finalizer get failed")
+	deletingMeta := metav1.ObjectMeta{
+		Name:              "deleting-object",
+		Namespace:         "default",
+		Finalizers:        []string{aiGatewayControllerFinalizer},
+		DeletionTimestamp: ptr.To(metav1.Now()),
+	}
+
+	t.Run("AIGatewayRoute", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewAIGatewayRouteController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+			"/",
+		)
+		require.ErrorIs(t, c.syncAIGatewayRoute(t.Context(), &aigv1b1.AIGatewayRoute{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
+
+	t.Run("AIServiceBackend", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewAIServiceBackendController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+		)
+		require.ErrorIs(t, c.syncAIServiceBackend(t.Context(), &aigv1b1.AIServiceBackend{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
+
+	t.Run("BackendSecurityPolicy", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewBackendSecurityPolicyController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+			make(chan event.GenericEvent, 1),
+		)
+		_, err := c.reconcile(t.Context(), &aigv1b1.BackendSecurityPolicy{
+			ObjectMeta: deletingMeta,
+		})
+		require.ErrorIs(t, err, finalizerErr)
+	})
+
+	t.Run("MCPRoute", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexesForMCP(t)
+		c := NewMCPRouteController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+		)
+		require.ErrorIs(t, c.syncMCPRoute(t.Context(), &aigv1b1.MCPRoute{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
 }
 
 // mockClients implements client.Client with a custom Update method for testing purposes.
