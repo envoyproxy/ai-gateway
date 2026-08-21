@@ -591,7 +591,7 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 		span.RecordClientSession(string(s.clientGatewaySessionID()))
 	}
 
-	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
+	result := mcp.InitializeResult{ProtocolVersion: s.mergedProtocolVersion(p.ProtocolVersion), ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
 	result.ServerInfo.Version = version.Parse()
 	result.Capabilities = s.mergedCapabilities()
@@ -621,6 +621,29 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(data)
 	return err
+}
+
+// mergedProtocolVersion returns the minimum protocol version across all backends,
+// capped by the client's requested version. MCP protocol versions are ISO date
+// strings (YYYY-MM-DD), so lexicographic comparison gives chronological ordering.
+func (s *session) mergedProtocolVersion(clientVersion string) string {
+	var minVersion string
+	for _, entry := range s.perBackendSessions {
+		v := entry.protocolVersion
+		if v == "" {
+			continue
+		}
+		if minVersion == "" || v < minVersion {
+			minVersion = v
+		}
+	}
+	if minVersion == "" {
+		minVersion = protocolVersion20250618
+	}
+	if clientVersion != "" && clientVersion < minVersion {
+		return clientVersion
+	}
+	return minVersion
 }
 
 // handleClientToServerResponse handles the response from client to server.
