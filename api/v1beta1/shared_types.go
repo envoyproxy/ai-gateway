@@ -16,6 +16,8 @@ import (
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.capabilities) || self.name == 'OpenAI'",message="capabilities is only supported for the OpenAI schema"
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
@@ -49,7 +51,37 @@ type VersionedAPISchema struct {
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
 	// +optional
 	Prefix *string `json:"prefix,omitempty"`
+
+	// Capabilities configures optional behavior for API schema translations.
+	// This field is only supported when name is OpenAI.
+	//
+	// +optional
+	Capabilities *APISchemaCapabilities `json:"capabilities,omitempty"`
 }
+
+// APISchemaCapabilities configures optional behavior for API schema translations.
+type APISchemaCapabilities struct {
+	// MessagesTranslation selects the OpenAI API endpoint used when translating
+	// Anthropic Messages requests. When omitted, ChatCompletions is used.
+	//
+	// +optional
+	// +kubebuilder:default=ChatCompletions
+	// +kubebuilder:validation:Enum=ChatCompletions;Responses
+	MessagesTranslation OpenAIMessagesTranslation `json:"messagesTranslation,omitempty"`
+}
+
+// OpenAIMessagesTranslation selects the OpenAI API endpoint used for translated
+// Anthropic Messages requests.
+type OpenAIMessagesTranslation string
+
+const (
+	// OpenAIMessagesTranslationChatCompletions translates Anthropic Messages requests
+	// to the OpenAI Chat Completions API.
+	OpenAIMessagesTranslationChatCompletions OpenAIMessagesTranslation = "ChatCompletions"
+	// OpenAIMessagesTranslationResponses translates Anthropic Messages requests
+	// to the OpenAI Responses API.
+	OpenAIMessagesTranslationResponses OpenAIMessagesTranslation = "Responses"
+)
 
 // APISchema defines the API schema.
 type APISchema string

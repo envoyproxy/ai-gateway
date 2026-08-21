@@ -261,20 +261,5 @@ func (a *anthropicToOpenAIV1ChatCompletionTranslator) SetRedactionConfig(debugLo
 // RedactAnthropicBody implements [AnthropicResponseRedactor.RedactAnthropicBody].
 // Creates a redacted copy of the Anthropic response for safe logging without modifying the original.
 func (a *anthropicToOpenAIV1ChatCompletionTranslator) RedactAnthropicBody(resp *anthropic.MessagesResponse) *anthropic.MessagesResponse {
-	if resp == nil {
-		return nil
-	}
-
-	// Create a shallow copy of the response
-	redacted := *resp
-
-	// Redact content blocks (contains AI-generated content)
-	if len(resp.Content) > 0 {
-		redacted.Content = make([]anthropic.MessagesContentBlock, len(resp.Content))
-		for i := range resp.Content {
-			redacted.Content[i] = redactAnthropicContent(&resp.Content[i])
-		}
-	}
-
-	return &redacted
+	return redactAnthropicMessagesResponse(resp)
 }
