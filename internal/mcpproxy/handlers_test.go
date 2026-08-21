@@ -1100,7 +1100,7 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}, nil) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "test")
 	require.Contains(t, rr.Body.String(), "data")
@@ -1125,7 +1125,7 @@ func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}, nil) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "bom")
 	require.Contains(t, rr.Body.String(), id.Raw())
@@ -1165,7 +1165,7 @@ data: %s
 	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID))
 	require.NoError(t, err)
 
-	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"}, nil) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "event: test")
 	require.Contains(t, rr.Body.String(), "data:")
@@ -1290,6 +1290,32 @@ func TestHandlePromptGetRequest_NoSession(t *testing.T) {
 	require.ErrorIs(t, err, errSessionNotFound)
 	require.Equal(t, http.StatusForbidden, rr.Code)
 	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+}
+
+// TestServePOST_RecordsClientSession pins that the span carries the
+// client-facing session, i.e. the one the MCP client sees in the session header,
+// rather than a gateway-to-backend session. Broadcast methods route to several
+// backends, each with its own upstream session, so recording a per-backend one
+// on the span would be last-writer-wins.
+func TestServePOST_RecordsClientSession(t *testing.T) {
+	tracer := &fakeTracer{}
+	proxy := newTestMCPProxyWithTracer(tracer)
+
+	sessionID := secureID(t, proxy, "@@default-backend:"+base64.StdEncoding.EncodeToString([]byte("test-session")))
+
+	params := &mcp.GetPromptParams{Name: "somebackend__test-prompt"}
+	paramsData, err := json.Marshal(params)
+	require.NoError(t, err)
+	req := &jsonrpc.Request{Method: "prompts/get", Params: paramsData}
+	body, err := jsonrpc.EncodeMessage(req)
+	require.NoError(t, err)
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, sessionID)
+	proxy.servePOST(httptest.NewRecorder(), httpReq)
+
+	require.NotNil(t, tracer.span)
+	require.Equal(t, sessionID, tracer.span.clientSessionID)
 }
 
 func TestServePOST_InvalidToolCallParams(t *testing.T) {
@@ -2621,12 +2647,81 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 			}
 			return combined
 		},
+		nil,
 	)
 	require.ErrorIs(t, err, errBackendResponseError)
 	require.Equal(t, http.StatusOK, rr.Code)
 	// The response is the SSE stream containing the aggregated result.
 	require.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
 	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"value":"foobar"}}`)
+}
+
+func Test_sendToAllBackendsAndAggregateResponsesImpl_RecordsSpan(t *testing.T) {
+	reqID, err := jsonrpc.MakeID("id")
+	require.NoError(t, err)
+	proxy := newTestMCPProxy()
+	s := &session{perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"a": {sessionID: "session-a"}}}
+
+	type testData struct {
+		Value string `json:"value"`
+	}
+	events := make(chan *backendEvent)
+	go func() {
+		events <- &backendEvent{sseEvent: &sseEvent{backend: "a", messages: []jsonrpc.Message{
+			&jsonrpc.Response{ID: reqID, Result: []byte(`{"value": "foo"}`)},
+		}}}
+		close(events)
+	}()
+
+	span := &fakeSpan{}
+	rr := httptest.NewRecorder()
+	var testParams *mcp.ListToolsParams
+	err = sendToAllBackendsAndAggregateResponsesImpl(t.Context(), events, proxy, rr, s, &jsonrpc.Request{ID: reqID, Method: "tools/list"},
+		testParams,
+		func(_ *session, res []broadCastResponse[testData]) testData {
+			var combined testData
+			for _, r := range res {
+				combined.Value += r.res.Value
+			}
+			return combined
+		},
+		span,
+	)
+	require.NoError(t, err)
+	// The aggregation is bracketed with begin/end events for the span timeline.
+	require.Equal(t, []string{"tools/list aggregation begin", "tools/list aggregation end"}, span.events)
+	// The merged result is handed to the span exactly once.
+	require.Len(t, span.listResults, 1)
+	require.Equal(t, testData{Value: "foo"}, span.listResults[0])
+}
+
+func Test_recordToolCallResult(t *testing.T) {
+	result := []byte(`{"content":[]}`)
+
+	t.Run("records for tools/call with result", func(t *testing.T) {
+		span := &fakeSpan{}
+		recordToolCallResult(span, &jsonrpc.Request{Method: "tools/call"}, &jsonrpc.Response{Result: result})
+		require.Equal(t, result, span.toolCallResult)
+	})
+
+	t.Run("skips non tools/call method", func(t *testing.T) {
+		span := &fakeSpan{}
+		recordToolCallResult(span, &jsonrpc.Request{Method: "prompts/get"}, &jsonrpc.Response{Result: result})
+		require.Nil(t, span.toolCallResult)
+	})
+
+	t.Run("skips nil result", func(t *testing.T) {
+		span := &fakeSpan{}
+		recordToolCallResult(span, &jsonrpc.Request{Method: "tools/call"}, &jsonrpc.Response{})
+		require.Nil(t, span.toolCallResult)
+	})
+
+	t.Run("no panic on nil span or nil request", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			recordToolCallResult(nil, &jsonrpc.Request{Method: "tools/call"}, &jsonrpc.Response{Result: result})
+			recordToolCallResult(&fakeSpan{}, nil, &jsonrpc.Response{Result: result})
+		})
+	})
 }
 
 func Test_parseParamsAndMaybeStartSpan(t *testing.T) {
