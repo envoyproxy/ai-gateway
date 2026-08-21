@@ -13,11 +13,14 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -517,10 +520,13 @@ func Test_handleFinalizer(t *testing.T) {
 		hasFinalizer       bool
 		hasDeletionTS      bool
 		clientUpdateError  bool
+		clientGetError     bool
+		clientGetNotFound  bool
 		onDeletionFnError  bool
 		expectedOnDelete   bool
 		expectedFinalizers []string
 		expectCallback     bool
+		expectError        bool
 	}{
 		{
 			name:               "add finalizer to new object",
@@ -536,6 +542,7 @@ func Test_handleFinalizer(t *testing.T) {
 			clientUpdateError:  true,
 			expectedOnDelete:   false,
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
+			expectError:        true,
 		},
 		{
 			name:               "object already has finalizer",
@@ -558,8 +565,9 @@ func Test_handleFinalizer(t *testing.T) {
 			hasDeletionTS:      true,
 			onDeletionFnError:  true,
 			expectedOnDelete:   true,
-			expectedFinalizers: []string{},
+			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 			expectCallback:     true,
+			expectError:        true,
 		},
 		{
 			name:               "object being deleted, client update error",
@@ -569,6 +577,27 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedOnDelete:   true,
 			expectedFinalizers: []string{},
 			expectCallback:     true,
+			expectError:        true,
+		},
+		{
+			name:               "object being deleted, client get error during retry",
+			hasFinalizer:       true,
+			hasDeletionTS:      true,
+			clientGetError:     true,
+			expectedOnDelete:   true,
+			expectedFinalizers: []string{aiGatewayControllerFinalizer},
+			expectCallback:     true,
+			expectError:        true,
+		},
+		{
+			name:               "object being deleted, not found during retry",
+			hasFinalizer:       true,
+			hasDeletionTS:      true,
+			clientGetNotFound:  true,
+			expectedOnDelete:   true,
+			expectedFinalizers: []string{aiGatewayControllerFinalizer},
+			expectCallback:     true,
+			expectError:        false,
 		},
 	}
 
@@ -597,25 +626,147 @@ func Test_handleFinalizer(t *testing.T) {
 					return nil
 				}
 			}
-			onDelete := handleFinalizer(context.Background(),
-				&mockClient{updateErr: tc.clientUpdateError}, logr.Discard(), obj, onDeletionFn)
+			mock := &mockClient{
+				updateErr:   tc.clientUpdateError,
+				getErr:      tc.clientGetError,
+				getNotFound: tc.clientGetNotFound,
+				obj:         obj,
+			}
+			onDelete, err := handleFinalizer(context.Background(), mock, logr.Discard(), obj, onDeletionFn)
 			require.Equal(t, tc.expectedOnDelete, onDelete)
-			require.Equal(t, tc.expectedFinalizers, obj.Finalizers)
+			require.Equal(t, tc.expectError, err != nil)
+			// Check the object that was passed to Update (the one with finalizer removed)
+			if mock.updatedObj != nil {
+				require.Equal(t, tc.expectedFinalizers, mock.updatedObj.Finalizers)
+			} else {
+				// For cases where Update is not called (e.g., error before Update)
+				require.Equal(t, tc.expectedFinalizers, obj.Finalizers)
+			}
 			require.Equal(t, tc.expectCallback, callbackExecuted)
 		})
 	}
 }
 
+type finalizerGetErrorClient struct {
+	client.Client
+	err          error
+	allowGets    int
+	markDeleting bool
+}
+
+func (c *finalizerGetErrorClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if c.allowGets > 0 {
+		c.allowGets--
+		if err := c.Client.Get(ctx, key, obj, opts...); err != nil {
+			return err
+		}
+		if c.markDeleting {
+			now := metav1.Now()
+			obj.SetFinalizers([]string{aiGatewayControllerFinalizer})
+			obj.SetDeletionTimestamp(&now)
+		}
+		return nil
+	}
+	return c.err
+}
+
+func Test_finalizerErrorIsPropagatedByControllers(t *testing.T) {
+	finalizerErr := fmt.Errorf("finalizer get failed")
+	deletingMeta := metav1.ObjectMeta{
+		Name:              "deleting-object",
+		Namespace:         "default",
+		Finalizers:        []string{aiGatewayControllerFinalizer},
+		DeletionTimestamp: ptr.To(metav1.Now()),
+	}
+
+	t.Run("AIGatewayRoute", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewAIGatewayRouteController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+			"/",
+		)
+		require.ErrorIs(t, c.syncAIGatewayRoute(t.Context(), &aigv1b1.AIGatewayRoute{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
+
+	t.Run("AIServiceBackend", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewAIServiceBackendController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+		)
+		require.ErrorIs(t, c.syncAIServiceBackend(t.Context(), &aigv1b1.AIServiceBackend{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
+
+	t.Run("BackendSecurityPolicy", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexes(t)
+		c := NewBackendSecurityPolicyController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+			make(chan event.GenericEvent, 1),
+		)
+		_, err := c.reconcile(t.Context(), &aigv1b1.BackendSecurityPolicy{
+			ObjectMeta: deletingMeta,
+		})
+		require.ErrorIs(t, err, finalizerErr)
+	})
+
+	t.Run("MCPRoute", func(t *testing.T) {
+		baseClient := requireNewFakeClientWithIndexesForMCP(t)
+		c := NewMCPRouteController(
+			&finalizerGetErrorClient{Client: baseClient, err: finalizerErr},
+			nil,
+			logr.Discard(),
+			make(chan event.GenericEvent, 1),
+		)
+		require.ErrorIs(t, c.syncMCPRoute(t.Context(), &aigv1b1.MCPRoute{
+			ObjectMeta: deletingMeta,
+		}), finalizerErr)
+	})
+}
+
 // mockClients implements client.Client with a custom Update method for testing purposes.
 type mockClient struct {
 	client.Client
-	updateErr bool
+	updateErr   bool
+	getErr      bool
+	getNotFound bool
+	obj         *aigv1b1.AIGatewayRoute
+	updatedObj  *aigv1b1.AIGatewayRoute
 }
 
-// Updates implements the client.Client interface for the mock client.
-func (m *mockClient) Update(context.Context, client.Object, ...client.UpdateOption) error {
+// Patch implements the client.Client interface for the mock client.
+func (m *mockClient) Patch(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+	// Capture the patched object for test verification.
+	if o, ok := obj.(*aigv1b1.AIGatewayRoute); ok {
+		m.updatedObj = o.DeepCopy()
+	}
 	if m.updateErr {
-		return fmt.Errorf("mock update error")
+		return fmt.Errorf("mock patch error")
+	}
+	return nil
+}
+
+func (m *mockClient) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
+	if m.getNotFound {
+		return apierrors.NewNotFound(schema.GroupResource{Group: "aigateway.envoyproxy.io", Resource: "aigatewayroutes"}, key.Name)
+	}
+	if m.getErr {
+		return fmt.Errorf("mock get error")
+	}
+	// Copy the test object to the target to simulate a successful Get
+	if src, ok := obj.(*aigv1b1.AIGatewayRoute); ok {
+		*src = *m.obj
 	}
 	return nil
 }
