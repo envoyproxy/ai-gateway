@@ -1417,23 +1417,29 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	return
 }
 
-// warnUndeclaredMetadataNamespaces logs an error, once per namespace, for every
-// credentialOverride.fromDynamicMetadata namespace the GatewayConfig leaves out: Envoy will not
-// forward it, so the backend falls back to the static credential.
+// warnUndeclaredMetadataNamespaces logs an error for every credentialOverride.fromDynamicMetadata
+// namespace the GatewayConfig leaves out: Envoy will not forward it, so those backends fall back
+// to the static credential. One line per namespace, naming every backend that reads it.
 func (c *GatewayController) warnUndeclaredMetadataNamespaces(ec *filterapi.Config, declared []string, gatewayName, gatewayNamespace string) {
-	var warned []string
+	var undeclared []string
+	backends := make(map[string][]string)
 	for i := range ec.Backends {
 		b := &ec.Backends[i]
 		if b.Auth == nil || b.Auth.CredentialOverride == nil {
 			continue
 		}
 		ns := b.Auth.CredentialOverride.DynamicMetadataNamespace
-		if ns == "" || slices.Contains(declared, ns) || slices.Contains(warned, ns) {
+		if ns == "" || slices.Contains(declared, ns) {
 			continue
 		}
-		warned = append(warned, ns)
-		c.logger.Error(nil, "credentialOverride reads a dynamic metadata namespace the GatewayConfig does not declare in extProc.metadataForwardingNamespaces; Envoy will not forward it, so the backend falls back to the configured credential",
-			"namespace", ns, "backend", b.Name, "gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		if _, ok := backends[ns]; !ok {
+			undeclared = append(undeclared, ns)
+		}
+		backends[ns] = append(backends[ns], b.Name)
+	}
+	for _, ns := range undeclared {
+		c.logger.Error(nil, "credentialOverride reads a dynamic metadata namespace the GatewayConfig does not declare in extProc.metadataForwardingNamespaces; Envoy will not forward it, so these backends fall back to the configured credential",
+			"namespace", ns, "backends", backends[ns], "gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
 	}
 }
 

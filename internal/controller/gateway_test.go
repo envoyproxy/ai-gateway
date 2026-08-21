@@ -4045,19 +4045,24 @@ func TestGatewayController_warnUndeclaredMetadataNamespaces(t *testing.T) {
 		{Name: "no-auth"},
 		{Name: "declared", Auth: &filterapi.BackendAuth{CredentialOverride: &filterapi.CredentialOverride{DynamicMetadataNamespace: "declared.ns"}}},
 		{Name: "undeclared-a", Auth: &filterapi.BackendAuth{CredentialOverride: &filterapi.CredentialOverride{DynamicMetadataNamespace: "missing.ns"}}},
-		// Same undeclared namespace again: reported once.
+		// Same namespace again: one line, naming both backends.
 		{Name: "undeclared-b", Auth: &filterapi.BackendAuth{CredentialOverride: &filterapi.CredentialOverride{DynamicMetadataNamespace: "missing.ns"}}},
+		{Name: "undeclared-c", Auth: &filterapi.BackendAuth{CredentialOverride: &filterapi.CredentialOverride{DynamicMetadataNamespace: "other-missing.ns"}}},
 		// A header-sourced override has no namespace to declare.
 		{Name: "header", Auth: &filterapi.BackendAuth{CredentialOverride: &filterapi.CredentialOverride{HeaderName: "x-tenant-key"}}},
 	}}
 
 	c.warnUndeclaredMetadataNamespaces(ec, []string{"declared.ns"}, "gw", "ns")
-	require.Len(t, logged, 1)
+	require.Len(t, logged, 2)
 	require.Contains(t, logged[0], `"namespace"="missing.ns"`)
-	require.Contains(t, logged[0], `"backend"="undeclared-a"`)
+	// Every backend reading the namespace is named, not just the first.
+	require.Contains(t, logged[0], "undeclared-a")
+	require.Contains(t, logged[0], "undeclared-b")
+	require.Contains(t, logged[1], `"namespace"="other-missing.ns"`)
+	require.Contains(t, logged[1], "undeclared-c")
 
 	// Everything declared: silent.
 	logged = nil
-	c.warnUndeclaredMetadataNamespaces(ec, []string{"declared.ns", "missing.ns"}, "gw", "ns")
+	c.warnUndeclaredMetadataNamespaces(ec, []string{"declared.ns", "missing.ns", "other-missing.ns"}, "gw", "ns")
 	require.Empty(t, logged)
 }
