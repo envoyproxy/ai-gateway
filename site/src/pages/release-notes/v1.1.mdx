@@ -1,6 +1,6 @@
 ---
 title: Envoy AI Gateway v1.1.x Release Series
-description: Token counting APIs, per-request backend credentials, stream idle timeout with failover, MCP hostname routing and backend selection, OpenTelemetry GenAI tracing, and HTTP CONNECT egress
+description: Token counting, per-request credentials, stream idle timeout, MCP hostname routing, OpenTelemetry GenAI tracing, and HTTP CONNECT egress
 toc_min_heading_level: 2
 toc_max_heading_level: 4
 ---
@@ -62,11 +62,9 @@ export const patchReleases = releases.slice(1).reverse();
 
 ## 📖 Upgrade Guidance
 
-Upgrading from **v1.0** requires no CRD migrations. New fields are optional and backward compatible. Review the Helm security-context change below if you override the controller image.
+Upgrading from **v1.0** requires no CRD migrations. New fields are optional and backward compatible. Review the Helm security-context change if you override the controller image.
 
-### Helm security context
-
-If the official controller image works for you, no action is needed. To restore empty security contexts (for example a custom image that cannot run as UID 65532):
+If the official controller image works for you, no action is needed. To restore empty security contexts:
 
 ```yaml
 controller:
