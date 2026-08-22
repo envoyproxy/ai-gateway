@@ -88,7 +88,7 @@ func (c *MCPRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	// On deletion, propagate to the referenced Gateways and clean up the shared Backend if this
 	// is the last MCPRoute in the namespace.
-	onDelete, err := handleFinalizer(ctx, c.client, c.logger, mcpRoute, c.onMCPRouteDeleted)
+	onDelete, err := handleFinalizer(ctx, c.client, mcpRoute, c.onMCPRouteDeleted)
 	if err != nil {
 		return err
 	}
@@ -573,10 +573,16 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespac
 // onMCPRouteDeleted runs from the finalizer when an MCPRoute is being deleted: it propagates the
 // deletion to the referenced Gateways and, if this was the last live MCPRoute in the namespace,
 // removes the shared MCP proxy Backend.
+//
+// This callback MUST be idempotent: a failed Gateway propagation or failed finalizer removal
+// requeues the object and handleFinalizer re-runs it on every subsequent reconcile until the
+// finalizer is gone. The shared-Backend cleanup below is best-effort and guarded (managed-by
+// label + NotFound tolerance), so repeated execution is safe; it runs even when propagation to
+// Gateways failed so a transient error cannot orphan the Backend.
 func (c *MCPRouteController) onMCPRouteDeleted(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
-	// Run the shared-Backend cleanup even if propagating to Gateways fails. handleFinalizer removes
-	// the finalizer regardless of the returned error, so this is the only chance to avoid leaking
-	// the Backend; skipping it on a transient syncGateways error would orphan it for good.
+	// Run the shared-Backend cleanup even if propagating to Gateways fails. The returned error
+	// aborts finalizer removal (handleFinalizer propagates it and the object is retried), so
+	// this is the only chance this pass gets to avoid leaking the Backend.
 	syncErr := c.syncGateways(ctx, mcpRoute)
 	c.cleanupSharedMCPProxyBackend(ctx, mcpRoute)
 	return syncErr

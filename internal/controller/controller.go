@@ -570,75 +570,104 @@ func newConditions(conditionType, message string) []metav1.Condition {
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
 const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
 
-// handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
-// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
-// so that the finalizer is persisted.
+// handleFinalizer ensures aiGatewayControllerFinalizer is present on live objects and removed from
+// deleting ones. It returns onDelete=true when the object carries a deletion timestamp, signaling
+// callers to skip normal reconciliation.
 //
-// onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
-// be a recoverable error. For example, onDeletionFn only propagates the deletion of the object to other resources.
-// See the call sites of this function for examples.
-func handleFinalizer[objType client.Object](
+// onDeletionFn runs before finalizer removal. Errors requeue the object, keeping it in
+// Terminating until cleanup succeeds to prevent leaked side effects. Because retries
+// will re-execute it, onDeletionFn MUST be idempotent.
+func handleFinalizer[T any, PT interface {
+	*T
+	client.Object
+}](
 	ctx context.Context, k8sClient client.Client,
-	logger logr.Logger,
-	o objType,
-	onDeletionFn func(ctx context.Context, o objType) error,
-) (bool, error) {
+	o PT,
+	onDeletionFn func(ctx context.Context, o PT) error,
+) (onDelete bool, err error) {
+	key := types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}
 	if o.GetDeletionTimestamp().IsZero() {
-		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				latest := o.DeepCopyObject().(objType)
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}, latest); err != nil {
-					if apierrors.IsNotFound(err) {
-						return nil
-					}
-					return err
-				}
-				if ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+		if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+			return false, nil
+		}
+		latest := PT(new(T))
+		updated := false
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if gerr := k8sClient.Get(ctx, key, latest); gerr != nil {
+				if apierrors.IsNotFound(gerr) {
+					// Object gone; nothing left to finalize.
 					return nil
 				}
-				base := latest.DeepCopyObject().(objType)
-				ctrlutil.AddFinalizer(latest, aiGatewayControllerFinalizer)
-				return k8sClient.Patch(ctx, latest, client.MergeFrom(base))
-			})
-			if err != nil {
-				logger.Error(err, "Failed to add finalizer to object",
-					"namespace", o.GetNamespace(), "name", o.GetName())
-				return false, err
+				return gerr
 			}
+			if ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+				// Another writer added it first.
+				return nil
+			}
+			ctrlutil.AddFinalizer(latest, aiGatewayControllerFinalizer)
+			// Standard Update carries resourceVersion, so the API server natively enforces
+			// optimistic concurrency control and stale writes surface as conflicts that
+			// RetryOnConflict absorbs with backoff.
+			if uerr := k8sClient.Update(ctx, latest); uerr != nil {
+				return uerr
+			}
+			updated = true
+			return nil
+		})
+		if err != nil {
+			return false, fmt.Errorf("failed to add finalizer to %s/%s: %w",
+				o.GetNamespace(), o.GetName(), err)
+		}
+		if updated {
+			// Keep the caller's view coherent: downstream logic may inspect o or reuse it
+			// for further writes within the same reconcile cycle.
+			o.SetFinalizers(latest.GetFinalizers())
+			o.SetResourceVersion(latest.GetResourceVersion())
 		}
 		return false, nil
 	}
-	if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-		// Run cleanup once before attempting finalizer removal retries.
-		// Keeping this out of the retry loop avoids duplicate side effects when updates conflict.
-		if onDeletionFn != nil {
-			if err := onDeletionFn(ctx, o); err != nil {
-				return true, err
-			}
+	if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+		return true, nil
+	}
+	// Cleanup runs before removal (the API server blocks GC while any finalizer exists) and
+	// outside the retry loop so conflict retries never repeat its side effects within one call.
+	if onDeletionFn != nil {
+		if derr := onDeletionFn(ctx, o); derr != nil {
+			return true, fmt.Errorf("deletion cleanup failed for %s/%s: %w",
+				o.GetNamespace(), o.GetName(), derr)
 		}
-
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			latest := o.DeepCopyObject().(objType)
-			if err := k8sClient.Get(ctx, types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}, latest); err != nil {
-				if apierrors.IsNotFound(err) {
-					// Object is already deleted; nothing left to finalize.
-					return nil
-				}
-				return err
-			}
-			if !ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
-				// Another reconciler removed it first.
+	}
+	latest := PT(new(T))
+	removed := false
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if gerr := k8sClient.Get(ctx, key, latest); gerr != nil {
+			if apierrors.IsNotFound(gerr) {
+				// Object already deleted; nothing left to finalize.
 				return nil
 			}
-			base := latest.DeepCopyObject().(objType)
-			ctrlutil.RemoveFinalizer(latest, aiGatewayControllerFinalizer)
-			return k8sClient.Patch(ctx, latest, client.MergeFrom(base))
-		})
-		if err != nil {
-			logger.Error(err, "Failed to remove finalizer from object after retries",
-				"namespace", o.GetNamespace(), "name", o.GetName())
-			return true, err
+			return gerr
 		}
+		if !ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+			// Another reconciler removed it first.
+			return nil
+		}
+		ctrlutil.RemoveFinalizer(latest, aiGatewayControllerFinalizer)
+		// Standard Update carries resourceVersion, so the API server natively enforces
+		// optimistic concurrency control and stale writes surface as conflicts that
+		// RetryOnConflict absorbs with backoff.
+		if uerr := k8sClient.Update(ctx, latest); uerr != nil {
+			return uerr
+		}
+		removed = true
+		return nil
+	})
+	if err != nil {
+		return true, fmt.Errorf("failed to remove finalizer from %s/%s: %w",
+			o.GetNamespace(), o.GetName(), err)
+	}
+	if removed {
+		o.SetFinalizers(latest.GetFinalizers())
+		o.SetResourceVersion(latest.GetResourceVersion())
 	}
 	return true, nil
 }

@@ -65,8 +65,13 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 // syncAIServiceBackend is the main logic for reconciling the AIServiceBackend resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1b1.AIServiceBackend) error {
-	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
+	// Propagate the bsp events all the way up to relevant Gateways regardless of being deleted or not.
+	if _, err := handleFinalizer(ctx, c.client, aiBackend, nil); err != nil {
+		return err
+	}
+
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
+	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(aiBackend.Namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return fmt.Errorf("failed to list BackendSecurityPolicyList: %w", err)
@@ -81,15 +86,9 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 			aiBackend.Name, names)
 	}
 
-	// Propagate the bsp events all the way up to relevant Gateways regardless of being deleted or not.
-	_, err := handleFinalizer(ctx, c.client, c.logger, aiBackend, nil)
-	if err != nil {
-		return err
-	}
 	// Notify the AI Gateway Route controller about the AIServiceBackend change.
 	var aiGatewayRoutes aigv1b1.AIGatewayRouteList
-	err = c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
-	if err != nil {
+	if err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
 		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
 	}
 	for i := range aiGatewayRoutes.Items {

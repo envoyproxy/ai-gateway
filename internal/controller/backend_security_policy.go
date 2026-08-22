@@ -97,7 +97,7 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
-	onDelete, err := handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy)
+	onDelete, err := handleFinalizer(ctx, c.client, bsp, c.syncBackendSecurityPolicy)
 	if err != nil {
 		return res, err
 	}
