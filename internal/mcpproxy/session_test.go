@@ -245,6 +245,25 @@ func TestMergedCapabilities(t *testing.T) {
 				Resources: &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
 			},
 		},
+		{
+			name: "union of extensions across backends",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {capabilities: &mcpsdk.ServerCapabilities{
+					Extensions: map[string]any{"io.modelcontextprotocol/ui": map[string]any{}},
+				}},
+				"b2": {capabilities: &mcpsdk.ServerCapabilities{
+					Tools:      &mcpsdk.ToolCapabilities{ListChanged: true},
+					Extensions: map[string]any{"example.com/other": map[string]any{}},
+				}},
+			},
+			want: &mcpsdk.ServerCapabilities{
+				Tools: &mcpsdk.ToolCapabilities{ListChanged: true},
+				Extensions: map[string]any{
+					"io.modelcontextprotocol/ui": map[string]any{},
+					"example.com/other":          map[string]any{},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
