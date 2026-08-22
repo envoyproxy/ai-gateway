@@ -18,8 +18,12 @@ import (
 )
 
 func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openinference.TraceConfig) []attribute.KeyValue {
-	attrs := []attribute.KeyValue{
-		attribute.String(openinference.LLMModelName, resp.Model),
+	var attrs []attribute.KeyValue
+	// Only set the model name when the response carries one, so an empty
+	// value can never overwrite the request-time llm.model_name attribute
+	// (matches buildResponsesResponseAttributes below).
+	if resp.Model != "" {
+		attrs = append(attrs, attribute.String(openinference.LLMModelName, resp.Model))
 	}
 
 	if !config.HideOutputs {

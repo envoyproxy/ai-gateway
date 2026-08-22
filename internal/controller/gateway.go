@@ -8,7 +8,9 @@ package controller
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -334,6 +336,19 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1b1.HTTPHeaderMutation) 
 	return result
 }
 
+// isCtxErr reports whether err is the reconcile's context being cancelled or timing out, rather than
+// a problem with the object being read.
+//
+// The distinction matters everywhere reconcileFilterConfigSecret skips a backend on error. Skipping
+// is right when the backend or its policy cannot be resolved — a missing object, a bad ref — because
+// the resulting config reflects the cluster. It is wrong when the read was interrupted, because then
+// the reconcile carries on and publishes a config in which the backend is missing, or present without
+// its credentials, until something triggers another reconcile. Returning instead lets
+// controller-runtime requeue with a fresh context.
+func isCtxErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
@@ -430,6 +445,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 					bsp, err = c.getBSPForInferencePool(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading backend security policy for inference pool %s: %w", backendRef.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend security policy for inference pool",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
@@ -439,6 +457,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading backend %s: %w", backendRef.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
@@ -467,21 +488,15 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				if bsp != nil {
 					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading auth for backend security policy %s: %w", bsp.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
 						continue
 					}
-					// For header-source credential override, strip the x-aigw-* input header before
-					// the request reaches the upstream backend. The header is added to the Envoy remove
-					// list by HeaderMutator.Mutate() while being kept in the local requestHeaders map
-					// so the handler can still read it in Do().
-					if b.Auth != nil && b.Auth.CredentialOverride != nil && b.Auth.CredentialOverride.InputHeaderToRemove != "" {
-						if b.HeaderMutation == nil {
-							b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
-						}
-						b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeaderToRemove)
-					}
+					stripCredentialOverrideInputHeaders(&b)
 				}
 
 				ec.Backends = append(ec.Backends, b)
@@ -682,10 +697,46 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
+		// BackendSelector reuses the same filterapi.MCPRouteAuthorization struct and CEL
+		// engine as Authorization above, evaluated once per candidate backend before a
+		// session is opened. Source/Target aren't set here since MCPBackendSelectorRule
+		// only has cel and action.
+		if route.Spec.BackendSelector != nil {
+			selector := route.Spec.BackendSelector
+			mcpRoute.BackendSelector = &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationAction(ptr.Deref(selector.DefaultAction, egv1a1.AuthorizationActionDeny)),
+			}
+
+			for _, rule := range selector.Rules {
+				action := ptr.Deref(rule.Action, egv1a1.AuthorizationActionAllow)
+				mcpRoute.BackendSelector.Rules = append(mcpRoute.BackendSelector.Rules, filterapi.MCPRouteAuthorizationRule{
+					Action: filterapi.AuthorizationAction(action),
+					CEL:    rule.CEL,
+				})
+			}
+		}
 		// Forward OAuth claim-to-header mappings to all backends in this route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
 			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
-				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+				if !slices.Contains(mcpRoute.ForwardHeaders, ctoh.Header) {
+					mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+				}
+			}
+		}
+		// Forward the api-key-auth client-identity header to all backends in this
+		// route, mirroring the OAuth claim-to-header bridge above. Without this the
+		// caller id injected by apiKeyAuth.forwardClientIDHeader has no path to the
+		// MCP proxy request, so it never reaches the backends nor the MCP
+		// request-attribute plumbing (metrics/spans/logs). See #2422.
+		//
+		// Dedup against ForwardHeaders: OAuth and API-key auth can both be configured on
+		// the same route, and pointing both at the same header name is how you get a
+		// single unified caller-attribution label regardless of which method authenticated.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.APIKeyAuth != nil {
+			if h := route.Spec.SecurityPolicy.APIKeyAuth.ForwardClientIDHeader; h != nil && *h != "" {
+				if !slices.Contains(mcpRoute.ForwardHeaders, *h) {
+					mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, *h)
+				}
 			}
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
@@ -693,8 +744,28 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
+// stripCredentialOverrideInputHeaders puts the credential input header(s) on the backend's remove
+// list so Envoy drops them before the backend sees them. HeaderMutator.Mutate keeps them in the
+// extproc's local map, so the handler can still read them in Do().
+//
+// This is what keeps the credential off the wire. Deleting it from the requestHeaders map would
+// not: only headers a handler returns become Envoy mutations. AWS has three, others one. No-op for
+// the metadata source, where the credential never touches the request.
+func stripCredentialOverrideInputHeaders(b *filterapi.Backend) {
+	if b.Auth == nil || b.Auth.CredentialOverride == nil || len(b.Auth.CredentialOverride.InputHeadersToRemove) == 0 {
+		return
+	}
+	if b.HeaderMutation == nil {
+		b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
+	}
+	b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeadersToRemove...)
+}
+
 // defaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
 // These headers carry the per-request credential injected by a trusted ingress filter.
+//
+// For AWSCredentials this is a prefix, not a full header name: three names are derived from it.
+// See internalapi.AWSCredentialOverrideHeaderNames.
 func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
 	switch t {
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
@@ -707,9 +778,30 @@ func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
 		return "x-aigw-azure-access-token"
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		return "x-aigw-gcp-access-token"
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
+		return internalapi.AWSCredentialOverrideHeaderPrefix
 	default:
 		return ""
 	}
+}
+
+// defaultOverrideMetadataKey returns the default metadata key for the given auth type. Same as the
+// header name except for AWSCredentials, whose metadata value is one struct holding all three inputs.
+func defaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
+	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
+		return internalapi.AWSCredentialOverrideMetadataKey
+	}
+	return defaultOverrideHeaderName(t)
+}
+
+// overrideInputHeaders returns the headers a trusted filter injects for this auth type, which are
+// also the ones to strip. Three for AWS, one for the rest.
+func overrideInputHeaders(t aigv1b1.BackendSecurityPolicyType, headerName string) []string {
+	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
+		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(headerName)
+		return []string{accessKeyID, secretAccessKey, sessionToken}
+	}
+	return []string{headerName}
 }
 
 // resolveCredentialOverride converts the API-level CredentialOverride to the filterapi type,
@@ -730,14 +822,14 @@ func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, overri
 		}
 		headerName = strings.ToLower(headerName)
 		result.HeaderName = headerName
-		result.InputHeaderToRemove = headerName
+		result.InputHeadersToRemove = overrideInputHeaders(bspType, headerName)
 		result.FallbackToConfigured = src.FallbackToConfigured == nil || *src.FallbackToConfigured
 
 	case override.FromDynamicMetadata != nil:
 		src := override.FromDynamicMetadata
 		key := src.Key
 		if key == "" {
-			key = defaultOverrideHeaderName(bspType)
+			key = defaultOverrideMetadataKey(bspType)
 		}
 		result.DynamicMetadataNamespace = src.Namespace
 		result.DynamicMetadataKey = key
@@ -765,7 +857,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.APIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
@@ -773,7 +865,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.AzureAPIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
@@ -781,46 +873,43 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.AnthropicAPIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := spec.AWSCredentials
 
-		// If no credentials file or OIDC token is configured, use default credential chain
-		// This allows IRSA/Pod Identity to work automatically
 		if awsCred.CredentialsFile == nil && awsCred.OIDCExchangeToken == nil {
-			return &filterapi.BackendAuth{
-				AWSAuth: &filterapi.AWSAuth{
-					Region: awsCred.Region,
-				},
-			}, nil
-		}
-
-		// Otherwise, fetch credentials from secret
-		var secretName string
-		if awsCred.CredentialsFile != nil {
-			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
+			// If no credentials file or OIDC token is configured, use default credential chain
+			// This allows IRSA/Pod Identity to work automatically
+			auth = &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{Region: awsCred.Region}}
 		} else {
-			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-		}
-		credentialsLiteral, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AwsCredentialsKey)
-		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
-		}
-		// AWS returns early; CredentialOverride is blocked at the API validation layer.
-		return &filterapi.BackendAuth{
-			AWSAuth: &filterapi.AWSAuth{
+			// Otherwise, fetch credentials from secret
+			var secretName string
+			if awsCred.CredentialsFile != nil {
+				secretName = string(awsCred.CredentialsFile.SecretRef.Name)
+			} else {
+				secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+			}
+			credentialsLiteral, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AwsCredentialsKey)
+			if getErr != nil {
+				return nil, getErr
+			}
+			auth = &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: credentialsLiteral,
 				Region:                awsCred.Region,
-			},
-		}, nil
+			}}
+		}
+		// True for both branches: the handler can sign without the per-request source. The default
+		// chain may still fail at request time, but rejecting fallbackToConfigured here would break
+		// IRSA, where there is deliberately no secret for the controller to see.
+		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken}}
 		hasStaticCred = true
@@ -842,7 +931,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 			gcpAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 			if getErr != nil {
-				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+				return nil, getErr
 			}
 			auth = &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{
@@ -869,8 +958,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 }
 
 func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, dataKey string) (string, error) {
-	secret, err := c.kube.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
+	secret := &corev1.Secret{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
 		return "", fmt.Errorf("failed to get secret %s: %w", name, err)
 	}
 	if secret.Data != nil {
