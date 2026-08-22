@@ -238,8 +238,11 @@ func translateCustomResourceObjects(
 	// Use buffered event channels so that controllers can push gateway sync events without blocking,
 	// This mirrors the production code at controller/controller.go:128
 	const eventChanBuffer = 100
+	// The route channel is nil: translate reconciles every resource explicitly and drains none of
+	// these channels, and a nil channel skips the pool-route fan-out instead of blocking once the
+	// buffer fills.
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent, eventChanBuffer), make(chan event.GenericEvent, eventChanBuffer))
+		make(chan event.GenericEvent, eventChanBuffer), make(chan event.GenericEvent, eventChanBuffer), nil)
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent, eventChanBuffer))
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),

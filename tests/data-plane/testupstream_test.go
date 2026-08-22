@@ -62,6 +62,10 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamOpenAIBackend,
 			testUpstreamModelNameOverride,
 			testUpstreamAAWSBackend,
+			testUpstreamCredFallbackPrimary,
+			testUpstreamCredFallbackSecondary,
+			testUpstreamDynMdCredBackend,
+			testUpstreamAWSDynMdCredBackend,
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
@@ -279,6 +283,73 @@ func TestWithTestUpstream(t *testing.T) {
 			// The static fallback has no session token, so this can only be the per-request one.
 			expRequestHeaders:         map[string]string{"X-Amz-Security-Token": fakeAWSPerRequestSessionToken},
 			nonExpectedRequestHeaders: awsCredentialOverrideHeaders,
+		},
+		{
+			// The primary backend reads its per-request credential from x-aigw-api-key and always
+			// fails (error server), so Envoy falls back to the secondary while replaying the
+			// original request headers - injected credential included. The secondary has no
+			// credential override; its strip mirrors the gateway-wide union the controller emits into
+			// every backend. The upstream must see the secondary's own static
+			// credential and no trace of the injected one.
+			name:                      "openai - per-request credential header does not leak to the fallback backend",
+			backend:                   "cred-leak-fallback",
+			path:                      "/v1/chat/completions",
+			method:                    http.MethodPost,
+			requestBody:               `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:                   "/v1/chat/completions",
+			responseBody:              `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:                 http.StatusOK,
+			expResponseBody:           `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			requestHeaders:            map[string]string{"x-aigw-api-key": "injected-per-request-key"},
+			expRequestHeaders:         map[string]string{"Authorization": "Bearer secondary-configured-key"},
+			nonExpectedRequestHeaders: []string{"x-aigw-api-key"},
+		},
+		{
+			// The extproc must authenticate with the metadata-sourced value, not the configured
+			// key. Only a real Envoy proves the forwarding_namespaces link.
+			name:                      "openai - per-request credential from dynamic metadata",
+			backend:                   "dynmd-cred",
+			path:                      "/v1/chat/completions",
+			method:                    http.MethodPost,
+			requestBody:               `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:                   "/v1/chat/completions",
+			responseBody:              `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:                 http.StatusOK,
+			expResponseBody:           `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			requestHeaders:            map[string]string{"x-test-dynmd-api-key": "metadata-sourced-key"},
+			expRequestHeaders:         map[string]string{"Authorization": "Bearer metadata-sourced-key"},
+			nonExpectedRequestHeaders: []string{"x-test-dynmd-api-key"},
+		},
+		{
+			// Without the header nothing lands in the metadata namespace, so the request falls
+			// back to the configured static credential.
+			name:              "openai - absent dynamic metadata falls back to the configured credential",
+			backend:           "dynmd-cred",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:           "/v1/chat/completions",
+			responseBody:      `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expRequestHeaders: map[string]string{"Authorization": "Bearer dummy-configured-key"},
+		},
+		{
+			// The set_metadata filter produces the three-part AWS credential as one struct value.
+			// The signature must carry that struct's session token: the static fallback file has
+			// none, so X-Amz-Security-Token can only come from the forwarded metadata.
+			name:              "aws-bedrock - struct credential from dynamic metadata signs the request",
+			backend:           "aws-dynmd-cred",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:           "/model/something/converse",
+			responseBody:      `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expRequestBody:    `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expStatus:         http.StatusOK,
+			responseHeaders:   "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			expRequestHeaders: map[string]string{"X-Amz-Security-Token": fakeAWSMetadataSessionToken},
 		},
 		{
 			// Falls back to the configured credential file, which has no session token, so no

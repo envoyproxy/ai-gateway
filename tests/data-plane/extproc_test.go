@@ -38,6 +38,10 @@ const (
 	fakeAWSCredentialFile = "[default]\naws_access_key_id=AKIASTATICFALLBACK\naws_secret_access_key=static-fallback-secret\n" //nolint:gosec
 	// fakeAWSPerRequestSessionToken must appear verbatim as X-Amz-Security-Token upstream.
 	fakeAWSPerRequestSessionToken = "per-request-session-token" //nolint:gosec
+	// fakeAWSMetadataSessionToken is the sessionToken field of the struct credential produced by
+	// the set_metadata filter in envoy.yaml; the two must stay in sync. It must appear verbatim
+	// as X-Amz-Security-Token upstream.
+	fakeAWSMetadataSessionToken = "session-token-from-dynamic-metadata" //nolint:gosec
 )
 
 var (
@@ -67,8 +71,8 @@ var (
 	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
 	// testUpstreamAAWSBackend signs with a static credential file and accepts a per-request one
-	// from the x-aigw-aws-* headers. The HeaderMutation mirrors what the controller emits, so the
-	// strip runs through the real Envoy instead of being asserted in a unit test.
+	// from the x-aigw-aws-* headers. NewRuntimeConfig turns InputHeadersToRemove into the strip,
+	// which runs through the real Envoy here instead of being asserted in a unit test.
 	testUpstreamAAWSBackend = filterapi.Backend{
 		Name: "testupstream-aws", Schema: awsBedrockSchema,
 		Auth: &filterapi.BackendAuth{
@@ -79,7 +83,53 @@ var (
 				InputHeadersToRemove: awsCredentialOverrideHeaders,
 			},
 		},
-		HeaderMutation: &filterapi.HTTPHeaderMutation{Remove: awsCredentialOverrideHeaders},
+	}
+	// Reads a per-request credential from x-aigw-api-key and always fails (error server), so
+	// Envoy retries to the secondary while replaying the original headers - the leak path.
+	testUpstreamCredFallbackPrimary = filterapi.Backend{
+		Name: "testupstream-cred-fallback-primary", Schema: openAISchema,
+		Auth: &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Key: "primary-configured-key"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				HeaderName:           "x-aigw-api-key",
+				FallbackToConfigured: true,
+				InputHeadersToRemove: []string{"x-aigw-api-key"},
+			},
+		},
+	}
+	// No override of its own. NewRuntimeConfig adds the primary's input header to this backend's
+	// strip too, which is what keeps the injected credential off the wire on fallback.
+	testUpstreamCredFallbackSecondary = filterapi.Backend{
+		Name: "testupstream-cred-fallback-secondary", Schema: openAISchema,
+		Auth: &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Key: "secondary-configured-key"},
+		},
+	}
+	// Sources its API key from downstream dynamic metadata. Unit tests construct the
+	// MetadataContext directly and cannot catch a missing forwarding_namespaces, hence this one.
+	testUpstreamDynMdCredBackend = filterapi.Backend{
+		Name: "testupstream-dynmd-cred", Schema: openAISchema,
+		Auth: &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Key: "dummy-configured-key"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				DynamicMetadataNamespace: "test.credential.injector",
+				DynamicMetadataKey:       "api-key",
+				FallbackToConfigured:     true,
+			},
+		},
+	}
+	// Signs with the struct-valued AWS credential from dynamic metadata; the struct shape is
+	// the part worth proving, since request_attributes cannot deliver structs.
+	testUpstreamAWSDynMdCredBackend = filterapi.Backend{
+		Name: "testupstream-aws-dynmd-cred", Schema: awsBedrockSchema,
+		Auth: &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{CredentialFileLiteral: fakeAWSCredentialFile, Region: "us-east-1"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				DynamicMetadataNamespace: "test.aws.credential.injector",
+				DynamicMetadataKey:       internalapi.AWSCredentialOverrideMetadataKey,
+				FallbackToConfigured:     true,
+			},
+		},
 	}
 	testUpstreamAzureBackend       = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
 	testUpstreamGCPVertexAIBackend = filterapi.Backend{Name: "testupstream-gcp-vertexai", Schema: gcpVertexAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{

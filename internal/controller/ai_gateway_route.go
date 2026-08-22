@@ -25,6 +25,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -39,10 +40,13 @@ const (
 	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	// This will result in metadata being added to the underling Envoy route
 	// @see https://gateway.envoyproxy.io/contributions/design/metadata/
-	httpRouteBackendRefPriorityAnnotationKey           = egAnnotationPrefix + "backend-ref-priority"
-	httpRouteAnnotationForAIGatewayGeneratedIndication = egAnnotationPrefix + internalapi.AIGatewayGeneratedHTTPRouteAnnotation
-	egOwningGatewayNameLabel                           = egAnnotationPrefix + "owning-gateway-name"
-	egOwningGatewayNamespaceLabel                      = egAnnotationPrefix + "owning-gateway-namespace"
+	httpRouteBackendRefPriorityAnnotationKey = egAnnotationPrefix + "backend-ref-priority"
+	// Same hack, for the credentialOverride.fromDynamicMetadata namespaces this route's backends
+	// need, so that a BackendSecurityPolicy change re-translates the route.
+	httpRouteCredentialOverrideMetadataNamespacesAnnotationKey = egAnnotationPrefix + "credential-override-metadata-namespaces"
+	httpRouteAnnotationForAIGatewayGeneratedIndication         = egAnnotationPrefix + internalapi.AIGatewayGeneratedHTTPRouteAnnotation
+	egOwningGatewayNameLabel                                   = egAnnotationPrefix + "owning-gateway-name"
+	egOwningGatewayNamespaceLabel                              = egAnnotationPrefix + "owning-gateway-namespace"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
 	// GatewayConfigAnnotationKey is the annotation key used on Gateway objects to reference a GatewayConfig.
@@ -104,6 +108,29 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	}
 	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
+}
+
+// buildCredentialOverrideNamespacesAnnotation renders one "<refIdx>:<backend>:<ns>|<ns>" entry
+// per backend reference with a fromDynamicMetadata policy. Refs without one are omitted; no
+// entries means "" and the caller drops the annotation.
+//
+// refIdx is the ref's position in RouteBackendRefs' flattening, the same one the resolver's
+// result is indexed by, so entries stay pinned to the exact ref even when rules repeat a backend
+// name or reference same-named backends in different namespaces. The backend name is only there
+// for readability.
+func buildCredentialOverrideNamespacesAnnotation(ctx context.Context, c client.Client, route *aigv1b1.AIGatewayRoute) (string, error) {
+	refs := backendpolicy.RouteBackendRefs(route)
+	perRef, err := backendpolicy.NewResolver(c).CredentialOverrideMetadataNamespacesByRef(ctx, route.Namespace, refs)
+	if err != nil {
+		return "", err
+	}
+	var entries []string
+	for i := range refs {
+		if namespaces := perRef[i]; len(namespaces) > 0 {
+			entries = append(entries, fmt.Sprintf("%d:%s:%s", i, refs[i].Name, strings.Join(namespaces, "|")))
+		}
+	}
+	return strings.Join(entries, ","), nil
 }
 
 func getHostRewriteFilterName(baseName string) string {
@@ -364,6 +391,31 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	dst.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
+
+	// Envoy Gateway doesn't watch BackendSecurityPolicies, so without this annotation changing
+	// a policy would never re-translate and the ext_proc filters would keep the old
+	// forwarding_namespaces. Policy changes reach this controller through the
+	// BSP -> AIServiceBackend/InferencePool -> AIGatewayRoute sync chain.
+	//
+	// Only this route's own backends are considered: a global union would flip the annotation of
+	// every AI route in the cluster whenever any unrelated policy changed, re-translating gateways
+	// that have nothing to do with it.
+	//
+	// The value encodes which backend needs which namespaces, in the buildPriorityAnnotation
+	// style, not just their union: the extension server applies the namespaces per cluster, so a
+	// policy change that moves a namespace between two of this route's backends must change the
+	// annotation even when the union stays the same.
+	credentialOverrideAnnotation, err := buildCredentialOverrideNamespacesAnnotation(ctx, c.client, aiGatewayRoute)
+	if err != nil {
+		return fmt.Errorf("failed to collect credential override metadata namespaces: %w", err)
+	}
+	if credentialOverrideAnnotation != "" {
+		dst.Annotations[httpRouteCredentialOverrideMetadataNamespacesAnnotationKey] = credentialOverrideAnnotation
+	} else {
+		// dst is the live object on updates, so delete the key explicitly. Otherwise removing
+		// the last policy wouldn't change the HTTPRoute and the old config would stay.
+		delete(dst.Annotations, httpRouteCredentialOverrideMetadataNamespacesAnnotationKey)
+	}
 
 	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
 

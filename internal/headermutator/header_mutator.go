@@ -6,8 +6,6 @@
 package headermutator
 
 import (
-	"strings"
-
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -117,7 +115,6 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 // it can cause unexpected behavior if they are modified unexpectedly. User shouldn't need to
 // modify these headers via header mutation API.
 func shouldIgnoreHeader(key string) bool {
-	return strings.HasPrefix(key, ":") ||
-		strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) ||
-		strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader)
+	// Shared with the controller's credentialOverride validation; see IsReservedRequestHeader.
+	return internalapi.IsReservedRequestHeader(key)
 }

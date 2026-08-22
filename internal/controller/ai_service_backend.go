@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -41,6 +42,10 @@ func NewAIServiceBackendController(client client.Client, kube kubernetes.Interfa
 	}
 }
 
+// errDuplicateBackendSecurityPolicies marks the more-than-one-policy misconfiguration, which is
+// reported through the status condition and not requeued.
+var errDuplicateBackendSecurityPolicies = errors.New("multiple BackendSecurityPolicies found")
+
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1b1.AIServiceBackend].
 func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var aiBackend aigv1b1.AIServiceBackend
@@ -56,6 +61,13 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 	if err := c.syncAIServiceBackend(ctx, &aiBackend); err != nil {
 		c.logger.Error(err, "failed to sync AIServiceBackend")
 		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeNotAccepted, err.Error())
+		if errors.Is(err, errDuplicateBackendSecurityPolicies) {
+			// A user misconfiguration a requeue can never fix. The condition above is the
+			// signal; retrying with backoff would re-run the whole route fan-out - HTTPRoute
+			// updates, status writes, gateway syncs - every tick, forever. The next event on the
+			// backend or its policies re-evaluates.
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
@@ -71,14 +83,19 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return fmt.Errorf("failed to list BackendSecurityPolicyList: %w", err)
 	}
+	// Rejecting the duplicate-policy case is a status concern, but it must not stop the routes
+	// from being re-synced: a policy change that reaches this backend still has to propagate,
+	// and a second policy attached at any point would otherwise freeze every route referencing
+	// this backend on whatever config it last had.
+	var duplicatePoliciesErr error
 	if len(backendSecurityPolicyList.Items) > 1 {
 		var names []string
 		for i := range backendSecurityPolicyList.Items {
 			bsp := &backendSecurityPolicyList.Items[i]
 			names = append(names, bsp.Name)
 		}
-		return fmt.Errorf("multiple BackendSecurityPolicies found for AIServiceBackend %s: %v",
-			aiBackend.Name, names)
+		duplicatePoliciesErr = fmt.Errorf("%w for AIServiceBackend %s: %v",
+			errDuplicateBackendSecurityPolicies, aiBackend.Name, names)
 	}
 
 	// Propagate the bsp events all the way up to relevant Gateways regardless of being deleted or not.
@@ -97,7 +114,7 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 		)
 		c.aiGatewayRouteChan <- event.GenericEvent{Object: aiGatewayRoute}
 	}
-	return nil
+	return duplicatePoliciesErr
 }
 
 // updateAIServiceBackendStatus updates the status of the AIServiceBackend.

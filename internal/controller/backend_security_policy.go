@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,19 +25,20 @@ import (
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
 const (
 	// aiServiceBackendGroup is the API group for AIServiceBackend resources.
-	aiServiceBackendGroup = "aigateway.envoyproxy.io"
+	aiServiceBackendGroup = backendpolicy.AIServiceBackendGroup
 	// aiServiceBackendKind is the kind for AIServiceBackend resources.
-	aiServiceBackendKind = "AIServiceBackend"
+	aiServiceBackendKind = backendpolicy.AIServiceBackendKind
 	// inferencePoolGroup is the API group for InferencePool resources.
-	inferencePoolGroup = "inference.networking.k8s.io"
+	inferencePoolGroup = backendpolicy.InferencePoolGroup
 	// inferencePoolKind is the kind for InferencePool resources.
-	inferencePoolKind = "InferencePool"
+	inferencePoolKind = backendpolicy.InferencePoolKind
 )
 
 const (
@@ -60,15 +62,21 @@ type BackendSecurityPolicyController struct {
 	logger                    logr.Logger
 	aiServiceBackendEventChan chan event.GenericEvent
 	inferencePoolEventChan    chan event.GenericEvent
+	// aiGatewayRouteEventChan resyncs the routes referencing an InferencePool this policy
+	// targets. The AIServiceBackend leg gets there through the backend controller; pools have no
+	// equivalent hop, and fanning out from the pool controller instead would rerun on every
+	// Gateway and HTTPRoute event its watches deliver, not just on policy changes.
+	aiGatewayRouteEventChan chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent, inferencePoolEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan, inferencePoolEventChan, aiGatewayRouteEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
 		client:                    client,
 		kube:                      kube,
 		logger:                    logger,
 		aiServiceBackendEventChan: aiServiceBackendEventChan,
 		inferencePoolEventChan:    inferencePoolEventChan,
+		aiGatewayRouteEventChan:   aiGatewayRouteEventChan,
 	}
 }
 
@@ -89,17 +97,37 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	if err != nil {
 		c.logger.Error(err, "failed to reconcile backend security policy", "namespace", req.Namespace, "name", req.Name)
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeNotAccepted, err.Error())
+		if errors.Is(err, errReservedOverrideHeader) {
+			// A user misconfiguration a requeue cannot fix; the condition is the signal. This
+			// also keeps aigw translate/run, which treats reconcile errors as fatal, working on
+			// configs that predate the rule.
+			return ctrl.Result{}, nil
+		}
 	} else {
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
 	}
 	return
 }
 
+// errReservedOverrideHeader marks a credentialOverride header the extproc cannot strip, reported
+// through the status condition and not requeued.
+var errReservedOverrideHeader = errors.New("reserved credentialOverride header")
+
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
 		return res, nil
 	}
+
+	// A reserved override header gets the policy a NotAccepted condition; the CRD CEL rule does
+	// not apply to objects created before it existed. The error is deferred to the end: rotation
+	// must keep running (the static credential is fine, only the override is broken) and the
+	// sync fan-out below must still propagate.
+	var reservedHeaderErr error
+	if _, headerErr := backendpolicy.OverrideInputHeadersFromSpec(&bsp.Spec); headerErr != nil {
+		reservedHeaderErr = fmt.Errorf("%w: %w", errReservedOverrideHeader, headerErr)
+	}
+
 	// Determine if credential rotation is needed
 	requiresRotation := bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAPIKey &&
 		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAzureAPIKey &&
@@ -123,8 +151,10 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 			return res, err
 		}
 	}
-	err = c.syncBackendSecurityPolicy(ctx, bsp)
-	return res, err
+	if err = c.syncBackendSecurityPolicy(ctx, bsp); err != nil {
+		return res, err
+	}
+	return res, reservedHeaderErr
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
@@ -349,6 +379,11 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
 			c.aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
 		case targetRef.Group == inferencePoolGroup && targetRef.Kind == inferencePoolKind:
+			// The routes resolve the policy from the targetRef, not from the pool object, so
+			// they are resynced whether or not the pool currently exists.
+			if err := c.syncRoutesReferencingInferencePool(ctx, bsp.Namespace, string(targetRef.Name)); err != nil {
+				return err
+			}
 			var inferencePool gwaiev1.InferencePool
 			err := c.client.Get(ctx, client.ObjectKey{
 				Name:      string(targetRef.Name),
@@ -366,6 +401,37 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 		}
 	}
 
+	return nil
+}
+
+// syncRoutesReferencingInferencePool resyncs every AIGatewayRoute that has the pool as a backend,
+// so a policy change on the pool reaches the filter config and the HTTPRoute annotations that
+// make Envoy Gateway re-translate.
+//
+// The lookup goes through the backend index, which is keyed "<name>.<namespace>" and covers the
+// whole cluster, so a route in another namespace referencing this pool is found too. The index
+// does not record the kind, so an AIServiceBackend sharing the pool's name and namespace lands on
+// the same key and the refs are re-checked.
+func (c *BackendSecurityPolicyController) syncRoutesReferencingInferencePool(ctx context.Context, poolNamespace, poolName string) error {
+	if c.aiGatewayRouteEventChan == nil {
+		// Tests that don't consume route events pass nil; a send on a nil channel blocks forever.
+		return nil
+	}
+	var routes aigv1b1.AIGatewayRouteList
+	key := fmt.Sprintf("%s.%s", poolName, poolNamespace)
+	if err := c.client.List(ctx, &routes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
+		return fmt.Errorf("failed to list AIGatewayRoutes for InferencePool %s/%s: %w", poolNamespace, poolName, err)
+	}
+	for i := range routes.Items {
+		route := &routes.Items[i]
+		if !routeReferencesInferencePool(route, poolName, poolNamespace) {
+			continue
+		}
+		c.logger.Info("syncing AIGatewayRoute referencing InferencePool",
+			"namespace", route.Namespace, "name", route.Name,
+			"inference_pool", poolName, "inference_pool_namespace", poolNamespace)
+		c.aiGatewayRouteEventChan <- event.GenericEvent{Object: route}
+	}
 	return nil
 }
 

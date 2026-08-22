@@ -8,6 +8,7 @@ package filterapi
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/cel-go/cel"
 
@@ -71,6 +72,8 @@ type RuntimeRequestCost struct {
 
 // NewRuntimeConfig creates a new runtime filter configuration from the given filterapi.Config and a function to create backend auth handlers.
 func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHandlerFunc) (*RuntimeConfig, error) {
+	stripCredentialOverrideInputHeaders(config)
+
 	backends := make(map[string]*RuntimeBackend, len(config.Backends))
 	for i := range config.Backends {
 		b := &config.Backends[i]
@@ -132,4 +135,46 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		ModelsByHost:       config.ModelsByHost,
 		UnscopedModels:     config.UnscopedModels,
 	}, nil
+}
+
+// stripCredentialOverrideInputHeaders adds the per-request credential input headers to every
+// backend's HeaderMutation.Remove so Envoy drops them before the request goes upstream, while
+// the extproc's local header map keeps them readable for the backend that owns the override.
+//
+// Every backend needs the strip, not only the owning one: the injecting filter runs before
+// routing, Envoy replays the original request headers when it retries or falls back to another
+// backend of the rule, and weighted routing can send the first attempt anywhere. Merging here
+// covers every config producer, and going through HeaderMutation.Remove keeps the header
+// mutator's retry-restore logic from re-adding the header on retries.
+//
+// The headers come from Config.CredentialOverrideStripHeaders (the controller derives it from
+// the policy specs, so a policy whose backend failed to resolve still contributes) plus each
+// backend's own InputHeadersToRemove.
+func stripCredentialOverrideInputHeaders(config *Config) {
+	union := slices.Clone(config.CredentialOverrideStripHeaders)
+	for i := range config.Backends {
+		if a := config.Backends[i].Auth; a != nil && a.CredentialOverride != nil {
+			for _, h := range a.CredentialOverride.InputHeadersToRemove {
+				if !slices.Contains(union, h) {
+					union = append(union, h)
+				}
+			}
+		}
+	}
+	if len(union) == 0 {
+		return
+	}
+	slices.Sort(union)
+	for i := range config.Backends {
+		b := &config.Backends[i]
+		for _, h := range union {
+			if b.HeaderMutation != nil && slices.Contains(b.HeaderMutation.Remove, h) {
+				continue
+			}
+			if b.HeaderMutation == nil {
+				b.HeaderMutation = &HTTPHeaderMutation{}
+			}
+			b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, h)
+		}
+	}
 }

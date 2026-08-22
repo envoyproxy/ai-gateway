@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -32,6 +33,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -496,7 +498,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
 						continue
 					}
-					stripCredentialOverrideInputHeaders(&b)
 				}
 
 				ec.Backends = append(ec.Backends, b)
@@ -543,6 +544,31 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	var effectiveMCPRoute bool
 	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
 	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
+
+	// Headers to strip come from the policies attached to this gateway's own routes, so one
+	// gateway's policies cannot strip headers off another gateway's traffic, and a policy change
+	// regenerates this config through the BSP -> backend -> route -> gateway sync chain. The
+	// extproc merges the list into every backend's HeaderMutation.Remove at config load; see
+	// filterapi.Config.CredentialOverrideStripHeaders.
+	stripResolver := backendpolicy.NewResolver(c.client)
+	stripHeaders := make(map[string]struct{})
+	for i := range aiGatewayRoutes {
+		route := &aiGatewayRoutes[i]
+		if !route.GetDeletionTimestamp().IsZero() {
+			continue
+		}
+		routeStrip, stripErr := stripResolver.CredentialOverrideStripHeaders(ctx, route.Namespace, backendpolicy.RouteBackendRefs(route))
+		if stripErr != nil {
+			return false, fmt.Errorf("failed to collect credential override strip headers: %w", stripErr)
+		}
+		for _, h := range routeStrip {
+			stripHeaders[h] = struct{}{}
+		}
+	}
+	ec.CredentialOverrideStripHeaders = slices.Sorted(maps.Keys(stripHeaders))
+	if len(ec.CredentialOverrideStripHeaders) == 0 {
+		ec.CredentialOverrideStripHeaders = nil
+	}
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
@@ -744,66 +770,6 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
-// stripCredentialOverrideInputHeaders puts the credential input header(s) on the backend's remove
-// list so Envoy drops them before the backend sees them. HeaderMutator.Mutate keeps them in the
-// extproc's local map, so the handler can still read them in Do().
-//
-// This is what keeps the credential off the wire. Deleting it from the requestHeaders map would
-// not: only headers a handler returns become Envoy mutations. AWS has three, others one. No-op for
-// the metadata source, where the credential never touches the request.
-func stripCredentialOverrideInputHeaders(b *filterapi.Backend) {
-	if b.Auth == nil || b.Auth.CredentialOverride == nil || len(b.Auth.CredentialOverride.InputHeadersToRemove) == 0 {
-		return
-	}
-	if b.HeaderMutation == nil {
-		b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
-	}
-	b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeadersToRemove...)
-}
-
-// defaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
-// These headers carry the per-request credential injected by a trusted ingress filter.
-//
-// For AWSCredentials this is a prefix, not a full header name: three names are derived from it.
-// See internalapi.AWSCredentialOverrideHeaderNames.
-func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
-	switch t {
-	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
-		return "x-aigw-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
-		return "x-aigw-anthropic-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
-		return "x-aigw-azure-api-key"
-	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
-		return "x-aigw-azure-access-token"
-	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
-		return "x-aigw-gcp-access-token"
-	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		return internalapi.AWSCredentialOverrideHeaderPrefix
-	default:
-		return ""
-	}
-}
-
-// defaultOverrideMetadataKey returns the default metadata key for the given auth type. Same as the
-// header name except for AWSCredentials, whose metadata value is one struct holding all three inputs.
-func defaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
-	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
-		return internalapi.AWSCredentialOverrideMetadataKey
-	}
-	return defaultOverrideHeaderName(t)
-}
-
-// overrideInputHeaders returns the headers a trusted filter injects for this auth type, which are
-// also the ones to strip. Three for AWS, one for the rest.
-func overrideInputHeaders(t aigv1b1.BackendSecurityPolicyType, headerName string) []string {
-	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
-		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(headerName)
-		return []string{accessKeyID, secretAccessKey, sessionToken}
-	}
-	return []string{headerName}
-}
-
 // resolveCredentialOverride converts the API-level CredentialOverride to the filterapi type,
 // resolving default header/key names and validating the fallback configuration.
 func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, override *aigv1b1.BackendSecurityPolicyCredentialOverride, hasStaticCredential bool) (*filterapi.CredentialOverride, error) {
@@ -816,20 +782,19 @@ func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, overri
 	switch {
 	case override.FromRequestHeaders != nil:
 		src := override.FromRequestHeaders
-		headerName := src.Header
-		if headerName == "" {
-			headerName = defaultOverrideHeaderName(bspType)
-		}
-		headerName = strings.ToLower(headerName)
+		headerName := backendpolicy.ResolvedOverrideHeaderName(bspType, src)
 		result.HeaderName = headerName
-		result.InputHeadersToRemove = overrideInputHeaders(bspType, headerName)
+		result.InputHeadersToRemove = backendpolicy.OverrideInputHeaders(bspType, headerName)
+		if err := backendpolicy.ValidateOverrideInputHeaders(result.InputHeadersToRemove); err != nil {
+			return nil, err
+		}
 		result.FallbackToConfigured = src.FallbackToConfigured == nil || *src.FallbackToConfigured
 
 	case override.FromDynamicMetadata != nil:
 		src := override.FromDynamicMetadata
 		key := src.Key
 		if key == "" {
-			key = defaultOverrideMetadataKey(bspType)
+			key = backendpolicy.DefaultOverrideMetadataKey(bspType)
 		}
 		result.DynamicMetadataNamespace = src.Namespace
 		result.DynamicMetadataKey = key
@@ -1071,70 +1036,61 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return
 	}
 
-	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
-	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
-		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
-		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
+	matchingBSPs, err := backendpolicy.TargetingPolicies(ctx, c.client, namespace, name, aiServiceBackendGroup, aiServiceBackendKind)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
-	for i := range backendSecurityPolicyList.Items {
-		policy := &backendSecurityPolicyList.Items[i]
-		for _, target := range policy.Spec.TargetRefs {
-			if string(target.Name) == name &&
-				target.Group == aiServiceBackendGroup &&
-				target.Kind == aiServiceBackendKind {
-				matchingBSPs = append(matchingBSPs, policy)
-			}
+	if len(matchingBSPs) > 0 {
+		bsp = oldestPolicy(matchingBSPs)
+		if len(matchingBSPs) > 1 {
+			// The API allows one policy per backend; the AIServiceBackend controller reports the
+			// misconfiguration as a NotAccepted condition. Following the Gateway API conflict
+			// convention, the oldest policy stays in effect: dropping the backend instead would
+			// turn the misconfiguration into an outage, and would also let anyone able to create
+			// a policy take a serving backend down, while under oldest-wins their policy is
+			// simply ignored.
+			c.logger.Info("multiple BackendSecurityPolicies found for backend, using the oldest",
+				"backend_name", name, "backend_namespace", namespace,
+				"count", len(matchingBSPs), "using", bsp.Name)
 		}
-	}
-
-	switch len(matchingBSPs) {
-	case 0:
-	case 1:
-		bsp = matchingBSPs[0]
-	default:
-		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
-		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
-		//
-		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
-		// is created after the AIServiceBackend's reconciliation.
-		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
-			"count", len(matchingBSPs))
-		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return
 }
 
+// oldestPolicy returns the policy with the earliest creationTimestamp, name as the tie-breaker,
+// per the Gateway API conflict-resolution convention.
+func oldestPolicy(policies []*aigv1b1.BackendSecurityPolicy) *aigv1b1.BackendSecurityPolicy {
+	oldest := policies[0]
+	for _, p := range policies[1:] {
+		switch {
+		case p.CreationTimestamp.Time.Before(oldest.CreationTimestamp.Time):
+			oldest = p
+		case p.CreationTimestamp.Time.Equal(oldest.CreationTimestamp.Time) && p.Name < oldest.Name:
+			oldest = p
+		}
+	}
+	return oldest
+}
+
 // getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
 func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1b1.BackendSecurityPolicy, error) {
-	var bspList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
-	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
-		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
-		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)
-	}
-
-	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
-	for i := range bspList.Items {
-		bsp := &bspList.Items[i]
-		for _, target := range bsp.Spec.TargetRefs {
-			if string(target.Name) == name &&
-				target.Group == inferencePoolGroup &&
-				target.Kind == inferencePoolKind {
-				matchingBSPs = append(matchingBSPs, bsp)
-			}
-		}
+	matchingBSPs, err := backendpolicy.TargetingPolicies(ctx, c.client, namespace, name, inferencePoolGroup, inferencePoolKind)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(matchingBSPs) == 0 {
 		return nil, nil
 	}
+	bsp := oldestPolicy(matchingBSPs)
 	if len(matchingBSPs) > 1 {
-		return nil, fmt.Errorf("multiple BackendSecurityPolicies found for inference pool %s in namespace %s", name, namespace)
+		// Oldest wins, same as backendWithMaybeBSP: an outage helps nobody and would let any
+		// policy creator take the pool's traffic down.
+		c.logger.Info("multiple BackendSecurityPolicies found for inference pool, using the oldest",
+			"inference_pool", name, "namespace", namespace, "count", len(matchingBSPs), "using", bsp.Name)
 	}
-	return matchingBSPs[0], nil
+	return bsp, nil
 }
 
 // checkPodHasSideCar returns whether the extproc container is current.

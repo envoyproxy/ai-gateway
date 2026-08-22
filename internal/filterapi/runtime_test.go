@@ -132,3 +132,48 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "missing_route")
 	})
 }
+
+// The strip list must reach every backend's HeaderMutation.Remove, not only the backend whose
+// policy reads the headers: Envoy replays the original request headers on retries and fallback.
+func TestNewRuntimeConfig_stripCredentialOverrideInputHeaders(t *testing.T) {
+	config := &Config{
+		CredentialOverrideStripHeaders: []string{"x-broken-cred"},
+		Backends: []Backend{
+			{
+				Name: "with-override",
+				Auth: &BackendAuth{
+					APIKey: &APIKeyAuth{Key: "k"},
+					CredentialOverride: &CredentialOverride{
+						HeaderName:           "x-aigw-api-key",
+						InputHeadersToRemove: []string{"x-aigw-api-key"},
+					},
+				},
+			},
+			{Name: "sibling"},
+			{
+				Name:           "with-existing-remove",
+				HeaderMutation: &HTTPHeaderMutation{Remove: []string{"x-aigw-api-key", "x-user"}},
+			},
+		},
+	}
+	rc, err := NewRuntimeConfig(t.Context(), config, func(context.Context, *BackendAuth) (BackendAuthHandler, error) {
+		return nil, nil
+	})
+	require.NoError(t, err)
+	union := []string{"x-aigw-api-key", "x-broken-cred"}
+	require.Equal(t, union, rc.Backends["with-override"].Backend.HeaderMutation.Remove)
+	require.Equal(t, union, rc.Backends["sibling"].Backend.HeaderMutation.Remove)
+	// Existing entries are kept and not duplicated.
+	require.Equal(t, []string{"x-aigw-api-key", "x-user", "x-broken-cred"},
+		rc.Backends["with-existing-remove"].Backend.HeaderMutation.Remove)
+}
+
+// An empty strip list must not materialize HeaderMutation on backends.
+func TestNewRuntimeConfig_noStripHeaders(t *testing.T) {
+	config := &Config{Backends: []Backend{{Name: "plain"}}}
+	rc, err := NewRuntimeConfig(t.Context(), config, func(context.Context, *BackendAuth) (BackendAuthHandler, error) {
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.Nil(t, rc.Backends["plain"].Backend.HeaderMutation)
+}
