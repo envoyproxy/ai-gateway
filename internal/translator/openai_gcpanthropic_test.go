@@ -28,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
@@ -233,7 +234,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 				OfStringArray: []string{"stop1", "stop2"},
 			},
 		}
-		messageParam, err := buildAnthropicParams(openaiRequest, "GCPAnthropic", "")
+		messageParam, err := buildAnthropicParams(openaiRequest, filterapi.APISchemaGCPAnthropic, "")
 		require.NoError(t, err)
 		require.Equal(t, int64(100), messageParam.MaxTokens)
 		require.Equal(t, "0.1", messageParam.TopP.String())
@@ -252,7 +253,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 				OfString: openaigo.Opt[string]("stop1"),
 			},
 		}
-		messageParam, err := buildAnthropicParams(openaiRequest, "GCPAnthropic", "")
+		messageParam, err := buildAnthropicParams(openaiRequest, filterapi.APISchemaGCPAnthropic, "")
 		require.NoError(t, err)
 		require.Equal(t, int64(100), messageParam.MaxTokens)
 		require.Equal(t, "0.1", messageParam.TopP.String())
