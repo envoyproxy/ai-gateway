@@ -50,13 +50,13 @@ const (
 // Envoy defaults these to 1024, which overflows when many concurrent requests each open
 // an ext_proc gRPC stream. Downstream/upstream limits should apply instead of this hop.
 func maxExtProcCircuitBreakers() *clusterv3.CircuitBreakers {
-	max := wrapperspb.UInt32(uint32(math.MaxInt32))
+	maxInt32 := wrapperspb.UInt32(uint32(math.MaxInt32))
 	return &clusterv3.CircuitBreakers{
 		Thresholds: []*clusterv3.CircuitBreakers_Thresholds{{
-			MaxConnections:     max,
-			MaxPendingRequests: max,
-			MaxRequests:        max,
-			MaxRetries:         max,
+			MaxConnections:     maxInt32,
+			MaxPendingRequests: maxInt32,
+			MaxRequests:        maxInt32,
+			MaxRetries:         maxInt32,
 		}},
 	}
 }
