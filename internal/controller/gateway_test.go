@@ -2967,6 +2967,94 @@ func Test_schemaToFilterAPI(t *testing.T) {
 	}
 }
 
+func Test_headerValueFiltersToFilterAPI(t *testing.T) {
+	for i, tc := range []struct {
+		name     string
+		in       []aigv1b1.HTTPHeaderValueFilter
+		expected []filterapi.HTTPHeaderValueFilter
+	}{
+		{
+			name:     "nil",
+			in:       nil,
+			expected: nil,
+		},
+		{
+			name:     "empty",
+			in:       []aigv1b1.HTTPHeaderValueFilter{},
+			expected: nil,
+		},
+		{
+			name: "denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+		},
+		{
+			name: "allowlist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeAllowlist,
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Allowlist",
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+		},
+		{
+			// Header names are case-insensitive; the data plane matches on the lower-cased form.
+			name: "header name is lower-cased",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "Anthropic-Beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			// The CRD defaults Mode, but an object persisted without it must not silently disable
+			// the filter.
+			name: "empty mode defaults to Denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			name: "multiple headers",
+			in: []aigv1b1.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: aigv1b1.HTTPHeaderValueFilterModeDenylist, Values: []string{"a"}},
+				{Name: "x-custom", Mode: aigv1b1.HTTPHeaderValueFilterModeAllowlist, Values: []string{"b"}},
+			},
+			expected: []filterapi.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: "Denylist", Values: []string{"a"}},
+				{Name: "x-custom", Mode: "Allowlist", Values: []string{"b"}},
+			},
+		},
+	} {
+		t.Run(strconv.Itoa(i)+"/"+tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, headerValueFiltersToFilterAPI(tc.in))
+		})
+	}
+}
+
 func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
