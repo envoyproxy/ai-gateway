@@ -61,7 +61,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 		specifier = "streamRawPredict"
 	}
 
-	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
-	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	gcpPath := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
+	newHeaders = []internalapi.Header{{gcpPathHeaderName, gcpPath}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
 }
