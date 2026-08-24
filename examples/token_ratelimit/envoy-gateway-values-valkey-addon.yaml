@@ -1,0 +1,28 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This addon keeps Envoy Gateway's Redis backend configuration and points it at
+# the Valkey Service from valkey.yaml. Valkey is compatible with this Redis
+# protocol boundary; it is not a separate Envoy Gateway backend type.
+config:
+  envoyGateway:
+    provider:
+      kubernetes:
+        rateLimitDeployment:
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - imagePullPolicy: IfNotPresent
+                        name: envoy-ratelimit
+                        image: docker.io/envoyproxy/ratelimit:60d8e81b
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: valkey.valkey-system.svc.cluster.local:6379

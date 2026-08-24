@@ -412,6 +412,49 @@ func EnvoyGatewaySupportsLimitFromMetadata() bool {
 	return EnvoyGatewayVersion() == EnvoyGatewayLatestVersion
 }
 
+// RateLimitStorage describes the Redis-protocol backend used by the e2e rate limit tests.
+// Set E2E_RATELIMIT_STORAGE=valkey to run the same tests against the Valkey example.
+type RateLimitStorage struct {
+	Name        string
+	Manifest    string
+	ValuesAddon string
+	Namespace   string
+	PodSelector string
+	Deployment  string
+	CLI         string
+	URL         string
+}
+
+// SelectedRateLimitStorage returns the storage backend selected for e2e tests.
+func SelectedRateLimitStorage() RateLimitStorage {
+	switch os.Getenv("E2E_RATELIMIT_STORAGE") {
+	case "", "redis":
+		return RateLimitStorage{
+			Name:        "Redis",
+			Manifest:    "../../examples/token_ratelimit/redis.yaml",
+			ValuesAddon: "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+			Namespace:   "redis-system",
+			PodSelector: "app=redis",
+			Deployment:  "redis",
+			CLI:         "redis-cli",
+			URL:         "redis.redis-system.svc.cluster.local:6379",
+		}
+	case "valkey":
+		return RateLimitStorage{
+			Name:        "Valkey",
+			Manifest:    "../../examples/token_ratelimit/valkey.yaml",
+			ValuesAddon: "../../examples/token_ratelimit/envoy-gateway-values-valkey-addon.yaml",
+			Namespace:   "valkey-system",
+			PodSelector: "app=valkey",
+			Deployment:  "valkey",
+			CLI:         "valkey-cli",
+			URL:         "valkey.valkey-system.svc.cluster.local:6379",
+		}
+	default:
+		panic(fmt.Sprintf("unsupported E2E_RATELIMIT_STORAGE value %q; use redis or valkey", os.Getenv("E2E_RATELIMIT_STORAGE")))
+	}
+}
+
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
 func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
@@ -429,7 +472,7 @@ func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension 
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace",
 		"-f", "../../manifests/envoy-gateway-values.yaml",
-		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+		"-f", SelectedRateLimitStorage().ValuesAddon,
 		"--set", fmt.Sprintf("config.envoyGateway.extensionManager.service.fqdn.hostname=ai-gateway-controller.%s.svc.cluster.local", namespace),
 	}
 	if inferenceExtension {

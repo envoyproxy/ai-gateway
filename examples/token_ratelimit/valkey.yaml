@@ -1,0 +1,50 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This is a simple Valkey deployment that is used by the Envoy Gateway rate
+# limiting feature through its Redis protocol interface.
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: valkey-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: valkey-system
+  labels:
+    app: valkey
+spec:
+  ports:
+    - name: valkey
+      port: 6379
+  selector:
+    app: valkey
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey
+  namespace: valkey-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: valkey
+  template:
+    metadata:
+      labels:
+        app: valkey
+    spec:
+      containers:
+        - image: valkey/valkey:8.1.8-alpine
+          imagePullPolicy: IfNotPresent
+          name: valkey
+          ports:
+            - name: valkey
+              containerPort: 6379
+      restartPolicy: Always

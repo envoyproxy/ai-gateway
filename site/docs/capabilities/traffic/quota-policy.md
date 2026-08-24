@@ -38,10 +38,16 @@ Key features of QuotaPolicy:
 :::tip Prerequisites
 Quota enforcement uses the same infrastructure as usage-based rate limiting:
 
-1. **Redis Deployment**: A Redis instance for storing quota counters. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
-2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. See the [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc).
+1. **Redis-protocol backend**: The external `envoyproxy/ratelimit` service stores quota counters through its Redis protocol connection. Redis and Valkey are supported choices; see the [Redis example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) or [Valkey example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/valkey.yaml).
+2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to the selected backend. See the [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc).
 
 See [Usage-based Rate Limiting](./usage-based-ratelimiting.md) for more detail on the rate limit infrastructure that QuotaPolicy builds on.
+:::
+
+:::note Valkey compatibility
+
+Valkey is validated for the documented quota counter and `429` enforcement flows through the existing external rate-limit service. Keep `rateLimit.backend.type: Redis` and configure the endpoint for the Valkey Service; no Valkey-specific API is introduced. Semantic caching and a new AI Gateway datastore are outside this scope. See the [pinned Valkey example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/valkey.yaml) and [#2522](https://github.com/envoyproxy/ai-gateway/issues/2522).
+
 :::
 
 ## Configuration

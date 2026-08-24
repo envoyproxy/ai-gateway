@@ -241,6 +241,11 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
 	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
+.PHONY: test-e2e-ratelimit-valkey
+test-e2e-ratelimit-valkey: build-e2e ## Run rate-limit e2e tests against Valkey.
+	@echo "Run Valkey rate-limit E2E tests"
+	@E2E_RATELIMIT_STORAGE=valkey go test -v ./tests/e2e/... -run 'Test_Examples_(TokenRateLimit|BackendQuotaRateLimit)$$' $(GO_TEST_E2E_ARGS)
+
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e-inference-extension
 test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.

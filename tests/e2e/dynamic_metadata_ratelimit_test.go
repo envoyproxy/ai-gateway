@@ -50,12 +50,7 @@ func Test_DynamicMetadataRateLimit(t *testing.T) {
 		t.Skipf("needs Envoy Gateway %s, have %s", e2elib.EnvoyGatewayLatestVersion, e2elib.EnvoyGatewayVersion())
 	}
 
-	// Apply Redis manifest (shared with the other rate limit tests). The Envoy
-	// Gateway global rate limit service (envoy-ratelimit) is backed by Redis.
-	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "../../examples/token_ratelimit/redis.yaml"))
-	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(context.Background(), "../../examples/token_ratelimit/redis.yaml")
-	})
+	applyRateLimitStorage(t)
 
 	const manifest = "testdata/dynamic_metadata_ratelimit.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -66,12 +61,11 @@ func Test_DynamicMetadataRateLimit(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-dynamic-ratelimit"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-	// Wait for the redis pod to be ready so that the rate limit can be performed
-	// correctly. Until the redis pod is ready, envoy-ratelimit will be in
+	// Wait for the selected backend to be ready so that the rate limit can be
+	// performed correctly. Until it is ready, envoy-ratelimit will be in
 	// CrashLoopBackOff, so restart it to get a clean state up faster.
 	require.NoError(t, e2elib.KubectlRestartDeployment(t.Context(), e2elib.EnvoyGatewayNamespace, "envoy-ratelimit"))
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app.kubernetes.io/component=ratelimit")
-	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
 
 	// The auth server supplies the budget, and requests fail closed if it isn't up.
 	e2elib.RequireWaitForPodReady(t, "default", "app=ext-auth-server-dynamic-ratelimit")

@@ -59,9 +59,15 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 Rate limiting requires two components to be configured:
 
-1. **Redis Deployment**: A Redis instance must be running to store rate limit data. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
+1. **Redis-protocol backend**: The external `envoyproxy/ratelimit` service owns the Redis protocol connection and requires a backend for rate-limit counters. Redis and Valkey are supported choices; see the [Redis example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) or [Valkey example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/valkey.yaml).
 
-2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc)
+2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to the selected backend. See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc)
+
+:::
+
+:::note Valkey compatibility
+
+Valkey is validated as a Redis-protocol backend for the documented token counter and `429` enforcement flows. Keep `rateLimit.backend.type: Redis` and point its endpoint at the Valkey Service; Valkey does not add a new Envoy Gateway backend type. Semantic caching and an AI Gateway datastore are outside this compatibility scope. See the [pinned Valkey example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/valkey.yaml) and [#2522](https://github.com/envoyproxy/ai-gateway/issues/2522).
 
 :::
 
