@@ -71,6 +71,17 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 
+	// Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.
+	// This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the
+	// generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host
+	// instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).
+	// See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames
+	// for the details of the Hostnames field in the Gateway API.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	Hostnames []gwapiv1.Hostname `json:"hostnames,omitempty"`
+
 	// BackendRefs is a list of backend references to the MCP servers.
 	// These MCP servers will be aggregated and exposed as a single MCP endpoint to the clients.
 	// From the client's perspective, they only need to configure a single MCP server URL, e.g. "https://api.example.com/mcp",
@@ -91,6 +102,14 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:Optional
 	// +optional
 	SecurityPolicy *MCPRouteSecurityPolicy `json:"securityPolicy,omitempty"`
+
+	// BackendSelector restricts which of this route's backends a given request may fan
+	// out to, evaluated once per candidate backend when a client session is initialized.
+	// If unspecified, all backends on the route are considered.
+	//
+	// +kubebuilder:validation:Optional
+	// +optional
+	BackendSelector *MCPBackendSelector `json:"backendSelector,omitempty"`
 }
 
 // MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
@@ -378,6 +397,62 @@ type MCPRouteAuthorizationRule struct {
 	CEL *string `json:"cel,omitempty"`
 
 	// Action is the authorization decision for matching requests. If unspecified, defaults to Allow.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Allow
+	// +optional
+	Action *egv1a1.AuthorizationAction `json:"action,omitempty"`
+}
+
+// MCPBackendSelector defines which of a MCPRoute's backends a request may fan out to.
+type MCPBackendSelector struct {
+	// DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Deny
+	// +optional
+	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction,omitempty"`
+
+	// Rules defines a list of backend selection rules.
+	// These rules are evaluated in order, the first matching rule will be applied,
+	// and the rest will be skipped.
+	//
+	// If no rules are defined, DefaultAction is applied to every candidate backend
+	// (defaults to Deny).
+	//
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	Rules []MCPBackendSelectorRule `json:"rules,omitempty"`
+}
+
+// MCPBackendSelectorRule defines a single backend selection rule.
+type MCPBackendSelectorRule struct {
+	// CEL specifies a Common Expression Language (CEL) expression, evaluated once for
+	// each backend already listed in backendRefs. It does not parse a list of backends
+	// out of the request. Each evaluation binds request.mcp.backend to the name of the
+	// one candidate backend under test, so the expression should answer "is this backend
+	// allowed", not "which backends should be used". The expression must return a
+	// boolean; evaluation errors or non-boolean results are treated as "no match". A
+	// match means the rule applies, and Action below decides whether that's an Allow or
+	// a Deny for that backend.
+	//
+	// Example CEL expressions:
+	//	* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`
+	//	* `("," + request.headers["x-ai-eg-mcp-backend-subset"] + ",").contains("," + request.mcp.backend + ",")`
+	//
+	// Available attributes are the same as documented on MCPRouteAuthorizationRule.CEL,
+	// except request.mcp.method, request.mcp.tool, and request.mcp.params are not
+	// populated (no MCP method has been selected yet at backend-selection time).
+	//
+	// Note: The CEL expression support is experimental, and the attributes
+	// available to the expression may change in future releases.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=4096
+	// +optional
+	CEL *string `json:"cel,omitempty"`
+
+	// Action is the decision for matching backends. If unspecified, defaults to Allow.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=Allow
