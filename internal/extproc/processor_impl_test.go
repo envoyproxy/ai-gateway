@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -454,6 +455,40 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
 		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		mm.RequireRequestFailure(t)
+	})
+
+	// Verify the stale content-encoding header is removed when a compressed error body is replaced
+	// with the uncompressed translated error.
+	t.Run("non-2xx status removes content-encoding", func(t *testing.T) {
+		var compressed bytes.Buffer
+		gz := gzip.NewWriter(&compressed)
+		_, err := gz.Write([]byte("error-body"))
+		require.NoError(t, err)
+		require.NoError(t, gz.Close())
+
+		expHeadMut := []internalapi.Header{{"foo", "bar"}}
+		expBodyMut := []byte("translated-error-body")
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t,
+			// The translator must receive the decompressed body.
+			expResponseBody:   &extprocv3.HttpBody{Body: []byte("error-body")},
+			retHeaderMutation: expHeadMut,
+			retBodyMutation:   expBodyMut,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:       mt,
+			metrics:          mm,
+			responseHeaders:  map[string]string{":status": "500", "content-encoding": "gzip"},
+			responseEncoding: "gzip",
+			parent:           &chatCompletionProcessorRouterFilter{},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: compressed.Bytes(), EndOfStream: true})
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		require.Equal(t, "translated-error-body", string(commonRes.BodyMutation.GetBody()))
+		require.Contains(t, commonRes.HeaderMutation.RemoveHeaders, "content-encoding")
 		mm.RequireRequestFailure(t)
 	})
 
