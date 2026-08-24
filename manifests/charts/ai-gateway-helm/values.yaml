@@ -45,6 +45,9 @@ extProc:
   imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+  # Log output format. One of "text" or "json". Set to "json" when logs are ingested by a pipeline
+  # that parses structured records, such as Cloud Logging, Loki, Datadog or ELK.
+  logFormat: text
   # Enable redaction of sensitive information in debug logs (only takes effect when logLevel is "debug").
   enableRedaction: false
 
@@ -62,11 +65,22 @@ extProc:
   ##   # GCP ADC authentication requests will use this proxy if set.
   ##   - name: AI_GATEWAY_GCP_AUTH_PROXY_URL
   ##     value: "http://proxy.example.com:8080"
+  ##   # Emit OpenTelemetry GenAI span attributes instead of the default
+  ##   # OpenInference ones, and the OpenTelemetry MCP attributes instead of the
+  ##   # gateway-specific mcp.* ones. An unrecognized value fails startup.
+  ##   - name: AI_GATEWAY_TRACING_SEMCONV
+  ##     value: "gen_ai"
+  ##   # The GenAI conventions treat message content as opt-in.
+  ##   - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+  ##     value: "true"
   ##
   extraEnvVars: []
 
 controller:
   logLevel: info
+  # Log output format. One of "text" or "json". Set to "json" when logs are ingested by a pipeline
+  # that parses structured records, such as Cloud Logging, Loki, Datadog or ELK.
+  logFormat: text
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
