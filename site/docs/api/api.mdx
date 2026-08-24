@@ -3120,6 +3120,8 @@ MCPRouteList contains a list of MCPRoute.
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
 - [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)
 - [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)
+- [HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter)
+- [HTTPHeaderValueFilterMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode)
 - [JWKS](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwks)
 - [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)
 - [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
@@ -3371,6 +3373,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="headerValueFilters"
+  type="[HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter) array"
+  required="false"
+  description="HeaderValueFilters filter individual values out of multi-valued request headers before sending<br />the request to this backend, so that one value an upstream provider does not accept does not<br />fail the whole request. At most one filter per header name.<br />Only GCPAnthropic and AWSAnthropic backends honor this, and today only for the<br />`anthropic-beta` header — a filter naming any other header is accepted but has no effect.<br />Setting it on a backend with any other schema is rejected."
 />
 
 
@@ -3855,7 +3862,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="credentialOverride"
   type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
   required="false"
-  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above. Supported for all types except AWSCredentials."
+  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above.<br />For AWSCredentials the credential is the three-part SigV4 input rather than a single string;<br />see the source types for how each carries it."
 />
 
 
@@ -3947,7 +3954,7 @@ dynamic metadata produced by a trusted filter running earlier in the filter chai
   name="key"
   type="string"
   required="false"
-  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type."
+  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.<br />For every type except AWSCredentials the value must be a string holding the credential.<br />For AWSCredentials it must be a struct, since SigV4 needs three inputs:<br />  accessKeyId<br />  secretAccessKey<br />  sessionToken     (optional; omit for long-lived credentials)<br />Field names are fixed. accessKeyId without secretAccessKey, or the reverse, fails the<br />request instead of falling back. Defaults to `x-aigw-aws-credentials`."
 /><ApiField
   name="fallbackToConfigured"
   type="boolean"
@@ -3974,7 +3981,7 @@ CredentialOverrideFromRequestHeaders sources the per-request credential from a r
   name="header"
   type="string"
   required="false"
-  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token<br />For AWSCredentials this is a prefix, not a single header name, since SigV4 needs three<br />inputs. Defaults to `x-aigw-aws-`, yielding:<br />  x-aigw-aws-access-key-id<br />  x-aigw-aws-secret-access-key<br />  x-aigw-aws-session-token     (optional; omit for long-lived credentials)<br />All three are stripped before the backend sees them. An access key ID without a secret<br />access key, or the reverse, fails the request instead of falling back.<br />Prefer FromDynamicMetadata for AWSCredentials. Headers are client-settable, and a secret<br />access key on the wire is a worse leak than an API key."
 /><ApiField
   name="fallbackToConfigured"
   type="boolean"
@@ -4273,6 +4280,69 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter">HTTPHeaderValueFilter</a>
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
+
+HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
+request is forwarded to this backend.
+
+This drops (or restricts to) specific values from a comma-separated header while forwarding the
+rest untouched, so one unsupported value does not fail the whole request.
+
+Only comma-delimited headers are supported. Values are matched exactly, after surrounding
+whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.
+
+##### Fields
+
+
+
+<ApiField
+  name="name"
+  type="[HTTPHeaderName](#sigs-k8s-io-gateway-api-apis-v1-httpheadername)"
+  required="true"
+  description="Name is the name of the header whose values are filtered. Header names are<br />case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2)."
+/><ApiField
+  name="mode"
+  type="[HTTPHeaderValueFilterMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode)"
+  required="false"
+  defaultValue="Denylist"
+  description="Mode selects the filtering semantics. Defaults to Denylist."
+/><ApiField
+  name="values"
+  type="string array"
+  required="false"
+  description="Values is the list of header values to drop (Denylist) or keep (Allowlist).<br />An empty list leaves the header unchanged."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode">HTTPHeaderValueFilterMode</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter)
+
+HTTPHeaderValueFilterMode specifies the filtering semantics of an HTTPHeaderValueFilter.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="Denylist"
+  type="enum"
+  required="false"
+  description="HTTPHeaderValueFilterModeDenylist drops the values listed in Values, keeping everything else.<br />New values the gateway has not been configured for pass through untouched.<br />"
+/><ApiField
+  name="Allowlist"
+  type="enum"
+  required="false"
+  description="HTTPHeaderValueFilterModeAllowlist keeps only the values listed in Values, dropping everything<br />else. New values the gateway has not been configured for are dropped.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-jwks">JWKS</a>
 
 
