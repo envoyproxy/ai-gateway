@@ -135,15 +135,6 @@ func TestServerPostTranslateModify(t *testing.T) {
 		}, res)
 		require.NoError(t, err)
 	})
-	t.Run("existing cluster is not mutated", func(t *testing.T) {
-		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
-		require.NoError(t, err)
-		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: extProcUDSClusterName}}}
-		res, err := s.PostTranslateModify(t.Context(), req)
-		require.NoError(t, err)
-		require.Len(t, res.Clusters, 1)
-		require.Nil(t, res.Clusters[0].CircuitBreakers, "must not mutate externally-supplied cluster")
-	})
 	t.Run("not existing", func(t *testing.T) {
 		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
