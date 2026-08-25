@@ -30,7 +30,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -1578,7 +1580,8 @@ func TestPostRouteModify(t *testing.T) {
 
 	t.Run("with InferencePool extension and DirectResponse route action", func(t *testing.T) {
 		// When a route has a DirectResponse action (not Route_Route), GetRoute() returns nil.
-		// This should not cause a panic. Regression test for https://github.com/envoyproxy/ai-gateway/issues/1889.
+		// Reject it so Envoy Gateway retains the last good configuration instead of
+		// publishing an unresolved InferencePool as a direct response.
 		route := &routev3.Route{
 			Name: "test-route-direct-response",
 			Action: &routev3.Route_DirectResponse{
@@ -1595,15 +1598,9 @@ func TestPostRouteModify(t *testing.T) {
 			},
 		}
 		resp, err := s.PostRouteModify(context.Background(), req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, route, resp.Route)
-
-		// Verify that GetRoute() is still nil (DirectResponse, not Route_Route).
-		require.Nil(t, route.GetRoute())
-		// Verify that no InferencePool configuration was applied to the non-forwarding route.
-		require.Nil(t, route.TypedPerFilterConfig)
-		require.Nil(t, route.Metadata)
+		require.Equal(t, codes.FailedPrecondition, status.Code(err))
+		require.ErrorContains(t, err, "cannot configure InferencePool default/test-pool")
+		require.Nil(t, resp)
 	})
 }
 
