@@ -26,6 +26,7 @@ import (
 // Exported for testing purposes.
 type AIBackendController struct {
 	client             client.Client
+	apiReader          client.Reader
 	kube               kubernetes.Interface
 	logger             logr.Logger
 	aiGatewayRouteChan chan event.GenericEvent
@@ -35,6 +36,7 @@ type AIBackendController struct {
 func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent) *AIBackendController {
 	return &AIBackendController{
 		client:             client,
+		apiReader:          client,
 		kube:               kube,
 		logger:             logger,
 		aiGatewayRouteChan: aiGatewayRouteChan,
@@ -55,19 +57,26 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 	c.logger.Info("Reconciling AIServiceBackend", "namespace", req.Namespace, "name", req.Name)
 	if err := c.syncAIServiceBackend(ctx, &aiBackend); err != nil {
 		c.logger.Error(err, "failed to sync AIServiceBackend")
-		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeNotAccepted, err.Error())
+		if aiBackend.DeletionTimestamp.IsZero() {
+			c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeNotAccepted, err.Error())
+		}
 		return ctrl.Result{}, err
 	}
-	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
+	if aiBackend.DeletionTimestamp.IsZero() {
+		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1b1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
+	}
 	return ctrl.Result{}, nil
 }
 
 // syncAIServiceBackend is the main logic for reconciling the AIServiceBackend resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1b1.AIServiceBackend) error {
-	// Propagate the bsp events all the way up to relevant Gateways regardless of being deleted or not.
-	if _, err := handleFinalizer(ctx, c.client, aiBackend, nil); err != nil {
+	onDelete, err := handleFinalizer(ctx, c.client, c.apiReader, aiBackend, c.notifyReferencingAIGatewayRoutes)
+	if err != nil {
 		return err
+	}
+	if onDelete {
+		return nil
 	}
 
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
@@ -86,7 +95,14 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 			aiBackend.Name, names)
 	}
 
-	// Notify the AI Gateway Route controller about the AIServiceBackend change.
+	return c.notifyReferencingAIGatewayRoutes(ctx, aiBackend)
+}
+
+// notifyReferencingAIGatewayRoutes enqueues AIGatewayRoutes that reference this backend.
+// Used on both live updates and deletion so parents observe the backend going away
+// before the finalizer is removed.
+func (c *AIBackendController) notifyReferencingAIGatewayRoutes(ctx context.Context, aiBackend *aigv1b1.AIServiceBackend) error {
+	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1b1.AIGatewayRouteList
 	if err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
 		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
@@ -97,7 +113,9 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		c.aiGatewayRouteChan <- event.GenericEvent{Object: aiGatewayRoute}
+		if err := enqueueGenericEvent(c.aiGatewayRouteChan, aiGatewayRoute); err != nil {
+			return err
+		}
 	}
 	return nil
 }

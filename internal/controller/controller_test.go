@@ -558,7 +558,7 @@ func Test_handleFinalizer(t *testing.T) {
 		{
 			name:                     "adding finalizer, object not found",
 			getNotFound:              true,
-			expectedOnDelete:         false,
+			expectedOnDelete:         true,
 			expectedCallerFinalizers: []string{},
 			expectUpdateAttempts:     0,
 		},
@@ -621,7 +621,7 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedOnDelete:         true,
 			expectedCallerFinalizers: []string{aiGatewayControllerFinalizer},
 			expectUpdateAttempts:     0,
-			expectCallbackCount:      1,
+			expectCallbackCount:      0,
 			expectError:              true,
 		},
 		{
@@ -632,7 +632,7 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedOnDelete:         true,
 			expectedCallerFinalizers: []string{aiGatewayControllerFinalizer},
 			expectUpdateAttempts:     0,
-			expectCallbackCount:      1,
+			expectCallbackCount:      0,
 		},
 	}
 
@@ -668,7 +668,7 @@ func Test_handleFinalizer(t *testing.T) {
 				conflictsRemaining: tc.conflicts,
 				obj:                obj,
 			}
-			onDelete, err := handleFinalizer(context.Background(), mock, obj, onDeletionFn)
+			onDelete, err := handleFinalizer(context.Background(), mock, mock, obj, onDeletionFn)
 			require.Equal(t, tc.expectedOnDelete, onDelete)
 
 			// Mutation contract: the caller's object reflects the server state only after a
@@ -720,7 +720,7 @@ func Test_handleFinalizer_cleanupReexecutesAcrossRequeues(t *testing.T) {
 
 	// First reconcile: cleanup succeeds but removal fails terminally.
 	mock := &mockClient{updateError: true, obj: obj}
-	_, err := handleFinalizer(context.Background(), mock, obj, onDeletionFn)
+	_, err := handleFinalizer(context.Background(), mock, mock, obj, onDeletionFn)
 	require.Error(t, err)
 	require.Equal(t, 1, callbacks)
 	require.Equal(t, 1, mock.updateAttempts)
@@ -730,7 +730,7 @@ func Test_handleFinalizer_cleanupReexecutesAcrossRequeues(t *testing.T) {
 	// Second reconcile (the requeue): cleanup runs again, removal succeeds and is reflected
 	// in the caller's object.
 	mock.updateError = false
-	onDelete, err := handleFinalizer(context.Background(), mock, obj, onDeletionFn)
+	onDelete, err := handleFinalizer(context.Background(), mock, mock, obj, onDeletionFn)
 	require.NoError(t, err)
 	require.True(t, onDelete)
 	require.Equal(t, 2, callbacks, "cleanup re-runs on every requeued reconcile until removal succeeds")
@@ -835,6 +835,7 @@ type mockClient struct {
 	conflictsRemaining int // number of initial Update calls that return 409 before succeeding
 	updateAttempts     int
 	obj                *aigv1b1.AIGatewayRoute
+	server             *aigv1b1.AIGatewayRoute
 	updatedObj         *aigv1b1.AIGatewayRoute
 }
 
@@ -864,9 +865,12 @@ func (m *mockClient) Get(_ context.Context, key client.ObjectKey, obj client.Obj
 	if m.getErr {
 		return fmt.Errorf("mock get error")
 	}
-	// Copy the test object to the target to simulate a successful Get
-	if src, ok := obj.(*aigv1b1.AIGatewayRoute); ok {
-		*src = *m.obj
+	src := m.obj
+	if m.server != nil {
+		src = m.server
+	}
+	if dst, ok := obj.(*aigv1b1.AIGatewayRoute); ok {
+		src.DeepCopyInto(dst)
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -16,10 +17,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
@@ -121,6 +122,7 @@ type Options struct {
 // Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
 func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Config, logger logr.Logger, options *Options) (err error) {
 	c := mgr.GetClient()
+	apiReader := mgr.GetAPIReader()
 	indexer := mgr.GetFieldIndexer()
 	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
@@ -154,6 +156,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
 		gatewayEventChan, options.RootPrefix,
 	)
+	routeC.apiReader = apiReader
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.AIGatewayRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&egv1a1.HTTPRouteFilter{}).
@@ -168,6 +171,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	aiServiceBackendEventChan := make(chan event.GenericEvent, 100)
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("ai-service-backend"), aiGatewayRouteEventChan)
+	backendC.apiReader = apiReader
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.AIServiceBackend{}).
 		WatchesRawSource(source.Channel(
 			aiServiceBackendEventChan,
@@ -181,6 +185,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	inferencePoolEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), aiServiceBackendEventChan, inferencePoolEventChan)
+	backendSecurityPolicyC.apiReader = apiReader
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.BackendSecurityPolicy{}).
 		WatchesRawSource(source.Channel(
 			backendSecurityPolicyEventChan,
@@ -233,6 +238,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	mcpRouteC := NewMCPRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-mcp-route"),
 		gatewayEventChan,
 	)
+	mcpRouteC.apiReader = apiReader
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.MCPRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		WatchesRawSource(source.Channel(
@@ -253,6 +259,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	// QuotaPolicy controller for backend quota rate limiting.
 	if options.RateLimitRunner != nil {
 		quotaPolicyC := NewQuotaPolicyController(c, kube, logger.WithName("quota-policy"), options.RateLimitRunner, aiGatewayRouteEventChan)
+		quotaPolicyC.apiReader = apiReader
 		if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.QuotaPolicy{}).
 			Watches(&aigv1b1.AIServiceBackend{}, handler.EnqueueRequestsFromMapFunc(quotaPolicyC.BackendToQuotaPolicy)).
 			Complete(quotaPolicyC); err != nil {
@@ -289,8 +296,38 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Builder {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(obj).
-		// We do not need to watch for changes in the status subresource.
-		WithEventFilter(predicate.GenerationChangedPredicate{})
+		// GenerationChangedPredicate drops metadata-only updates, including the
+		// deletionTimestamp write issued by kubectl delete when finalizers are
+		// present (generation does not change). Without the extra predicate,
+		// handleFinalizer never runs and the object stays Terminating.
+		// ResourceVersionChangedPredicate is not used: status writes would
+		// hot-loop every controller.
+		WithEventFilter(predicate.Or(
+			predicate.GenerationChangedPredicate{},
+			deletionOrFinalizerChangedPredicate{},
+		))
+}
+
+// deletionOrFinalizerChangedPredicate admits updates that set deletionTimestamp
+// or change finalizers. Create/Delete/Generic are left to GenerationChangedPredicate
+// via predicate.Or (this predicate returns false for those).
+type deletionOrFinalizerChangedPredicate struct{}
+
+func (deletionOrFinalizerChangedPredicate) Create(event.CreateEvent) bool { return false }
+func (deletionOrFinalizerChangedPredicate) Delete(event.DeleteEvent) bool { return false }
+func (deletionOrFinalizerChangedPredicate) Generic(event.GenericEvent) bool {
+	return false
+}
+
+func (deletionOrFinalizerChangedPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	deleting := e.ObjectOld.GetDeletionTimestamp().IsZero() &&
+		!e.ObjectNew.GetDeletionTimestamp().IsZero()
+	finalizersChanged := !apiequality.Semantic.DeepEqual(
+		e.ObjectOld.GetFinalizers(), e.ObjectNew.GetFinalizers())
+	return deleting || finalizersChanged
 }
 
 const (
@@ -570,106 +607,139 @@ func newConditions(conditionType, message string) []metav1.Condition {
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
 const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
 
+var (
+	errObjectGone  = errors.New("object is gone")
+	errNowDeleting = errors.New("object is now deleting")
+)
+
 // handleFinalizer ensures aiGatewayControllerFinalizer is present on live objects and removed from
-// deleting ones. It returns onDelete=true when the object carries a deletion timestamp, signaling
-// callers to skip normal reconciliation.
+// deleting ones. It returns onDelete=true when the object is gone or terminating, signaling
+// callers to skip normal reconciliation and not recreate children.
 //
-// onDeletionFn runs before finalizer removal. Errors requeue the object, keeping it in
-// Terminating until cleanup succeeds to prevent leaked side effects. Because retries
-// will re-execute it, onDeletionFn MUST be idempotent.
+// Branching uses a fresh Get of latest, never the caller's reconcile snapshot: that snapshot
+// can lag a concurrent delete. reader should be mgr.GetAPIReader() so conflict retries observe
+// the apiserver rather than a stale informer. Writes use Update (resourceVersion conflict)
+// rather than a JSON merge patch, which would replace the entire finalizers array.
+//
+// onDeletionFn runs before finalizer removal and outside the retry loop. Errors requeue the
+// object, keeping it Terminating until cleanup succeeds. Because a failed removal requeues,
+// onDeletionFn MUST be idempotent.
 func handleFinalizer[T any, PT interface {
 	*T
 	client.Object
 }](
-	ctx context.Context, k8sClient client.Client,
+	ctx context.Context,
+	writer client.Writer,
+	reader client.Reader,
 	o PT,
 	onDeletionFn func(ctx context.Context, o PT) error,
 ) (onDelete bool, err error) {
-	key := types.NamespacedName{Name: o.GetName(), Namespace: o.GetNamespace()}
-	if o.GetDeletionTimestamp().IsZero() {
-		if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-			return false, nil
+	key := client.ObjectKeyFromObject(o)
+	latest := PT(new(T))
+	uid := o.GetUID()
+
+	if gerr := reader.Get(ctx, key, latest); gerr != nil {
+		if apierrors.IsNotFound(gerr) {
+			return true, nil
 		}
-		latest := PT(new(T))
-		updated := false
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			if gerr := k8sClient.Get(ctx, key, latest); gerr != nil {
+		return !o.GetDeletionTimestamp().IsZero(), fmt.Errorf("failed to get %s/%s for finalizer: %w",
+			o.GetNamespace(), o.GetName(), gerr)
+	}
+	if uid != "" && latest.GetUID() != uid {
+		return true, nil
+	}
+
+	if latest.GetDeletionTimestamp().IsZero() {
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			if gerr := reader.Get(ctx, key, latest); gerr != nil {
 				if apierrors.IsNotFound(gerr) {
-					// Object gone; nothing left to finalize.
-					return nil
+					return errObjectGone
 				}
 				return gerr
 			}
+			if !latest.GetDeletionTimestamp().IsZero() {
+				return errNowDeleting
+			}
+			if uid != "" && latest.GetUID() != uid {
+				return errObjectGone
+			}
 			if ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
-				// Another writer added it first.
 				return nil
 			}
 			ctrlutil.AddFinalizer(latest, aiGatewayControllerFinalizer)
-			// Standard Update carries resourceVersion, so the API server natively enforces
-			// optimistic concurrency control and stale writes surface as conflicts that
-			// RetryOnConflict absorbs with backoff.
-			if uerr := k8sClient.Update(ctx, latest); uerr != nil {
-				return uerr
-			}
-			updated = true
-			return nil
+			return writer.Update(ctx, latest)
 		})
-		if err != nil {
+		switch {
+		case errors.Is(err, errObjectGone):
+			return true, nil
+		case errors.Is(err, errNowDeleting):
+			if gerr := reader.Get(ctx, key, latest); gerr != nil {
+				if apierrors.IsNotFound(gerr) {
+					return true, nil
+				}
+				return true, fmt.Errorf("failed to get %s/%s for finalizer: %w",
+					o.GetNamespace(), o.GetName(), gerr)
+			}
+		case err != nil:
 			return false, fmt.Errorf("failed to add finalizer to %s/%s: %w",
 				o.GetNamespace(), o.GetName(), err)
+		default:
+			syncCallerFromLatest(latest, o)
+			return false, nil
 		}
-		if updated {
-			// Keep the caller's view coherent: downstream logic may inspect o or reuse it
-			// for further writes within the same reconcile cycle.
-			o.SetFinalizers(latest.GetFinalizers())
-			o.SetResourceVersion(latest.GetResourceVersion())
-		}
-		return false, nil
 	}
-	if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
-		return true, nil
-	}
-	// Cleanup runs before removal (the API server blocks GC while any finalizer exists) and
-	// outside the retry loop so conflict retries never repeat its side effects within one call.
-	if onDeletionFn != nil {
-		if derr := onDeletionFn(ctx, o); derr != nil {
+
+	if onDeletionFn != nil && ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
+		if derr := onDeletionFn(ctx, latest); derr != nil {
 			return true, fmt.Errorf("deletion cleanup failed for %s/%s: %w",
 				o.GetNamespace(), o.GetName(), derr)
 		}
 	}
-	latest := PT(new(T))
-	removed := false
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if gerr := k8sClient.Get(ctx, key, latest); gerr != nil {
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if gerr := reader.Get(ctx, key, latest); gerr != nil {
 			if apierrors.IsNotFound(gerr) {
-				// Object already deleted; nothing left to finalize.
 				return nil
 			}
 			return gerr
 		}
 		if !ctrlutil.ContainsFinalizer(latest, aiGatewayControllerFinalizer) {
-			// Another reconciler removed it first.
 			return nil
 		}
 		ctrlutil.RemoveFinalizer(latest, aiGatewayControllerFinalizer)
-		// Standard Update carries resourceVersion, so the API server natively enforces
-		// optimistic concurrency control and stale writes surface as conflicts that
-		// RetryOnConflict absorbs with backoff.
-		if uerr := k8sClient.Update(ctx, latest); uerr != nil {
-			return uerr
-		}
-		removed = true
-		return nil
+		return writer.Update(ctx, latest)
 	})
 	if err != nil {
 		return true, fmt.Errorf("failed to remove finalizer from %s/%s: %w",
 			o.GetNamespace(), o.GetName(), err)
 	}
-	if removed {
-		o.SetFinalizers(latest.GetFinalizers())
-		o.SetResourceVersion(latest.GetResourceVersion())
-	}
+	syncCallerFromLatest(latest, o)
 	return true, nil
+}
+
+func syncCallerFromLatest[T any, PT interface {
+	*T
+	client.Object
+}](latest, o PT) {
+	if latest.GetName() == "" {
+		return
+	}
+	copied := latest.DeepCopyObject().(PT)
+	*o = *copied
+}
+
+// enqueueGenericEvent sends obj on ch without blocking a reconcile. A full channel
+// returns an error so a terminating reconcile can keep the finalizer and retry
+// instead of pinning on a send.
+func enqueueGenericEvent(ch chan event.GenericEvent, obj client.Object) error {
+	if ch == nil {
+		return nil
+	}
+	select {
+	case ch <- event.GenericEvent{Object: obj}:
+		return nil
+	default:
+		return fmt.Errorf("event channel is full")
+	}
 }
 
 // isKubernetes133OrLater returns true if the Kubernetes version is 1.33 or later.
