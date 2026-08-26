@@ -3120,6 +3120,8 @@ MCPRouteList contains a list of MCPRoute.
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
 - [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)
 - [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)
+- [HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter)
+- [HTTPHeaderValueFilterMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode)
 - [JWKS](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwks)
 - [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)
 - [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
@@ -3371,6 +3373,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="headerValueFilters"
+  type="[HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter) array"
+  required="false"
+  description="HeaderValueFilters filter individual values out of multi-valued request headers before sending<br />the request to this backend, so that one value an upstream provider does not accept does not<br />fail the whole request. At most one filter per header name.<br />Only GCPAnthropic and AWSAnthropic backends honor this, and today only for the<br />`anthropic-beta` header — a filter naming any other header is accepted but has no effect.<br />Setting it on a backend with any other schema is rejected."
 />
 
 
@@ -4273,6 +4280,69 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter">HTTPHeaderValueFilter</a>
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
+
+HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
+request is forwarded to this backend.
+
+This drops (or restricts to) specific values from a comma-separated header while forwarding the
+rest untouched, so one unsupported value does not fail the whole request.
+
+Only comma-delimited headers are supported. Values are matched exactly, after surrounding
+whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.
+
+##### Fields
+
+
+
+<ApiField
+  name="name"
+  type="[HTTPHeaderName](#sigs-k8s-io-gateway-api-apis-v1-httpheadername)"
+  required="true"
+  description="Name is the name of the header whose values are filtered. Header names are<br />case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2)."
+/><ApiField
+  name="mode"
+  type="[HTTPHeaderValueFilterMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode)"
+  required="false"
+  defaultValue="Denylist"
+  description="Mode selects the filtering semantics. Defaults to Denylist."
+/><ApiField
+  name="values"
+  type="string array"
+  required="false"
+  description="Values is the list of header values to drop (Denylist) or keep (Allowlist).<br />An empty list leaves the header unchanged."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefiltermode">HTTPHeaderValueFilterMode</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [HTTPHeaderValueFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadervaluefilter)
+
+HTTPHeaderValueFilterMode specifies the filtering semantics of an HTTPHeaderValueFilter.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="Denylist"
+  type="enum"
+  required="false"
+  description="HTTPHeaderValueFilterModeDenylist drops the values listed in Values, keeping everything else.<br />New values the gateway has not been configured for pass through untouched.<br />"
+/><ApiField
+  name="Allowlist"
+  type="enum"
+  required="false"
+  description="HTTPHeaderValueFilterModeAllowlist keeps only the values listed in Values, dropping everything<br />else. New values the gateway has not been configured for are dropped.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-jwks">JWKS</a>
 
 

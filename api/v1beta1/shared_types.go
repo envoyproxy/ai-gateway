@@ -165,6 +165,50 @@ const (
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
 
+// HTTPHeaderValueFilter filters individual values out of a multi-valued request header before the
+// request is forwarded to this backend.
+//
+// This drops (or restricts to) specific values from a comma-separated header while forwarding the
+// rest untouched, so one unsupported value does not fail the whole request.
+//
+// Only comma-delimited headers are supported. Values are matched exactly, after surrounding
+// whitespace is trimmed. To remove a header entirely, use HeaderMutation.Remove instead.
+type HTTPHeaderValueFilter struct {
+	// Name is the name of the header whose values are filtered. Header names are
+	// case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+	//
+	// +kubebuilder:validation:Required
+	Name gwapiv1.HTTPHeaderName `json:"name"`
+
+	// Mode selects the filtering semantics. Defaults to Denylist.
+	//
+	// +optional
+	// +kubebuilder:default=Denylist
+	Mode HTTPHeaderValueFilterMode `json:"mode,omitempty"`
+
+	// Values is the list of header values to drop (Denylist) or keep (Allowlist).
+	// An empty list leaves the header unchanged.
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=64
+	Values []string `json:"values,omitempty"`
+}
+
+// HTTPHeaderValueFilterMode specifies the filtering semantics of an HTTPHeaderValueFilter.
+//
+// +kubebuilder:validation:Enum=Denylist;Allowlist
+type HTTPHeaderValueFilterMode string
+
+const (
+	// HTTPHeaderValueFilterModeDenylist drops the values listed in Values, keeping everything else.
+	// New values the gateway has not been configured for pass through untouched.
+	HTTPHeaderValueFilterModeDenylist HTTPHeaderValueFilterMode = "Denylist"
+	// HTTPHeaderValueFilterModeAllowlist keeps only the values listed in Values, dropping everything
+	// else. New values the gateway has not been configured for are dropped.
+	HTTPHeaderValueFilterModeAllowlist HTTPHeaderValueFilterMode = "Allowlist"
+)
+
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 type HTTPHeaderMutation struct {
 	// Set overwrites/adds the request with the given header (name, value)
