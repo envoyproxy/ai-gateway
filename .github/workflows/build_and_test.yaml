@@ -379,8 +379,7 @@ jobs:
         run: cat ollama.log || true
 
   compute_version:
-    # Computes the -dev prerelease version for main; other branches get an empty version and fall back to SHA-based tagging.
-    if: github.event_name == 'push'
+    # Runs on PRs too, so GitVersion's output shows up in checks before it can affect main; docker_push/helm_push below stay push-only, so nothing publishes here.
     name: Compute dev version
     runs-on: ubuntu-latest
     outputs:
@@ -397,12 +396,33 @@ jobs:
       - name: Determine next version
         id: gitversion
         continue-on-error: true
+        # GitVersion reads the branch from GITHUB_REF, which on a PR is "refs/pull/N/merge"; override it to the PR's base branch so the preview uses that branch's config instead of GitVersion's default PullRequest config.
+        env:
+          GITHUB_REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.base_ref) || github.ref }}
         uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
       - name: Compute dev tag
         id: version
+        env:
+          MMP: ${{ steps.gitversion.outputs.majorMinorPatch }}
+          FULL_SEMVER: ${{ steps.gitversion.outputs.fullSemVer }}
+          BRANCH_NAME: ${{ steps.gitversion.outputs.branchName }}
+          COMMITS_SINCE: ${{ steps.gitversion.outputs.commitsSinceVersionSource }}
         run: |
-          MMP="${{ steps.gitversion.outputs.majorMinorPatch }}"
-          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ -n "$MMP" ]; then
+          {
+            echo "### GitVersion preview"
+            echo "- fullSemVer: \`$FULL_SEMVER\`"
+            echo "- majorMinorPatch: \`$MMP\`"
+            echo "- branchName: \`$BRANCH_NAME\`"
+            echo "- commitsSinceVersionSource: \`$COMMITS_SINCE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$MMP" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "::error::GitVersion produced no majorMinorPatch; fix GitVersion before merging."
+              exit 1
+            fi
+            echo "::warning::GitVersion produced no majorMinorPatch (setup/execute step likely failed above); this push to main will fall back to SHA-based tagging only."
+          fi
+          if [ "$GITHUB_REF" = "refs/heads/main" ] && [ -n "$MMP" ]; then
             echo "version=v${MMP}-dev.$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
           else
             echo "version=" >> "$GITHUB_OUTPUT"
@@ -456,6 +476,7 @@ jobs:
       - test_data_plane
       - test_data_plane_mcp
       - test_e2e_aigw
+      - compute_version
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.
     if: always()
