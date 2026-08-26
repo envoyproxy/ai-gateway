@@ -414,6 +414,10 @@ jobs:
             echo "- majorMinorPatch: \`$MMP\`"
             echo "- branchName: \`$BRANCH_NAME\`"
             echo "- commitsSinceVersionSource: \`$COMMITS_SINCE\`"
+            if [ -n "$MMP" ]; then
+              # Same logic as the main-branch push tag below, so PR runs can preview the dev tag main would produce.
+              echo "- tagPreview (what main would push now): \`v${MMP}-dev.$(date -u +%Y%m%d%H%M)\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -z "$MMP" ]; then
             if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
