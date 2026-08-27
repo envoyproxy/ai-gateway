@@ -314,7 +314,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) era {
 Three strategies, combined:
 
 1. **Auto-detect + cache (spec fallback):** Send `server/discover` to the backend; a valid `DiscoverResult` or a modern JSON-RPC error (`-32022`/`-32020`/`-32021`) ⇒ modern. A `400/404/405` without a recognized modern error body ⇒ fall back to `initialize` ⇒ legacy. Cache era per `route+backend` origin; re-probe on failure.
-2. **Explicit config field** on `MCPBackend` (`internal/filterapi/mcpconfig.go`), e.g., `ProtocolVersion string` or `Stateless *bool`. Useful for deterministic behavior in air-gapped setups.
+2. **Explicit config field** on `MCPBackend` (`internal/filterapi/mcpconfig.go`), e.g., `Stateless *bool`. Useful for deterministic behavior in air-gapped setups.
 3. **Both** — auto-detect by default with an optional config override.
 
 **Recommendation:** Option 3 (both). Auto-detect is the zero-config default; the config field provides an escape hatch for environments where probing is undesirable.
@@ -515,7 +515,6 @@ The flip. `servePOST`/`serveGET`/`serveDELETE` branch on `detectClientEra`: lega
 Kept separate so PR 1.1 stays reviewable. Likely none committed up front, pulled in only if the integration surfaces them:
 
 - Backend era detection (D2) if a modern-client → legacy-backend combination shows up early — at minimum a clean error rather than a crash.
-- Capability-cache pre-warm and periodic refresh via `multiWatcherSignaler`.
 - A conformance run against the RC test vectors.
 - Docs and `examples/mcp` dual-era updates if maintainers want them before Phase 4.
 
@@ -556,6 +555,9 @@ Phase 3 — Cacheable Results, Deterministic Ordering, Minor Spec Items
 | P3.5 | `**Mcp-Param-{Name}` headers — support `x-mcp-header` annotated tool parameters: extract from tool input schema, set corresponding `Mcp-Param-{Name}` headers on upstream requests                                                                                                                             | #D1                  | `handlers.go`                    |
 | P3.6 | `**resultType` on all results — audit every handler to ensure `resultType: "complete"` is set on all result payloads sent to modern clients                                                                                                                                                                    | #A3                  | `handlers.go`                    |
 | P3.7 | **Error code allocation compliance** — ensure gateway-minted error codes fall within `-32020` to `-32099` (MCP reserved range) or `-32000` to `-32019` (implementation-defined, grandfathered). No codes in the unallocated ranges                                                                             | #D4                  | `handlers.go`                    |
+| P3.8 | **Capability-cache pre-warm and periodic refresh** — pre-warm on config load + periodic refresh via `multiWatcherSignaler` | #A2                  | `discovery.go`, `config.go`      |
+
+When aggregating cache hints (`ttlMs`, `cacheScope`) across backends, return the most restrictive config: the smallest `ttlMs` seen from all responses, and `cacheScope: "private"` if any backend is private (`"public"` only if all are public). No finer aggregation — most-restrictive is a reasonable starting point.
 
 Phase 4 — Auth Hardening, Deprecations, and Cleanup
 
