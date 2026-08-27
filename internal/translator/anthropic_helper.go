@@ -34,6 +34,8 @@ import (
 const (
 	anthropicVersionKey   = "anthropic_version"
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
+
+	anthropicBetaHeaderName = "anthropic-beta"
 )
 
 // anthropicInputSchemaKeysToSkip defines the keys from an OpenAI function parameter map
@@ -185,6 +187,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 
 			if openAITool.Function.Strict {
 				toolParam.Strict = anthropic.Bool(true)
+			}
+
+			if openAITool.Function.EagerInputStreaming != nil {
+				toolParam.EagerInputStreaming = anthropic.Bool(*openAITool.Function.EagerInputStreaming)
 			}
 
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
@@ -1248,8 +1254,13 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		return nil, fmt.Errorf("anthropic stream error: %s - %s", errEvent.Error.Type, errEvent.Error.Message)
 
 	case "ping":
-		// Per documentation, ping events can be ignored.
-		return nil, nil
+		// Anthropic sends ping events periodically to keep the stream alive.
+		// Emit an empty chunk (empty delta, no finish reason) so that idle
+		// downstream connections stay alive during long gaps between content
+		// events. An empty delta does not carry content or the assistant role,
+		// so it does not consume the role-bearing "first chunk" slot; the role
+		// is still emitted on the first real content/tool-call chunk.
+		return p.constructOpenAIChatCompletionChunk(&openai.ChatCompletionResponseChunkChoiceDelta{}, ""), nil
 	}
 	return nil, nil
 }

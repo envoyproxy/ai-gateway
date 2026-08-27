@@ -102,6 +102,12 @@ func TestAIServiceBackends(t *testing.T) {
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"Cohere\", \"AWSBedrock\", \"AzureOpenAI\", \"GCPVertexAI\", \"GCPAnthropic\", \"Anthropic\"",
 		},
 		{name: "k8s-svc.yaml", expErr: "BackendRef must be a Backend resource of Envoy Gateway"},
+		{name: "header-value-filters-gcpanthropic.yaml"},
+		{name: "header-value-filters-awsanthropic.yaml"},
+		{
+			name:   "header-value-filters-unsupported-schema.yaml",
+			expErr: "headerValueFilters is only honored by GCPAnthropic and AWSAnthropic backends",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))
@@ -191,6 +197,9 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
+		// AWSCredentials used to be rejected outright by a CEL rule, because SigV4 needs three
+		// inputs and the override plumbing carried one string.
+		{name: "aws_credential_override.yaml"},
 		{name: "gcp_oidc.yaml"},
 		{name: "anthropic-apikey.yaml"},
 		{name: "targetrefs_basic.yaml"},
