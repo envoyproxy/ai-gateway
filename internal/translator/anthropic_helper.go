@@ -189,6 +189,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				toolParam.Strict = anthropic.Bool(true)
 			}
 
+			if openAITool.Function.EagerInputStreaming != nil {
+				toolParam.EagerInputStreaming = anthropic.Bool(*openAITool.Function.EagerInputStreaming)
+			}
+
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
 				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
