@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	"sigs.k8s.io/yaml"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -1086,8 +1087,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			StringData: map[string]string{rotators.GCPAccessTokenKey: "thisisgcpcredentials"},
 		},
 	} {
-		_, err := kube.CoreV1().Secrets(namespace).Create(t.Context(), s, metav1.CreateOptions{})
-		require.NoError(t, err)
+		require.NoError(t, fakeClient.Create(t.Context(), s))
 	}
 
 	for _, tc := range []struct {
@@ -1408,11 +1408,10 @@ func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) 
 			},
 		},
 	}))
-	_, err := kube.CoreV1().Secrets(namespace).Create(t.Context(), &corev1.Secret{
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "api-key-secret", Namespace: namespace},
 		StringData: map[string]string{apiKeyInSecret: "thisisapikey"},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
+	}))
 
 	bsp := &aigv1b1.BackendSecurityPolicy{}
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "bsp-with-override", Namespace: namespace}, bsp))
@@ -1564,16 +1563,18 @@ func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 // but silently strip auth from live traffic until something triggers another reconcile.
 func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled(t *testing.T) {
 	const gwNamespace, configNamespace = "ns", "some-namespace"
-	fakeClient := requireNewFakeClientWithIndexes(t)
-	kube := fake2.NewClientset()
-	// Fail only the credential read. Failing every Secret Get would also break the config-bundle
-	// write and the reconcile would error regardless, which would make this test pass vacuously.
-	kube.PrependReactor("get", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
-		if get, ok := a.(k8stesting.GetAction); ok && get.GetName() == "api-key" {
-			return true, nil, context.Canceled
-		}
-		return false, nil, nil
+	inner, ok := requireNewFakeClientWithIndexes(t).(client.WithWatch)
+	require.True(t, ok)
+	// Fail only the credential read; failing every read makes the test pass vacuously.
+	fakeClient := interceptor.NewClient(inner, interceptor.Funcs{
+		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, isSecret := obj.(*corev1.Secret); isSecret && key.Name == "api-key" {
+				return context.Canceled
+			}
+			return cl.Get(ctx, key, obj, opts...)
+		},
 	})
+	kube := fake2.NewClientset()
 	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
@@ -1649,6 +1650,79 @@ func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextDeadlineRea
 	_, getErr := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
 		FilterConfigBundleIndexSecretName("gw", gwNamespace), metav1.GetOptions{})
 	require.Error(t, getErr, "no filter config may be published when the backend could not be read")
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_ReadsCredentialsFromCache pins that credentials
+// come from the cache. The config assertions matter: a lookup that silently failed also reads zero.
+func TestGatewayController_reconcileFilterConfigSecret_ReadsCredentialsFromCache(t *testing.T) {
+	const gwNamespace, configNamespace, secretName = "ns", "some-namespace", "shared-api-key"
+	backendNames := []string{"apple", "banana", "cherry"}
+
+	kube := fake2.NewClientset()
+	var credentialGets int
+	kube.PrependReactor("get", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if get, ok := a.(k8stesting.GetAction); ok && get.GetName() == secretName {
+			credentialGets++
+		}
+		return false, nil, nil
+	})
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: gwNamespace},
+		StringData: map[string]string{apiKeyInSecret: "secret-value"},
+	}))
+
+	var (
+		targetRefs []gwapiv1a2.LocalPolicyTargetReference
+		rule       aigv1b1.AIGatewayRouteRule
+	)
+	for _, name := range backendNames {
+		require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{
+					Name: gwapiv1.ObjectName(name), Namespace: ptr.To[gwapiv1.Namespace](gwNamespace),
+				},
+			},
+		}))
+		targetRefs = append(targetRefs, gwapiv1a2.LocalPolicyTargetReference{
+			Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: gwapiv1.ObjectName(name),
+		})
+		rule.BackendRefs = append(rule.BackendRefs, aigv1b1.AIGatewayRouteRuleBackendRef{Name: name})
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:       aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey:     &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: secretName}},
+			TargetRefs: targetRefs,
+		},
+	}))
+
+	routes := []aigv1b1.AIGatewayRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec:       aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{rule}},
+	}}
+
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, configNamespace, routes, nil, "uuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective)
+	require.Zero(t, credentialGets, "the credential must come from the cache, not the API server")
+
+	legacy, err := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
+		legacyFilterConfigSecretName("gw", gwNamespace), metav1.GetOptions{})
+	require.NoError(t, err)
+	var cfg filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(legacy.StringData[FilterConfigKeyInSecret]), &cfg))
+	require.Len(t, cfg.Backends, len(backendNames))
+	for _, b := range cfg.Backends {
+		require.NotNil(t, b.Auth, b.Name)
+		require.NotNil(t, b.Auth.APIKey, b.Name)
+		require.Equal(t, "secret-value", b.Auth.APIKey.Key, b.Name)
+	}
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
@@ -2888,6 +2962,94 @@ func Test_schemaToFilterAPI(t *testing.T) {
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
+		})
+	}
+}
+
+func Test_headerValueFiltersToFilterAPI(t *testing.T) {
+	for i, tc := range []struct {
+		name     string
+		in       []aigv1b1.HTTPHeaderValueFilter
+		expected []filterapi.HTTPHeaderValueFilter
+	}{
+		{
+			name:     "nil",
+			in:       nil,
+			expected: nil,
+		},
+		{
+			name:     "empty",
+			in:       []aigv1b1.HTTPHeaderValueFilter{},
+			expected: nil,
+		},
+		{
+			name: "denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+		},
+		{
+			name: "allowlist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeAllowlist,
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Allowlist",
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+		},
+		{
+			// Header names are case-insensitive; the data plane matches on the lower-cased form.
+			name: "header name is lower-cased",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "Anthropic-Beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			// The CRD defaults Mode, but an object persisted without it must not silently disable
+			// the filter.
+			name: "empty mode defaults to Denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			name: "multiple headers",
+			in: []aigv1b1.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: aigv1b1.HTTPHeaderValueFilterModeDenylist, Values: []string{"a"}},
+				{Name: "x-custom", Mode: aigv1b1.HTTPHeaderValueFilterModeAllowlist, Values: []string{"b"}},
+			},
+			expected: []filterapi.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: "Denylist", Values: []string{"a"}},
+				{Name: "x-custom", Mode: "Allowlist", Values: []string{"b"}},
+			},
+		},
+	} {
+		t.Run(strconv.Itoa(i)+"/"+tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, headerValueFiltersToFilterAPI(tc.in))
 		})
 	}
 }
