@@ -40,7 +40,9 @@ func (s *Server) insertRequestHeaderToMetadataFilter(listener *listenerv3.Listen
 	for _, currChain := range filterChains {
 		httpConManager, hcmIndex, err := findHCM(currChain)
 		if err != nil {
-			return err
+			// Chains without an HCM (e.g. TCP/UDP routes) cannot host HTTP filters.
+			s.log.Error(err, "skipping filter chain without an HTTP connection manager", "listener", listener.Name)
+			continue
 		}
 		if filterIndex, filter := findHeaderToMetadataFilter(httpConManager.HttpFilters); filter != nil {
 			typedConfig := filter.GetTypedConfig()
