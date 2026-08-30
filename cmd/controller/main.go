@@ -467,6 +467,11 @@ func main() {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
 	}
+	go func() {
+		if mgr.GetCache().WaitForCacheSync(ctx) {
+			extSrv.MarkReady()
+		}
+	}()
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {

@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"github.com/go-logr/logr"
@@ -43,9 +44,14 @@ type Server struct {
 	quotaRateLimitTimeout int64
 	// quotaRateLimitFailureModeDeny sets the failure mode for the rate limit filter.
 	quotaRateLimitFailureModeDeny bool
+	ready                         atomic.Bool
 }
 
-const serverName = "envoy-gateway-extension-server"
+const (
+	serverName           = "envoy-gateway-extension-server"
+	livenessServiceName  = "liveness"
+	readinessServiceName = "readiness"
+)
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
 func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceAddr string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool) (*Server, error) {
@@ -60,7 +66,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		return nil, fmt.Errorf("invalid quotaRateLimitServiceAddr %q: %w", quotaRateLimitServiceAddr, err)
 	}
 
-	return &Server{
+	s := &Server{
 		log:                           logger,
 		k8sClient:                     k8sClient,
 		udsPath:                       udsPath,
@@ -70,7 +76,10 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		quotaRateLimitServicePort:     port,
 		quotaRateLimitTimeout:         quotaRateLimitTimeout,
 		quotaRateLimitFailureModeDeny: quotaRateLimitFailureModeDeny,
-	}, nil
+	}
+	// Standalone mode has no controller manager or cache to wait for.
+	s.ready.Store(isStandAloneMode)
+	return s, nil
 }
 
 // parseHostPort splits a "host:port" string. If no port is present,
@@ -98,8 +107,34 @@ func parseHostPort(hostPort string) (string, uint32, error) {
 }
 
 // Check implements [grpc_health_v1.HealthServer].
-func (s *Server) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (s *Server) Check(_ context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	service := ""
+	if req != nil {
+		service = req.Service
+	}
+
+	var healthStatus grpc_health_v1.HealthCheckResponse_ServingStatus
+	switch service {
+	case livenessServiceName:
+		healthStatus = grpc_health_v1.HealthCheckResponse_SERVING
+	case "", serverName, readinessServiceName:
+		healthStatus = s.healthStatus()
+	default:
+		healthStatus = grpc_health_v1.HealthCheckResponse_SERVICE_UNKNOWN
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: healthStatus}, nil
+}
+
+// MarkReady marks the extension server ready after the controller cache has synced.
+func (s *Server) MarkReady() {
+	s.ready.Store(true)
+}
+
+func (s *Server) healthStatus() grpc_health_v1.HealthCheckResponse_ServingStatus {
+	if s.ready.Load() {
+		return grpc_health_v1.HealthCheckResponse_SERVING
+	}
+	return grpc_health_v1.HealthCheckResponse_NOT_SERVING
 }
 
 // Watch implements [grpc_health_v1.HealthServer].
@@ -110,7 +145,9 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 // List implements [grpc_health_v1.HealthServer].
 func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
 	return &grpc_health_v1.HealthListResponse{Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
-		serverName: {Status: grpc_health_v1.HealthCheckResponse_SERVING},
+		serverName:           {Status: s.healthStatus()},
+		livenessServiceName:  {Status: grpc_health_v1.HealthCheckResponse_SERVING},
+		readinessServiceName: {Status: s.healthStatus()},
 	}}, nil
 }
 

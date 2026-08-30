@@ -108,11 +108,39 @@ func TestParseHostPort(t *testing.T) {
 	}
 }
 
-func TestCheck(t *testing.T) {
+func TestHealthReflectsControllerReadiness(t *testing.T) {
 	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
-	_, err = s.Check(t.Context(), nil)
+	readinessRequest := &grpc_health_v1.HealthCheckRequest{Service: readinessServiceName}
+
+	check, err := s.Check(t.Context(), readinessRequest)
 	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, check.Status)
+	list, err := s.List(t.Context(), nil)
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, list.Statuses[readinessServiceName].Status)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, list.Statuses[livenessServiceName].Status)
+	liveness, err := s.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{Service: livenessServiceName})
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, liveness.Status)
+
+	s.MarkReady()
+
+	check, err = s.Check(t.Context(), readinessRequest)
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, check.Status)
+	list, err = s.List(t.Context(), nil)
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, list.Statuses[readinessServiceName].Status)
+}
+
+func TestStandaloneHealthIsReadyImmediately(t *testing.T) {
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, true, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	check, err := s.Check(t.Context(), nil)
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, check.Status)
 }
 
 func TestWatch(t *testing.T) {

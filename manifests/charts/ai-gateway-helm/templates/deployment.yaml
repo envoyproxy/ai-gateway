@@ -118,6 +118,7 @@ spec:
           livenessProbe:
             grpc:
               port: 1063
+              service: liveness
             initialDelaySeconds: 5
             periodSeconds: 2
           env:
@@ -137,6 +138,7 @@ spec:
           readinessProbe:
             grpc:
               port: 1063
+              service: readiness
             initialDelaySeconds: 5
             periodSeconds: 2
           resources:
