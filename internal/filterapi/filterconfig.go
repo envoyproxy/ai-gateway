@@ -202,6 +202,9 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
+	// HeaderValueFilters filter individual values out of multi-valued request headers before sending
+	// the request to the backend. Optional.
+	HeaderValueFilters []HTTPHeaderValueFilter `json:"headerValueFilters,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -343,6 +346,16 @@ func (g GCPAuth) LogValue() slog.Value {
 		slog.String("region", g.Region),
 		slog.String("projectName", g.ProjectName),
 	)
+}
+
+// HTTPHeaderValueFilter filters individual values out of a multi-valued request header before
+// forwarding upstream. Mode is either "Denylist" (drop the listed Values) or "Allowlist" (keep only
+// the listed Values).
+type HTTPHeaderValueFilter struct {
+	// Name is the lower-cased name of the header whose values are filtered.
+	Name   string   `json:"name"`
+	Mode   string   `json:"mode"`
+	Values []string `json:"values,omitempty"`
 }
 
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
