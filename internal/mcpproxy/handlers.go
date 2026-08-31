@@ -726,11 +726,26 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 }
 
 func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracingapi.MCPSpan, r *http.Request) (handlerResult, error) {
-	backendName, toolName, err := upstreamResourceName(p.Name)
-	if err != nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
-		return handlerResult{}, err
+	var (
+		backendName, toolName string
+		resolvedFromIndex     bool
+	)
+	// route.neverModeToolIndex is static, per-route config (see LoadConfig), so this lookup is
+	// consistent regardless of how many separate HTTP requests this client session is made of.
+	if route := m.routes[s.route]; route != nil {
+		if indexedBackend, inIndex := route.neverModeToolIndex[p.Name]; inIndex {
+			backendName, toolName, resolvedFromIndex = indexedBackend, p.Name, true
+		}
 	}
+	if !resolvedFromIndex {
+		var err error
+		backendName, toolName, err = upstreamResourceName(p.Name)
+		if err != nil {
+			onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
+			return handlerResult{}, err
+		}
+	}
+
 	result := handlerResult{backendName: backendName}
 
 	backend, err := m.getBackendForRoute(s.route, backendName)
@@ -739,13 +754,14 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
 
-	// Validate that the tool is whitelisted for this route
+	// Validate that the tool is whitelisted for this route.
 	route := m.routes[s.route]
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
 		return result, fmt.Errorf("route not found: %s", s.route)
 	}
+
 	selector := route.toolSelectors[backendName]
 	if selector != nil && !selector.allows(toolName) {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name: %s", toolName))
@@ -1431,9 +1447,26 @@ func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterap
 	return result
 }
 
+// resolvePromptBackend resolves the backend and upstream prompt name for a client-supplied
+// prompt name on the given route. If a Never-mode backend on this route declared this exact
+// name via promptSelector.include (recorded statically in route.neverModePromptIndex at config
+// load — see MCPPromptFilter and LoadConfig), that backend is used and the name is left bare.
+// Otherwise it falls back to parsing the "<backendName>__<prompt>" prefix.
+//
+// Shared by handlePromptGetRequest and handleCompletionComplete's "ref/prompt" case so both
+// resolve names identically.
+func (m *mcpRequestContext) resolvePromptBackend(routeName filterapi.MCPRouteName, name string) (backendName, promptName string, err error) {
+	if route := m.routes[routeName]; route != nil {
+		if indexedBackend, inIndex := route.neverModePromptIndex[name]; inIndex {
+			return indexedBackend, name, nil
+		}
+	}
+	return upstreamResourceName(name)
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) (handlerResult, error) {
-	backendName, promptName, err := upstreamResourceName(p.Name)
+	backendName, promptName, err := m.resolvePromptBackend(s.route, p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid prompt name %s: %v", p.Name, err))
 		return handlerResult{}, err
@@ -1472,7 +1505,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 	)
 	switch param.Ref.Type {
 	case "ref/prompt":
-		backendName, param.Ref.Name, err = upstreamResourceName(param.Ref.Name)
+		backendName, param.Ref.Name, err = m.resolvePromptBackend(s.route, param.Ref.Name)
 	case "ref/resource":
 		backendName, param.Ref.URI, err = upstreamResourceURI(param.Ref.URI)
 	}
@@ -1857,11 +1890,15 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 		return resp
 	}
 
-	// Aggregate the tools from all responses.
-	// A backend specific prefix is added to the tool name to avoid name collision.
-	// The tools are filtered based on the toolFilters configured for each backend,
-	// and additionally by authorization rules so callers only see tools they can invoke.
+	// Aggregate tools from all backends. Per-backend PrefixMode controls whether a backend's
+	// tools are prefixed with "<backendName>__" (Always) or exposed as bare names (Never).
+	// Never-mode bare names are exactly the ones in route.neverModeToolIndex, a static map
+	// computed at config load from each Never-mode backend's declared toolSelector.include
+	// (admission-validated for cross-backend uniqueness), so no runtime collision bookkeeping
+	// is needed for them here. Always-mode backends prefix inline; both can coexist on the
+	// same route. Tools are filtered by toolSelector and authorization before inclusion.
 	for _, r := range responses {
+		backendMode := route.effectivePrefixMode(r.backendName)
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
 			if selector != nil && !selector.allows(tool.Name) {
@@ -1878,7 +1915,20 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 					continue
 				}
 			}
-			tool.Name = downstreamResourceName(tool.Name, r.backendName)
+			if backendMode != filterapi.PrefixModeNever {
+				prefixed := downstreamResourceName(tool.Name, r.backendName)
+				// Guard against an Always-mode backend's prefixed name accidentally colliding
+				// with a bare name a Never-mode backend on this route declared ownership of.
+				if owner, collision := route.neverModeToolIndex[prefixed]; collision {
+					m.l.Warn("dropping MCP tool name that collides with a prefixMode=Never backend's declared bare name",
+						slog.String("tool", prefixed),
+						slog.String("always_mode_backend", r.backendName),
+						slog.String("never_mode_backend", owner),
+					)
+					continue
+				}
+				tool.Name = prefixed
+			}
 			rewriteMetaResourceURIs(tool.Meta, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
 		}
@@ -1917,15 +1967,47 @@ func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []b
 }
 
 // mergePromptsList merges the list of prompts from all backends and prepare the response message to be sent back to the client.
-func (m *mcpRequestContext) mergePromptsList(_ *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
+func (m *mcpRequestContext) mergePromptsList(s *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	aggregatedResponse := mcp.ListPromptsResult{Prompts: make([]*mcp.Prompt, 0)}
+
+	route := m.routes[s.route]
 	for _, r := range responses {
+		backendMode := filterapi.PrefixModeAlways
+		var selector *toolSelector
+		var neverModePromptIndex map[string]string
+		if route != nil {
+			backendMode = route.effectivePrefixMode(r.backendName)
+			selector = route.promptSelectors[r.backendName]
+			neverModePromptIndex = route.neverModePromptIndex
+		}
 		for _, res := range r.res.Prompts {
-			res.Name = downstreamResourceName(res.Name, r.backendName)
+			if selector != nil && !selector.allows(res.Name) {
+				continue
+			}
+			// A prompt is exposed bare only when this backend is in Never mode AND it opted in
+			// by declaring this exact name via promptSelector.include (statically indexed in
+			// route.neverModePromptIndex at config load — see MCPPromptFilter). Backends that
+			// don't declare a promptSelector keep the "<backendName>__" prefix even under Never
+			// mode, since there's no admission-validated, unique name set to expose bare for them.
+			if backendMode == filterapi.PrefixModeNever && neverModePromptIndex[res.Name] == r.backendName {
+				aggregatedResponse.Prompts = append(aggregatedResponse.Prompts, res)
+				continue
+			}
+			prefixed := downstreamResourceName(res.Name, r.backendName)
+			if owner, collision := neverModePromptIndex[prefixed]; collision {
+				m.l.Warn("dropping MCP prompt name that collides with a prefixMode=Never backend's declared bare name",
+					slog.String("prompt", prefixed),
+					slog.String("backend", r.backendName),
+					slog.String("never_mode_backend", owner),
+				)
+				continue
+			}
+			res.Name = prefixed
 			aggregatedResponse.Prompts = append(aggregatedResponse.Prompts, res)
 		}
 	}
+
 	return aggregatedResponse
 }
 

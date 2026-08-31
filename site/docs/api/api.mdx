@@ -3133,10 +3133,12 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)
 - [MCPBackendSelectorRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselectorrule)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward)
+- [MCPPromptFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcppromptfilter)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
 - [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
 - [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth)
+- [MCPRoutePrefixMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteprefixmode)
 - [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
@@ -4658,6 +4660,44 @@ MCPHeaderForward specifies a header to extract from the incoming request and for
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcppromptfilter">MCPPromptFilter</a>
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
+
+MCPPromptFilter filters prompts using include and exclude patterns with exact matches or regular expressions.
+Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
+a prompt must match an include rule AND not match any exclude rule to be allowed.
+
+##### Fields
+
+
+
+<ApiField
+  name="include"
+  type="string array"
+  required="false"
+  description="Include is a list of prompt names to include. Only the specified prompts will be available."
+/><ApiField
+  name="includeRegex"
+  type="string array"
+  required="false"
+  description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the prompt.<br />Only prompts matching these patterns will be available."
+/><ApiField
+  name="exclude"
+  type="string array"
+  required="false"
+  description="Exclude is a list of prompt names to exclude. The specified prompts will not be available.<br />Exclude rules take precedence over include rules."
+/><ApiField
+  name="excludeRegex"
+  type="string array"
+  required="false"
+  description="ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the prompt.<br />Prompts matching these patterns will not be available. Exclude rules take precedence over include rules."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization">MCPRouteAuthorization</a>
 
 
@@ -4774,6 +4814,11 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   required="false"
   description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
 /><ApiField
+  name="promptSelector"
+  type="[MCPPromptFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcppromptfilter)"
+  required="false"
+  description="PromptSelector filters the prompts exposed by this MCP server, analogous to ToolSelector.<br />If not specified, all prompts from the MCP server are exposed.<br />This is also used to determine which prompt names can be safely exposed unprefixed when<br />this backend's effective PrefixMode is Never: only prompts named in Include are validated<br />for cross-backend uniqueness and exposed bare. If unset while PrefixMode is Never, this<br />backend's prompts are not exposed bare (they keep the `<backendName>__` prefix) because<br />their names cannot be proven unique at admission time."
+/><ApiField
   name="securityPolicy"
   type="[MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)"
   required="false"
@@ -4783,6 +4828,11 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   type="[MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward) array"
   required="false"
   description="ForwardHeaders specifies HTTP headers to extract from the incoming client request<br />and forward to this backend MCP server.<br />This enables per-user authentication passthrough (e.g., personal access tokens)<br />without requiring OAuth configuration.<br />Each entry specifies a header name to extract and an optional rename for the backend."
+/><ApiField
+  name="prefixMode"
+  type="[MCPRoutePrefixMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteprefixmode)"
+  required="false"
+  description="PrefixMode controls how tool and prompt names from this backend are prefixed.<br />Takes precedence over the route-level PrefixMode when set."
 />
 
 
@@ -4828,6 +4878,40 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteprefixmode">MCPRoutePrefixMode</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
+
+MCPRoutePrefixMode controls how tool and prompt names are prefixed when exposed to clients.
+
+PrefixMode can be set at the route level (MCPRouteSpec) and overridden per backend
+(MCPRouteBackendRef); the per-backend value takes precedence when set. A single route can
+therefore mix Always and Never backends. This is intentional: it lets an operator keep the
+route-level default (Always is recommended for most routes, since it guarantees a collision-free
+catalog without any extra configuration) while opting specific, well-known backends into bare
+names, e.g. to match tool names an existing client or interactive MCP App already hardcodes.
+Per-backend override is meant as a targeted escape hatch, not a replacement for choosing one
+naming policy for the route as a whole.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="Always"
+  type="enum"
+  required="false"
+  description="MCPRoutePrefixModeAlways prefixes tool/prompt names with `<backendName>__`.<br />This is the default and preserves existing behavior.<br />"
+/><ApiField
+  name="Never"
+  type="enum"
+  required="false"
+  description="MCPRoutePrefixModeNever exposes tool/prompt names unprefixed.<br />Tool names must be unique across all Never-mode backends on the route.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy">MCPRouteSecurityPolicy</a>
 
 
@@ -4913,6 +4997,11 @@ MCPRouteSpec details the MCPRoute configuration.
   type="[MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)"
   required="false"
   description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered."
+/><ApiField
+  name="prefixMode"
+  type="[MCPRoutePrefixMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteprefixmode)"
+  required="false"
+  description="PrefixMode controls how tool and prompt names from all backends on this route are prefixed."
 />
 
 

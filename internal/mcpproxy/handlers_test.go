@@ -733,6 +733,97 @@ func TestMergeToolsList_PreservesExplicitFalseToolHints(t *testing.T) {
 	require.Contains(t, string(encoded), `"idempotentHint":false`)
 }
 
+// TestMergePromptsList_PerBackendPrefixMode verifies prompt naming under PrefixMode: a
+// Never-mode backend only gets bare prompt names for names it opted into via
+// promptSelector.include (route.neverModePromptIndex); without that declaration its prompts
+// stay prefixed even under Never mode, and a bare name colliding with an Always-mode backend's
+// prefixed name is dropped.
+func TestMergePromptsList_PerBackendPrefixMode(t *testing.T) {
+	tests := []struct {
+		name                 string
+		b1Mode               filterapi.PrefixMode
+		b2Mode               filterapi.PrefixMode
+		neverModePromptIndex map[string]string
+		responses            []broadCastResponse[mcp.ListPromptsResult]
+		wantPrompts          []string
+	}{
+		{
+			name:   "both Always — both prefixed",
+			b1Mode: filterapi.PrefixModeAlways,
+			b2Mode: filterapi.PrefixModeAlways,
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "farewell"}}}},
+			},
+			wantPrompts: []string{"backend1__greeting", "backend2__farewell"},
+		},
+		{
+			name:                 "Never mode with declared promptSelector — bare",
+			b1Mode:               filterapi.PrefixModeNever,
+			b2Mode:               filterapi.PrefixModeAlways,
+			neverModePromptIndex: map[string]string{"greeting": "backend1"},
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "farewell"}}}},
+			},
+			wantPrompts: []string{"greeting", "backend2__farewell"},
+		},
+		{
+			name:   "Never mode without promptSelector — stays prefixed",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			// No neverModePromptIndex entry for backend1: it didn't opt in.
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+			},
+			wantPrompts: []string{"backend1__greeting"},
+		},
+		{
+			name:   "cross-mode collision — Always backend's prefixed name dropped",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			neverModePromptIndex: map[string]string{
+				"greeting":           "backend1",
+				"backend2__greeting": "backend1",
+			},
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+			},
+			wantPrompts: []string{"greeting"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := &mcpRequestContext{
+				metrics: stubMetrics{},
+				ProxyConfig: &ProxyConfig{
+					mcpProxyConfig: &mcpProxyConfig{
+						routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+							"test-route": {
+								backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+									"backend1": {Name: "backend1", PrefixMode: tt.b1Mode},
+									"backend2": {Name: "backend2", PrefixMode: tt.b2Mode},
+								},
+								neverModePromptIndex: tt.neverModePromptIndex,
+							},
+						},
+					},
+					l: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
+				},
+			}
+
+			result := proxy.mergePromptsList(&session{route: "test-route"}, tt.responses)
+			got := make([]string, len(result.Prompts))
+			for i, p := range result.Prompts {
+				got[i] = p.Name
+			}
+			require.ElementsMatch(t, tt.wantPrompts, got)
+		})
+	}
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1292,6 +1383,37 @@ func TestHandlePromptGetRequest_NoSession(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
 }
 
+// TestHandlePromptGetRequest_NeverModeBareName verifies that a bare prompt name resolves via
+// route.neverModePromptIndex — a static, per-route config field — even for a session object
+// that never went through a prompts/list fan-out (mergePromptsList). This is what makes
+// PrefixMode=Never routing independent of any particular session's in-memory state: it works
+// identically on the very first request as on the hundredth, and across separate sessions.
+func TestHandlePromptGetRequest_NeverModeBareName(t *testing.T) {
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"messages":[]}}`))
+	}))
+	t.Cleanup(backendServer.Close)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+	proxy.routes["test-route"].neverModePromptIndex = map[string]string{"greeting": "backend1"}
+
+	// A brand new session that has never called prompts/list.
+	s := &session{
+		route:  "test-route",
+		reqCtx: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {backendName: "backend1"},
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	_, err := proxy.handlePromptGetRequest(t.Context(), s, rr, &jsonrpc.Request{}, &mcp.GetPromptParams{Name: "greeting"})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
 // TestServePOST_RecordsClientSession pins that the span carries the
 // client-facing session, i.e. the one the MCP client sees in the session header,
 // rather than a gateway-to-backend session. Broadcast methods route to several
@@ -1706,8 +1828,9 @@ func TestExtractSubject(t *testing.T) {
 			want:  "mcp",
 		},
 		{
-			name:  "signed token with principal",
-			token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtY3AifQ.3FpuVHQFtGubZnErnKK6RULYffuZmtgmS3g8D8z8ykM",
+			name: "signed token with principal",
+			// nosec: test-only JWT with no real secret; payload is {"sub":"mcp"}.
+			token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtY3AifQ.TESTSIGNATURE_NOT_A_REAL_SECRET",
 			want:  "mcp",
 		},
 		{
@@ -1997,6 +2120,57 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.JSONEq(t, `{"jsonrpc":"2.0","id":"id","result":{"completion":{"values":null}}}`, rr.Body.String())
 	}
+}
+
+// TestMCPProxy_handleCompletionComplete_NeverModeBareName verifies that "ref/prompt" completion
+// requests resolve a bare prompt name via route.neverModePromptIndex, the same static index
+// handlePromptGetRequest consults, instead of requiring the "<backend>__" prefix. This closes
+// the gap where completion/complete previously always assumed a prefixed name even when the
+// referenced prompt was declared bare under PrefixMode=Never.
+func TestMCPProxy_handleCompletionComplete_NeverModeBareName(t *testing.T) {
+	reqID, _ := jsonrpc.MakeID("id")
+
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].neverModePromptIndex = map[string]string{"my-prompt": "backend1"}
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		reqRaw, err := jsonrpc.DecodeMessage(body)
+		require.NoError(t, err)
+		req, ok := reqRaw.(*jsonrpc.Request)
+		require.True(t, ok)
+
+		var params mcp.CompleteParams
+		require.NoError(t, json.Unmarshal(req.Params, &params))
+		require.NotNil(t, params.Ref)
+		// The bare name must be forwarded to the backend unprefixed.
+		require.Equal(t, "my-prompt", params.Ref.Name)
+
+		resp := &jsonrpc.Response{ID: reqID}
+		resp.Result, _ = json.Marshal(&mcp.CompleteResult{})
+		respBody, err := jsonrpc.EncodeMessage(resp)
+		require.NoError(t, err)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBody)
+	}))
+	t.Cleanup(testServer.Close)
+	proxy.backendListenerAddr = testServer.URL
+
+	rr := httptest.NewRecorder()
+	_, err := proxy.handleCompletionComplete(t.Context(), &session{
+		reqCtx: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {sessionID: "test-session"},
+		},
+		route: "test-route",
+	}, rr, &jsonrpc.Request{ID: reqID, Method: "completion/complete"}, &mcp.CompleteParams{
+		Ref: &mcp.CompleteReference{Type: "ref/prompt", Name: "my-prompt"},
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rr.Code)
 }
 
 // TestMCPProxy_handleCompletionComplete_NoSession covers a backend that is configured on
@@ -3036,6 +3210,96 @@ func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
 	}
 }
 
+// TestMergeToolsList_PerBackendPrefixMode verifies that per-backend PrefixMode works:
+// Never-mode backends expose bare names (resolved from the static, config-level
+// neverModeToolIndex that LoadConfig would have computed from toolSelector.include);
+// Always-mode backends keep the prefix.
+func TestMergeToolsList_PerBackendPrefixMode(t *testing.T) {
+	tests := []struct {
+		name               string
+		b1Mode             filterapi.PrefixMode
+		b2Mode             filterapi.PrefixMode
+		neverModeToolIndex map[string]string
+		wantTools          []string
+	}{
+		{
+			name:      "both Always — both prefixed",
+			b1Mode:    filterapi.PrefixModeAlways,
+			b2Mode:    filterapi.PrefixModeAlways,
+			wantTools: []string{"backend1__search", "backend2__list"},
+		},
+		{
+			name:               "both Never — both bare",
+			b1Mode:             filterapi.PrefixModeNever,
+			b2Mode:             filterapi.PrefixModeNever,
+			neverModeToolIndex: map[string]string{"search": "backend1", "list": "backend2"},
+			wantTools:          []string{"search", "list"},
+		},
+		{
+			name:               "mixed — backend1 Never bare, backend2 Always prefixed",
+			b1Mode:             filterapi.PrefixModeNever,
+			b2Mode:             filterapi.PrefixModeAlways,
+			neverModeToolIndex: map[string]string{"search": "backend1"},
+			wantTools:          []string{"search", "backend2__list"},
+		},
+		{
+			name:   "cross-mode collision — Always backend's prefixed name dropped",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			// backend2's tool, once prefixed, collides with a name backend1 (Never mode)
+			// declared ownership of. This can only happen if backend2's actual tool name is
+			// "backend2__search"; it must be dropped rather than shown twice under one name.
+			neverModeToolIndex: map[string]string{"search": "backend1", "backend2__search": "backend1"},
+			wantTools:          []string{"search"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := &mcpRequestContext{
+				metrics: stubMetrics{},
+				ProxyConfig: &ProxyConfig{
+					mcpProxyConfig: &mcpProxyConfig{
+						routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+							"test-route": {
+								backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+									"backend1": {Name: "backend1", PrefixMode: tt.b1Mode},
+									"backend2": {Name: "backend2", PrefixMode: tt.b2Mode},
+								},
+								neverModeToolIndex: tt.neverModeToolIndex,
+							},
+						},
+					},
+					l: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
+				},
+				requestHeaders: http.Header{},
+			}
+
+			var responses []broadCastResponse[mcp.ListToolsResult]
+			if tt.name == "cross-mode collision — Always backend's prefixed name dropped" {
+				responses = []broadCastResponse[mcp.ListToolsResult]{
+					{backendName: "backend1", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+					{backendName: "backend2", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+				}
+			} else {
+				responses = []broadCastResponse[mcp.ListToolsResult]{
+					{backendName: "backend1", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+					{backendName: "backend2", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "list"}}}},
+				}
+			}
+
+			s := &session{route: "test-route"}
+			result := proxy.mergeToolsList(s, responses)
+
+			got := make([]string, len(result.Tools))
+			for i, tool := range result.Tools {
+				got[i] = tool.Name
+			}
+			require.ElementsMatch(t, tt.wantTools, got)
+		})
+	}
+}
+
 // TestServePOST_InitializeRequest_ForwardsExtensions asserts a backend's extensions capability
 // reaches the client. Without it a backend that advertises an extension, e.g. MCP Apps
 // (io.modelcontextprotocol/ui), appears to support none once it is behind the proxy, so the client
@@ -3091,4 +3355,74 @@ func TestServePOST_InitializeRequest_ForwardsExtensions(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.Contains(t, resp.Result.Capabilities.Extensions, "io.modelcontextprotocol/ui")
+}
+
+// TestHandleToolCallRequest_PerBackendPrefixMode verifies that tools/call routes correctly
+// for both Never-mode (bare name via index) and Always-mode (prefixed name via parsing).
+func TestHandleToolCallRequest_PerBackendPrefixMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		toolName    string // as sent by the client
+		wantBackend string
+		wantTool    string // as forwarded to upstream
+		wantStatus  int
+	}{
+		{
+			name:        "bare name routed via route.neverModeToolIndex (Never mode backend)",
+			toolName:    "search",
+			wantBackend: "backend1",
+			wantTool:    "search",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "prefixed name routed via parsing (Always mode backend)",
+			toolName:    "backend2__list",
+			wantBackend: "backend2",
+			wantTool:    "list",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:       "unknown name — not in index, not parseable",
+			toolName:   "unknown-tool",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`))
+			}))
+			defer backendServer.Close()
+
+			proxy := newTestMCPProxy()
+			proxy.backendListenerAddr = backendServer.URL
+			proxy.routes["test-route"].backends = map[filterapi.MCPBackendName]filterapi.MCPBackend{
+				"backend1": {Name: "backend1", PrefixMode: filterapi.PrefixModeNever},
+				"backend2": {Name: "backend2", PrefixMode: filterapi.PrefixModeAlways},
+			}
+			proxy.routes["test-route"].toolSelectors = nil
+			// Simulate what LoadConfig would have computed for the Never-mode backend from its
+			// declared toolSelector.include.
+			proxy.routes["test-route"].neverModeToolIndex = map[string]string{"search": "backend1"}
+
+			s := &session{
+				route:  "test-route",
+				reqCtx: proxy,
+				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+					"backend1": {backendName: "backend1"},
+					"backend2": {backendName: "backend2"},
+				},
+			}
+
+			w := httptest.NewRecorder()
+			params := &mcp.CallToolParams{Name: tt.toolName}
+			paramBytes, _ := json.Marshal(params)
+			req := &jsonrpc.Request{Method: "tools/call", Params: paramBytes}
+
+			_, _ = proxy.handleToolCallRequest(context.Background(), s, w, req, params, nil, &http.Request{})
+			require.Equal(t, tt.wantStatus, w.Code)
+		})
+	}
 }
