@@ -406,21 +406,11 @@ jobs:
         id: version
         env:
           MMP: ${{ steps.gitversion.outputs.majorMinorPatch }}
-          FULL_SEMVER: ${{ steps.gitversion.outputs.fullSemVer }}
-          BRANCH_NAME: ${{ steps.gitversion.outputs.branchName }}
-          COMMITS_SINCE: ${{ steps.gitversion.outputs.commitsSinceVersionSource }}
         run: |
-          {
-            echo "### GitVersion preview"
-            echo "- fullSemVer: \`$FULL_SEMVER\`"
-            echo "- majorMinorPatch: \`$MMP\`"
-            echo "- branchName: \`$BRANCH_NAME\`"
-            echo "- commitsSinceVersionSource: \`$COMMITS_SINCE\`"
-            if [ -n "$MMP" ]; then
-              # Same logic as the main-branch push tag below, so PR runs can preview the dev tag main would produce.
-              echo "- tagPreview (what main would push now): \`v${MMP}-dev.$(date -u +%Y%m%d%H%M)\`"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          DEV_TAG=""
+          if [ -n "$MMP" ]; then
+            DEV_TAG="v${MMP}-dev.$(date -u +%Y-%m-%d-%H-%M)"
+          fi
           if [ -z "$MMP" ]; then
             if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
               echo "::error::GitVersion produced no majorMinorPatch; fix GitVersion before merging."
@@ -428,8 +418,8 @@ jobs:
             fi
             echo "::warning::GitVersion produced no majorMinorPatch (setup/execute step likely failed above); this push to main will fall back to SHA-based tagging only."
           fi
-          if [ "$GITHUB_REF" = "refs/heads/main" ] && [ -n "$MMP" ]; then
-            echo "version=v${MMP}-dev.$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = "refs/heads/main" ] && [ -n "$DEV_TAG" ]; then
+            echo "version=$DEV_TAG" >> "$GITHUB_OUTPUT"
           else
             echo "version=" >> "$GITHUB_OUTPUT"
           fi
