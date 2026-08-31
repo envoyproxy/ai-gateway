@@ -377,10 +377,10 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 		}}
 	}
 
-	// The capability declaration governs what the server may place on the
-	// response stream, so it is required for calls and meaningless for
-	// notifications. An absent block is not an empty block: capabilities MUST
-	// NOT be inferred from earlier requests, so it cannot be defaulted.
+	// Calls must declare clientCapabilities: they tell the server what it may
+	// send back on the response stream. Notifications need no reply, so the
+	// field is optional. A missing block is not the same as {}: capabilities
+	// are per-request and must not be reused from an earlier call.
 	if requestDetails.expectsResponse && !jsonPresent(meta.ClientCapabilities) {
 		return eraDetection{err: &protocolError{
 			Code:       errCodeMissingRequiredCapability,
