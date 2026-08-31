@@ -7,13 +7,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,9 +25,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
+
+func TestCacheSyncReadinessRunnable(t *testing.T) {
+	extSrv, err := extensionserver.New(fake.NewClientBuilder().Build(), logr.Discard(), "/tmp/extproc.sock", false, nil, nil, "ratelimit", 5, false)
+	require.NoError(t, err)
+
+	check, err := extSrv.Check(t.Context(), nil)
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, check.Status)
+
+	runnable := cacheSyncReadinessRunnable{server: extSrv}
+	require.False(t, runnable.NeedLeaderElection())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- runnable.Start(ctx)
+	}()
+	require.Eventually(t, func() bool {
+		check, checkErr := extSrv.Check(t.Context(), nil)
+		return checkErr == nil && check.Status == grpc_health_v1.HealthCheckResponse_SERVING
+	}, time.Second, 10*time.Millisecond)
+
+	cancel()
+	require.NoError(t, <-done)
+}
 
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {

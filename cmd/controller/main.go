@@ -77,6 +77,22 @@ type flags struct {
 	quotaRateLimitFailureModeDeny          bool
 }
 
+// cacheSyncReadinessRunnable marks the extension server ready after the manager cache has synced.
+// It does not require leader election because every replica serves read-only extension requests.
+type cacheSyncReadinessRunnable struct {
+	server *extensionserver.Server
+}
+
+func (r cacheSyncReadinessRunnable) Start(ctx context.Context) error {
+	r.server.MarkReady()
+	<-ctx.Done()
+	return nil
+}
+
+func (cacheSyncReadinessRunnable) NeedLeaderElection() bool {
+	return false
+}
+
 func setOptionalString(dst **string) func(string) error {
 	return func(value string) error {
 		*dst = &value
@@ -467,11 +483,10 @@ func main() {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
 	}
-	go func() {
-		if mgr.GetCache().WaitForCacheSync(ctx) {
-			extSrv.MarkReady()
-		}
-	}()
+	if err = mgr.Add(cacheSyncReadinessRunnable{server: extSrv}); err != nil {
+		setupLog.Error(err, "failed to register extension server readiness")
+		os.Exit(1)
+	}
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
