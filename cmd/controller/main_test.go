@@ -8,15 +8,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/test/bufconn"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,20 +29,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-func TestCacheSyncReadinessRunnable(t *testing.T) {
-	extSrv, err := extensionserver.New(fake.NewClientBuilder().Build(), logr.Discard(), "/tmp/extproc.sock", false, nil, nil, "ratelimit", 5, false)
-	require.NoError(t, err)
-
-	check, err := extSrv.Check(t.Context(), nil)
-	require.NoError(t, err)
-	require.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, check.Status)
-
-	runnable := cacheSyncReadinessRunnable{server: extSrv}
+func TestExtensionServerRunnable(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	grpcServer := grpc.NewServer()
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	runnable := extensionServerRunnable{server: grpcServer, listener: listener}
 	require.False(t, runnable.NeedLeaderElection())
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -46,10 +47,17 @@ func TestCacheSyncReadinessRunnable(t *testing.T) {
 	go func() {
 		done <- runnable.Start(ctx)
 	}()
-	require.Eventually(t, func() bool {
-		check, checkErr := extSrv.Check(t.Context(), nil)
-		return checkErr == nil && check.Status == grpc_health_v1.HealthCheckResponse_SERVING
-	}, time.Second, 10*time.Millisecond)
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	checkCtx, checkCancel := context.WithTimeout(t.Context(), time.Second)
+	check, err := grpc_health_v1.NewHealthClient(conn).Check(checkCtx, &grpc_health_v1.HealthCheckRequest{}, grpc.WaitForReady(true))
+	checkCancel()
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, check.Status)
+	require.NoError(t, conn.Close())
 
 	cancel()
 	require.NoError(t, <-done)

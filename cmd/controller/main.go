@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -77,19 +78,23 @@ type flags struct {
 	quotaRateLimitFailureModeDeny          bool
 }
 
-// cacheSyncReadinessRunnable marks the extension server ready after the manager cache has synced.
+// extensionServerRunnable starts the extension server after the manager cache has synced.
 // It does not require leader election because every replica serves read-only extension requests.
-type cacheSyncReadinessRunnable struct {
-	server *extensionserver.Server
+type extensionServerRunnable struct {
+	server   *grpc.Server
+	listener net.Listener
 }
 
-func (r cacheSyncReadinessRunnable) Start(ctx context.Context) error {
-	r.server.MarkReady()
-	<-ctx.Done()
+func (r extensionServerRunnable) Start(ctx context.Context) error {
+	stop := context.AfterFunc(ctx, r.server.GracefulStop)
+	defer stop()
+	if err := r.server.Serve(r.listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		return fmt.Errorf("failed to serve extension server: %w", err)
+	}
 	return nil
 }
 
-func (cacheSyncReadinessRunnable) NeedLeaderElection() bool {
+func (extensionServerRunnable) NeedLeaderElection() bool {
 	return false
 }
 
@@ -483,21 +488,12 @@ func main() {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
 	}
-	if err = mgr.Add(cacheSyncReadinessRunnable{server: extSrv}); err != nil {
-		setupLog.Error(err, "failed to register extension server readiness")
-		os.Exit(1)
-	}
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
-	go func() {
-		<-ctx.Done()
-		s.GracefulStop()
-	}()
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			setupLog.Error(err, "failed to serve extension server")
-		}
-	}()
+	if err = mgr.Add(extensionServerRunnable{server: s, listener: lis}); err != nil {
+		setupLog.Error(err, "failed to register extension server")
+		os.Exit(1)
+	}
 
 	// Start the rate limit xDS config server.
 	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
