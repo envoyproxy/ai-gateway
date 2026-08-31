@@ -192,6 +192,78 @@ func TestServePOST_InvalidSessionID(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "invalid session ID")
 }
 
+func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*mcpRequestContext) *http.Request
+		wantStatus  int
+		wantErrType metrics.MCPErrorType
+	}{
+		{
+			name: "invalid session ID",
+			setup: func(*mcpRequestContext) *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","id":"1"}`))
+				req.Header.Set(sessionIDHeader, "invalid-session-id")
+				return req
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrType: metrics.MCPErrorInvalidSessionID,
+		},
+		{
+			name: "oversized body",
+			setup: func(proxy *mcpRequestContext) *http.Request {
+				proxy.maxRequestBodySize = 16
+				return httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"initialize","id":1,"params":{}}`))
+			},
+			wantStatus:  http.StatusRequestEntityTooLarge,
+			wantErrType: metrics.MCPErrorInternal,
+		},
+		{
+			name: "body read error",
+			setup: func(*mcpRequestContext) *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/mcp", errReader{err: errors.New("read failed")})
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrType: metrics.MCPErrorInternal,
+		},
+		{
+			name: "invalid JSON-RPC",
+			setup: func(*mcpRequestContext) *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("{invalid json}"))
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrType: metrics.MCPErrorInvalidJSONRPC,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mr := sdkmetric.NewManualReader()
+			proxy := newTestMCPProxyWithOTEL(mr, noopTracer)
+			t.Cleanup(func() {
+				if err := mr.Shutdown(t.Context()); err != nil {
+					t.Logf("failed to shutdown manual reader: %v", err)
+				}
+			})
+
+			req := tt.setup(proxy)
+			rr := httptest.NewRecorder()
+			proxy.servePOST(rr, req)
+
+			require.Equal(t, tt.wantStatus, rr.Code)
+
+			count, sum := testotel.GetHistogramValues(t, mr, "mcp.request.duration", attribute.NewSet(
+				attribute.String("error.type", string(tt.wantErrType))))
+			require.Equal(t, 1, int(count)) // nolint: gosec
+			require.Greater(t, sum, 0.0)
+		})
+	}
+}
+
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
 func TestServePOST_MissingSessionID(t *testing.T) {
 	proxy := newTestMCPProxy()
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"test-tool"},"id":"1"}`))

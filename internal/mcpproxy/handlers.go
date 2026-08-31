@@ -20,6 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // handlerResult contains metadata from single-backend handler execution.
@@ -54,6 +55,7 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 			http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
+			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
 			return
 		}
 	}
@@ -67,15 +69,18 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			onErrorResponse(w, http.StatusRequestEntityTooLarge, "request body too large")
+			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInternal, nil)
 			return
 		}
 		onErrorResponse(w, http.StatusBadRequest, err.Error())
+		m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInternal, nil)
 		return
 	}
 
 	rawMsg, err := jsonrpc.DecodeMessage(body)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON-RPC message: %v", err))
+		m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidJSONRPC, nil)
 		return
 	}
 

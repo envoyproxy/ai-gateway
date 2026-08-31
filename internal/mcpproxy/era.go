@@ -219,7 +219,7 @@ func jsonPresent(raw json.RawMessage) bool {
 // detectClientEra determines whether an incoming request is from a legacy or
 // modern client, and validates the request against the era it declares.
 //
-// The gateway proxies Streamable HTTP only, so r is required to be non-nil.
+// The gateway proxies Streamable HTTP only, so request is required to be non-nil.
 //
 // Resolution order:
 //  1. Anything other than POST is legacy: the GET SSE endpoint and DELETE
@@ -267,16 +267,10 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 		}
 	}
 
-	// If there is a session ID, we validate the request as legacy.
-	if reqDetails.sessionID != "" {
+	// A session ID or a legacy-only method means this is a legacy request.
+	_, legacyOnly := legacyOnlyMethods[reqDetails.method]
+	if reqDetails.sessionID != "" || (reqDetails.hasMethod && legacyOnly) {
 		return validateLegacyRequest(&reqDetails)
-	}
-
-	// If there is no session ID, and it has a legacy only method, we validate the request as legacy.
-	if reqDetails.hasMethod {
-		if _, legacyOnly := legacyOnlyMethods[reqDetails.method]; legacyOnly {
-			return validateLegacyRequest(&reqDetails)
-		}
 	}
 	if reqDetails.headerMethod != "" {
 		// Mcp-Method and Mcp-Protocol-Version were both made mandatory by the
