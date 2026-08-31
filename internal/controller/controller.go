@@ -494,6 +494,9 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		apiKey := backendSecurityPolicy.Spec.AnthropicAPIKey
 		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+	case aigv1b1.BackendSecurityPolicyTypeGoogleAPIKey:
+		apiKey := backendSecurityPolicy.Spec.GoogleAPIKey
+		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
 		if azureCreds.ClientSecretRef != nil {

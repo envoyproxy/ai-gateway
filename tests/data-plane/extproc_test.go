@@ -32,7 +32,8 @@ const (
 	errorServerTLSDefaultPort = 1067
 	eventuallyTimeout         = 20 * time.Second
 	eventuallyInterval        = 10 * time.Millisecond
-	fakeGCPAuthToken          = "fake-gcp-auth-token" //nolint:gosec
+	fakeGCPAuthToken          = "fake-gcp-auth-token"          //nolint:gosec
+	fakeGoogleAIStudioAPIKey  = "fake-google-ai-studio-apikey" //nolint:gosec
 	// fakeAWSCredentialFile is the static credential the AWS backend falls back to. It has no
 	// session token, so X-Amz-Security-Token upstream can only come from a per-request credential.
 	fakeAWSCredentialFile = "[default]\naws_access_key_id=AKIASTATICFALLBACK\naws_secret_access_key=static-fallback-secret\n" //nolint:gosec
@@ -51,6 +52,7 @@ var (
 	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
 	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"}
 	geminiSchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1beta/openai"}
+	googleAIStudioSchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGoogleAIStudio, Version: "v1beta"}
 	groqSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "openai/v1"}
 	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
 	sambaNovaSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
@@ -92,6 +94,9 @@ var (
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
 	}}}
+	testUpstreamGoogleAIStudioBackend = filterapi.Backend{Name: "testupstream-googleaistudio", Schema: googleAIStudioSchema, Auth: &filterapi.BackendAuth{
+		GoogleAPIKey: &filterapi.GoogleAPIKeyAuth{Key: fakeGoogleAIStudioAPIKey},
+	}}
 	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
 	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
