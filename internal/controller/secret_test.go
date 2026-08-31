@@ -20,15 +20,65 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
+
+// TestSecretController_RotatedSecretSyncsTargets covers a write to a rotator-generated secret. The
+// targets are synced from here rather than through the policy controller, so the rebuild runs off
+// this reconcile, whose informer store already holds the new value.
+func TestSecretController_RotatedSecretSyncsTargets(t *testing.T) {
+	const ns, bspName, backendName = "default", "rotating", "backend"
+
+	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
+	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1b1.MCPRoute]()
+	backendCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	poolCh := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch, backendCh.Ch, poolCh.Ch)
+
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: backendName, Namespace: ns},
+	}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: ns},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+				ProjectName:                      "p",
+				Region:                           "r",
+				WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+				Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: backendName,
+			}},
+		},
+	}))
+
+	generated := rotators.GetBSPSecretName(bspName)
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: generated, Namespace: ns},
+		StringData: map[string]string{rotators.GCPAccessTokenKey: "token"},
+	}))
+
+	_, err := c.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: generated}})
+	require.NoError(t, err)
+
+	backends := backendCh.RequireItemsEventually(t, 1)
+	require.Equal(t, backendName, backends[0].Name)
+}
 
 func TestSecretController_Reconcile(t *testing.T) {
 	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
 	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1b1.MCPRoute]()
+	backendCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	poolCh := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch)
+	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch, backendCh.Ch, poolCh.Ch)
 
 	err := fakeClient.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},

@@ -74,7 +74,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 	for _, bsp := range []struct {
 		name                  string
 		backendSecurityPolicy *aigv1b1.BackendSecurityPolicy
-		expKey                string
+		expKeys               []string
 	}{
 		{
 			name: "api key with namespace",
@@ -90,7 +90,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret1.foo",
+			expKeys: []string{"some-secret1.foo"},
 		},
 		{
 			name: "api key without namespace",
@@ -103,7 +103,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret2.ns",
+			expKeys: []string{"some-secret2.ns"},
 		},
 		{
 			name: "aws credentials with namespace",
@@ -120,7 +120,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret3.foo",
+			expKeys: []string{"some-secret3.foo"},
 		},
 		{
 			name: "aws credentials without namespace",
@@ -135,7 +135,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret4.ns",
+			expKeys: []string{"some-secret4.ns"},
 		},
 		{
 			name: "Azure api key with namespace",
@@ -151,7 +151,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret5.foo",
+			expKeys: []string{"some-secret5.foo"},
 		},
 		{
 			name: "Azure api key without namespace",
@@ -164,7 +164,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret6.ns",
+			expKeys: []string{"some-secret6.ns"},
 		},
 		{
 			name: "Azure credentials with namespace",
@@ -180,7 +180,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret7.foo",
+			expKeys: []string{"some-secret7.foo", "ai-eg-bsp-some-backend-security-policy-7.ns"},
 		},
 		{
 			name: "Azure credentials without namespace",
@@ -195,7 +195,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-secret8.ns",
+			expKeys: []string{"some-secret8.ns", "ai-eg-bsp-some-backend-security-policy-8.ns"},
 		},
 		{
 			name: "AWS OIDC exchange token",
@@ -208,7 +208,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-backend-security-policy-9.foo",
+			expKeys: []string{"ai-eg-bsp-some-backend-security-policy-9.foo"},
 		},
 		{
 			name: "Azure OIDC exchange token",
@@ -221,7 +221,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-backend-security-policy-10.foo",
+			expKeys: []string{"ai-eg-bsp-some-backend-security-policy-10.foo"},
 		},
 		{
 			name: "anthropic api key",
@@ -234,7 +234,60 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expKey: "some-aaaa.ns",
+			expKeys: []string{"some-aaaa.ns"},
+		},
+		{
+			name: "GCP credentials file",
+			backendSecurityPolicy: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-11", Namespace: "ns"},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+						CredentialsFile: &aigv1b1.GCPCredentialsFile{
+							SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret11"},
+						},
+					},
+				},
+			},
+			expKeys: []string{"some-secret11.ns", "ai-eg-bsp-some-backend-security-policy-11.ns"},
+		},
+		{
+			name: "GCP workload identity federation",
+			backendSecurityPolicy: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-12", Namespace: "ns"},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+						WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{},
+					},
+				},
+			},
+			expKeys: []string{"ai-eg-bsp-some-backend-security-policy-12.ns"},
+		},
+		{
+			// A panic in the indexer crash-loops the controller for every policy, not just this one.
+			name: "malformed specs do not panic the indexer",
+			backendSecurityPolicy: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-14", Namespace: "ns"},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+						CredentialsFile: &aigv1b1.GCPCredentialsFile{SecretRef: nil},
+					},
+				},
+			},
+			expKeys: []string{"ai-eg-bsp-some-backend-security-policy-14.ns"},
+		},
+		{
+			name: "GCP application default credentials",
+			backendSecurityPolicy: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-13", Namespace: "ns"},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type:           aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{},
+				},
+			},
+			expKeys: nil, // ADC resolves in extproc, so no secret feeds this policy.
 		},
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
@@ -245,14 +298,18 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 
 			require.NoError(t, c.Create(t.Context(), bsp.backendSecurityPolicy))
 
-			var backendSecurityPolicies aigv1b1.BackendSecurityPolicyList
-			err := c.List(t.Context(), &backendSecurityPolicies,
-				client.MatchingFields{k8sClientIndexSecretToReferencingBackendSecurityPolicy: bsp.expKey})
-			require.NoError(t, err)
+			// A stray key syncs unrelated policies; a missing one leaves a secret write unobserved.
+			require.ElementsMatch(t, bsp.expKeys, backendSecurityPolicyIndexFunc(bsp.backendSecurityPolicy))
 
-			require.Len(t, backendSecurityPolicies.Items, 1)
-			require.Equal(t, bsp.backendSecurityPolicy.Name, backendSecurityPolicies.Items[0].Name)
-			require.Equal(t, bsp.backendSecurityPolicy.Namespace, backendSecurityPolicies.Items[0].Namespace)
+			for _, key := range bsp.expKeys {
+				var backendSecurityPolicies aigv1b1.BackendSecurityPolicyList
+				err := c.List(t.Context(), &backendSecurityPolicies,
+					client.MatchingFields{k8sClientIndexSecretToReferencingBackendSecurityPolicy: key})
+				require.NoError(t, err)
+				require.Len(t, backendSecurityPolicies.Items, 1, key)
+				require.Equal(t, bsp.backendSecurityPolicy.Name, backendSecurityPolicies.Items[0].Name)
+				require.Equal(t, bsp.backendSecurityPolicy.Namespace, backendSecurityPolicies.Items[0].Namespace)
+			}
 		})
 	}
 }

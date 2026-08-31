@@ -937,6 +937,12 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 	return auth, nil
 }
 
+// getSecretData reads dataKey from the named secret, resolving it from the informer cache.
+//
+// A credential only changes by a write this controller observes as a watch event, and the informer
+// updates its store before dispatching handlers, so the rebuild that event triggers reads the new
+// value. That covers a rotated credential too: secretController fans out to the targets of the
+// policy owning the secret, so the rebuild is driven by the secret's own event.
 func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, dataKey string) (string, error) {
 	secret := &corev1.Secret{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {

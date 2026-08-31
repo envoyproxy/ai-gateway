@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -299,7 +300,7 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	}
 	err = cl.Create(ctx, secret)
 	require.NoError(t, err)
-	_, err = c.rotateCredential(ctx, bsp)
+	_, _, err = c.rotateCredential(ctx, bsp)
 	require.NoError(t, err)
 
 	// Check the generated secret contains the owner reference to the BackendSecurityPolicy.
@@ -308,6 +309,169 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	require.NoError(t, err)
 	ok, _ := ctrlutil.HasOwnerReference(awsSecret.OwnerReferences, bsp, c.client.Scheme())
 	require.True(t, ok, "expected secret to have owner reference to BackendSecurityPolicy")
+}
+
+// TestBackendSecurityPolicyController_RotateCredential_OwnsGeneratedSecret checks that a policy
+// rotating without an OIDC exchange owns its generated secret, so GC removes it with the policy.
+func TestBackendSecurityPolicyController_RotateCredential_OwnsGeneratedSecret(t *testing.T) {
+	const bspNamespace, clientSecretName = "default", "azure-client-secret"
+
+	eventCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
+
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: clientSecretName, Namespace: bspNamespace},
+		Data:       map[string][]byte{clientSecretKey: []byte("client-secret")},
+	}))
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "azure-client-secret-bsp", Namespace: bspNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+			AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{
+				ClientID: "some-client-id",
+				TenantID: "some-tenant-id",
+				ClientSecretRef: &gwapiv1.SecretObjectReference{
+					Name: gwapiv1.ObjectName(clientSecretName),
+				},
+			},
+		},
+	}
+	require.NoError(t, cl.Create(t.Context(), bsp))
+
+	// A future expiry makes executeRotation skip Rotate, so no token endpoint is contacted.
+	generatedName := rotators.GetBSPSecretName(bsp.Name)
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      generatedName,
+			Namespace: bspNamespace,
+			Annotations: map[string]string{
+				rotators.ExpirationTimeAnnotationKey: time.Now().Add(60 * time.Minute).Format(time.RFC3339),
+			},
+		},
+		Data: map[string][]byte{rotators.AzureAccessTokenKey: []byte("some-access-token")},
+	}))
+
+	_, _, err := c.rotateCredential(t.Context(), bsp)
+	require.NoError(t, err)
+
+	generated, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, generatedName)
+	require.NoError(t, err)
+	ok, _ := ctrlutil.HasOwnerReference(generated.OwnerReferences, bsp, c.client.Scheme())
+	require.True(t, ok, "expected the generated secret to be owned by the BackendSecurityPolicy")
+}
+
+type stubRotator struct {
+	expired    bool
+	expiration time.Time
+	rotateErr  error
+	rotated    bool
+}
+
+func (s *stubRotator) IsExpired(time.Time) bool                              { return s.expired }
+func (s *stubRotator) GetPreRotationTime(context.Context) (time.Time, error) { return time.Time{}, nil }
+func (s *stubRotator) Rotate(context.Context) (time.Time, error) {
+	s.rotated = true
+	return s.expiration, s.rotateErr
+}
+
+// TestBackendSecurityPolicyController_ExecuteRotationReportsWrites covers the signal reconcile uses
+// to decide whether to fan out. Only a pass that wrote a credential has a watch event coming that
+// will rebuild the filter config.
+func TestBackendSecurityPolicyController_ExecuteRotationReportsWrites(t *testing.T) {
+	c := NewBackendSecurityPolicyController(fake.NewClientBuilder().WithScheme(Scheme).Build(),
+		fake2.NewClientset(), ctrl.Log, nil, nil)
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: "default"},
+		Spec:       aigv1b1.BackendSecurityPolicySpec{Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials},
+	}
+
+	t.Run("wrote a credential", func(t *testing.T) {
+		r := &stubRotator{expired: true, expiration: time.Now().Add(time.Hour)}
+		_, rotated, err := c.executeRotation(t.Context(), r, bsp)
+		require.NoError(t, err)
+		require.True(t, r.rotated)
+		require.True(t, rotated)
+	})
+
+	t.Run("credential still valid", func(t *testing.T) {
+		r := &stubRotator{expired: false}
+		_, rotated, err := c.executeRotation(t.Context(), r, bsp)
+		require.NoError(t, err)
+		require.False(t, r.rotated)
+		require.False(t, rotated)
+	})
+
+	t.Run("rotation failed", func(t *testing.T) {
+		r := &stubRotator{expired: true, rotateErr: errors.New("sts unreachable")}
+		_, rotated, err := c.executeRotation(t.Context(), r, bsp)
+		require.Error(t, err)
+		require.False(t, rotated, "a failed write leaves nothing for a watch event to rebuild from")
+	})
+}
+
+// TestBackendSecurityPolicyController_ReconcileFansOutWithoutRotation covers a reconcile that did
+// not rotate. There is no watch event coming, so this pass has to rebuild the targets itself.
+func TestBackendSecurityPolicyController_ReconcileFansOutWithoutRotation(t *testing.T) {
+	const bspNamespace, backendName, bspName = "default", "backend", "still-valid"
+
+	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		require.NoError(t, err)
+	}))
+	defer discoveryServer.Close()
+	tokenURL := discoveryServer.URL
+
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
+
+	require.NoError(t, cl.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: backendName, Namespace: bspNamespace},
+	}))
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "oidc-client-secret", Namespace: bspNamespace},
+		Data:       map[string][]byte{"client-secret": []byte("client-secret")},
+	}))
+	// A future expiry keeps executeRotation from calling Rotate.
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: rotators.GetBSPSecretName(bspName), Namespace: bspNamespace,
+			Annotations: map[string]string{
+				rotators.ExpirationTimeAnnotationKey: time.Now().Add(time.Hour).Format(time.RFC3339),
+			},
+		},
+		Data: map[string][]byte{rotators.AwsCredentialsKey: []byte("creds")},
+	}))
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+			AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
+				Region: "us-east-1",
+				OIDCExchangeToken: &aigv1b1.AWSOIDCExchangeToken{
+					BackendSecurityPolicyOIDC: aigv1b1.BackendSecurityPolicyOIDC{OIDC: egv1a1.OIDC{
+						Provider: egv1a1.OIDCProvider{Issuer: discoveryServer.URL, TokenEndpoint: &tokenURL},
+						ClientID: ptr.To("some-client-id"),
+						ClientSecret: gwapiv1.SecretObjectReference{
+							Name: "oidc-client-secret", Namespace: ptr.To[gwapiv1.Namespace](bspNamespace),
+						},
+					}},
+				},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+				Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: backendName,
+			}},
+		},
+	}
+	require.NoError(t, cl.Create(t.Context(), bsp))
+
+	_, err := c.reconcile(oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL), bsp)
+	require.NoError(t, err)
+	backends := eventCh.RequireItemsEventually(t, 1)
+	require.Equal(t, backendName, backends[0].Name)
 }
 
 func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
@@ -671,7 +835,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecret
 	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	res, err := c.rotateCredential(t.Context(), bsp)
+	res, _, err := c.rotateCredential(t.Context(), bsp)
 	require.Error(t, err)
 	require.Equal(t, time.Duration(0), res.RequeueAfter)
 }
@@ -766,7 +930,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 		"us-east-1",
 	)
 	require.NoError(t, err)
-	res, err := c.executeRotation(ctx, rotator, bsp)
+	res, _, err := c.executeRotation(ctx, rotator, bsp)
 	require.NoError(t, err)
 	require.Less(t, res.RequeueAfter, time.Hour)
 }
@@ -927,7 +1091,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			Spec: *tt.bsp,
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := c.rotateCredential(context.Background(), bsp)
+			res, _, err := c.rotateCredential(context.Background(), bsp)
 
 			switch {
 			case tt.expectedErrMsg != "" && err == nil:
@@ -960,7 +1124,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_ADC(t *
 		},
 	}
 
-	res, err := c.rotateCredential(context.Background(), bsp)
+	res, _, err := c.rotateCredential(context.Background(), bsp)
 	require.NoError(t, err)
 	require.Zero(t, res.RequeueAfter)
 }
@@ -1020,7 +1184,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t 
 
 	// Test that the OIDC path validation passes and the method attempts to create OIDC provider
 	// (which will fail due to network issues, but that confirms the OIDC path logic is working).
-	res, err := c.rotateCredential(t.Context(), bsp)
+	res, _, err := c.rotateCredential(t.Context(), bsp)
 
 	// We expect an error due to network calls in the OIDC provider initialization.
 	require.Error(t, err)
@@ -1079,7 +1243,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Credent
 	require.NoError(t, err)
 
 	// Test that credentials file path is correctly selected and reaches token provider creation.
-	res, err := c.rotateCredential(t.Context(), bsp)
+	res, _, err := c.rotateCredential(t.Context(), bsp)
 
 	// The test behavior varies depending on environment mocking, but both outcomes are valid:
 	// 1. Error at token provider creation confirms the credentials file path worked
@@ -1118,7 +1282,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	require.NoError(t, err)
 
 	// Test that rotation fails when the referenced secret doesn't exist.
-	res, err := c.rotateCredential(t.Context(), bsp)
+	res, _, err := c.rotateCredential(t.Context(), bsp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "secrets \"non-existent-secret\" not found")
 	require.Equal(t, ctrl.Result{}, res)
@@ -1164,7 +1328,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	require.NoError(t, err)
 
 	// Test that rotation fails when the secret doesn't contain the required key.
-	res, err := c.rotateCredential(t.Context(), bsp)
+	res, _, err := c.rotateCredential(t.Context(), bsp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing gcp service account key service_account.json")
 	require.Equal(t, ctrl.Result{}, res)
@@ -1253,7 +1417,8 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 			expectedName: "ai-eg-bsp-azure-oidc-bsp",
 		},
 		{
-			name: "GCP type",
+			// Invalid per the CRD, but the generated name derives from the policy name regardless.
+			name: "GCP with credentials file missing its secret ref",
 			bsp: &aigv1b1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "gcp-bsp",
@@ -1267,7 +1432,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expectedName: "",
+			expectedName: "ai-eg-bsp-gcp-bsp",
 		},
 		{
 			name: "GCP with service account credential file",
@@ -1285,6 +1450,58 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 						},
 					},
 				},
+			},
+			expectedName: "ai-eg-bsp-gcp-bsp-sa",
+		},
+		{
+			name: "Azure with ClientSecretRef",
+			bsp: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "azure-secret-bsp",
+				},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{
+						ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "azure-client-secret"},
+					},
+				},
+			},
+			expectedName: "ai-eg-bsp-azure-secret-bsp",
+		},
+		{
+			name: "GCP with workload identity federation",
+			bsp: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gcp-wif-bsp",
+				},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+						WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{},
+					},
+				},
+			},
+			expectedName: "ai-eg-bsp-gcp-wif-bsp",
+		},
+		{
+			name: "GCP with application default credentials",
+			bsp: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gcp-adc-bsp",
+				},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type:           aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{},
+				},
+			},
+			expectedName: "",
+		},
+		{
+			// This runs inside a field indexer, where a panic takes down the controller.
+			name: "unrecognized type",
+			bsp: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "mystery-bsp"},
+				Spec:       aigv1b1.BackendSecurityPolicySpec{Type: "SomethingNewAndUnhandled"},
 			},
 			expectedName: "",
 		},
@@ -1304,10 +1521,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resultName := getBSPGeneratedSecretName(tt.bsp)
-			if resultName != "" {
-				require.Equal(t, tt.expectedName, resultName)
-			}
+			require.Equal(t, tt.expectedName, getBSPGeneratedSecretName(tt.bsp))
 		})
 	}
 }

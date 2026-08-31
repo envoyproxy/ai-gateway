@@ -757,7 +757,9 @@ func TestSecretController(t *testing.T) {
 
 	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
 	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1b1.MCPRoute]()
-	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), bspCh.Ch, mcpRouteCh.Ch)
+	backendCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+	poolCh := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
+	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), bspCh.Ch, mcpRouteCh.Ch, backendCh.Ch, poolCh.Ch)
 	const secretName, secretNamespace = "mysecret", "default"
 
 	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
@@ -790,6 +792,48 @@ func TestSecretController(t *testing.T) {
 	slices.SortFunc(originals, func(a, b *aigv1b1.BackendSecurityPolicy) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
+
+	// WIF references no secret of its own. Kept out of originals: those assertions cover only
+	// policies referencing secretName.
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "rotated-backend", Namespace: "default"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			APISchema: defaultSchema,
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name:  "rotated-backend",
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+			},
+		},
+	}))
+	rotated := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "mybsp3", Namespace: "default"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+				Group: "aigateway.envoyproxy.io", Kind: "AIServiceBackend", Name: "rotated-backend",
+			}},
+			Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "some-project",
+				Region:      "us-central1",
+				WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "some-project-id",
+					WorkloadIdentityPoolName:     "some-pool",
+					WorkloadIdentityProviderName: "some-provider",
+					OIDCExchangeToken: aigv1b1.GCPOIDCExchangeToken{
+						BackendSecurityPolicyOIDC: aigv1b1.BackendSecurityPolicyOIDC{
+							OIDC: egv1a1.OIDC{
+								Provider:     egv1a1.OIDCProvider{Issuer: "https://issuer.example.com"},
+								ClientID:     ptr.To("some-client-id"),
+								ClientSecret: gwapiv1.SecretObjectReference{Name: "some-oidc-client-secret"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, c.Create(t.Context(), rotated))
 
 	// Start the manager and wait for bsps to be cached before trigger a reconciler.
 	go func() { require.NoError(t, mgr.Start(t.Context())) }()
@@ -827,6 +871,32 @@ func TestSecretController(t *testing.T) {
 			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, bsps)
+	})
+
+	// The rotator derives its secret name from the policy. That name must be indexed for the secret
+	// to reach the policy.
+	t.Run("generated secret syncs its policy", func(t *testing.T) {
+		generated := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ai-eg-bsp-mybsp3", Namespace: secretNamespace},
+			StringData: map[string]string{"gcpAccessToken": "token-1"},
+		}
+		require.NoError(t, c.Create(t.Context(), generated))
+		bsps := bspCh.RequireItemsEventually(t, 1)
+		require.Len(t, bsps, 1)
+		require.Equal(t, "mybsp3", bsps[0].Name)
+		// The targets are synced from this reconcile, so the rebuild does not wait on the policy
+		// controller.
+		backends := backendCh.RequireItemsEventually(t, 1)
+		require.Equal(t, "rotated-backend", backends[0].Name)
+
+		// Rotation updates the secret in place rather than recreating it.
+		generated.StringData = map[string]string{"gcpAccessToken": "token-2"}
+		require.NoError(t, c.Update(t.Context(), generated))
+		bsps = bspCh.RequireItemsEventually(t, 1)
+		require.Len(t, bsps, 1)
+		require.Equal(t, "mybsp3", bsps[0].Name)
+		backends = backendCh.RequireItemsEventually(t, 1)
+		require.Equal(t, "rotated-backend", backends[0].Name)
 	})
 }
 

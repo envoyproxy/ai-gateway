@@ -27,6 +27,7 @@ type secretController struct {
 	kubeClient                                        kubernetes.Interface
 	logger                                            logr.Logger
 	backendSecurityPolicyEventChan, mcpRouteEventChan chan event.GenericEvent
+	aiServiceBackendEventChan, inferencePoolEventChan chan event.GenericEvent
 }
 
 // NewSecretController creates a new reconcile.TypedReconciler[reconcile.Request] for corev1.Secret.
@@ -34,6 +35,8 @@ func NewSecretController(client client.Client, kubeClient kubernetes.Interface,
 	logger logr.Logger,
 	backendSecurityPolicyEventChan chan event.GenericEvent,
 	mcpRouteEventChan chan event.GenericEvent,
+	aiServiceBackendEventChan chan event.GenericEvent,
+	inferencePoolEventChan chan event.GenericEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &secretController{
 		client:                         client,
@@ -41,6 +44,8 @@ func NewSecretController(client client.Client, kubeClient kubernetes.Interface,
 		logger:                         logger,
 		backendSecurityPolicyEventChan: backendSecurityPolicyEventChan,
 		mcpRouteEventChan:              mcpRouteEventChan,
+		aiServiceBackendEventChan:      aiServiceBackendEventChan,
+		inferencePoolEventChan:         inferencePoolEventChan,
 	}
 }
 
@@ -76,6 +81,18 @@ func (c *secretController) syncSecret(ctx context.Context, namespace, name strin
 		c.logger.Info("Syncing BackendSecurityPolicy",
 			"namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
 		c.backendSecurityPolicyEventChan <- event.GenericEvent{Object: backendSecurityPolicy}
+
+		// A rotator wrote this secret, so the credential in the filter config is now behind. Rebuild
+		// the targets from here: this reconcile was woken by the secret's own watch event, so the
+		// informer store already holds the new value. Routing it through the policy controller
+		// instead would make the rebuild depend on its OIDC discovery call succeeding.
+		if backendSecurityPolicy.Namespace == namespace && getBSPGeneratedSecretName(backendSecurityPolicy) == name {
+			if err = syncBackendSecurityPolicyTargets(ctx, c.client, c.logger, backendSecurityPolicy,
+				c.aiServiceBackendEventChan, c.inferencePoolEventChan); err != nil {
+				return fmt.Errorf("failed to sync targets of BackendSecurityPolicy %s: %w",
+					backendSecurityPolicy.Name, err)
+			}
+		}
 	}
 
 	var mcpRoutes aigv1b1.MCPRouteList

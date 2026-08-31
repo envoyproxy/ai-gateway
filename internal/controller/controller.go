@@ -220,7 +220,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 	mcpRouteEventChan := make(chan event.GenericEvent, 100)
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("secret"), backendSecurityPolicyEventChan, mcpRouteEventChan)
+		WithName("secret"), backendSecurityPolicyEventChan, mcpRouteEventChan,
+		aiServiceBackendEventChan, inferencePoolEventChan)
 	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
@@ -469,40 +470,59 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 	return ret
 }
 
+// backendSecurityPolicyIndexFunc indexes a policy under both secrets it consumes, so a write to
+// either reconciles it: the referenced one feeds rotation, the generated one feeds the config.
 func backendSecurityPolicyIndexFunc(o client.Object) []string {
 	backendSecurityPolicy := o.(*aigv1b1.BackendSecurityPolicy)
-	var key string
-	switch backendSecurityPolicy.Spec.Type {
+	var keys []string
+	if referenced := backendSecurityPolicyReferencedSecret(backendSecurityPolicy); referenced != "" {
+		keys = append(keys, referenced)
+	}
+	if generated := getBSPGeneratedSecretName(backendSecurityPolicy); generated != "" {
+		keys = append(keys, backendSecurityPolicyKey(backendSecurityPolicy.Namespace, generated))
+	}
+	return keys
+}
+
+// backendSecurityPolicyReferencedSecret returns the index key for the secret the policy references.
+func backendSecurityPolicyReferencedSecret(bsp *aigv1b1.BackendSecurityPolicy) string {
+	ns := bsp.Namespace
+	switch bsp.Spec.Type {
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
-		apiKey := backendSecurityPolicy.Spec.APIKey
-		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
-	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		awsCreds := backendSecurityPolicy.Spec.AWSCredentials
-		if awsCreds.CredentialsFile != nil {
-			key = getSecretNameAndNamespace(awsCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
-		} else if awsCreds.OIDCExchangeToken != nil {
-			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
-		}
-	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
-		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
-		if gcpCreds.CredentialsFile != nil {
-			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
+		if k := bsp.Spec.APIKey; k != nil {
+			return secretRefKey(k.SecretRef, ns)
 		}
 	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
-		apiKey := backendSecurityPolicy.Spec.AzureAPIKey
-		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+		if k := bsp.Spec.AzureAPIKey; k != nil {
+			return secretRefKey(k.SecretRef, ns)
+		}
 	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
-		apiKey := backendSecurityPolicy.Spec.AnthropicAPIKey
-		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+		if k := bsp.Spec.AnthropicAPIKey; k != nil {
+			return secretRefKey(k.SecretRef, ns)
+		}
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
+		if aws := bsp.Spec.AWSCredentials; aws != nil && aws.CredentialsFile != nil {
+			return secretRefKey(aws.CredentialsFile.SecretRef, ns)
+		}
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
-		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
-		if azureCreds.ClientSecretRef != nil {
-			key = getSecretNameAndNamespace(azureCreds.ClientSecretRef, backendSecurityPolicy.Namespace)
-		} else if azureCreds.OIDCExchangeToken != nil {
-			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
+		if azure := bsp.Spec.AzureCredentials; azure != nil {
+			return secretRefKey(azure.ClientSecretRef, ns)
+		}
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		if gcp := bsp.Spec.GCPCredentials; gcp != nil && gcp.CredentialsFile != nil {
+			return secretRefKey(gcp.CredentialsFile.SecretRef, ns)
 		}
 	}
-	return []string{key}
+	return ""
+}
+
+// secretRefKey returns "" for a nil ref. Indexers run outside panic recovery, so a nil dereference
+// kills the process.
+func secretRefKey(secretRef *gwapiv1.SecretObjectReference, namespace string) string {
+	if secretRef == nil {
+		return ""
+	}
+	return getSecretNameAndNamespace(secretRef, namespace)
 }
 
 func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
