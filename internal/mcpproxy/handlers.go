@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -38,27 +37,14 @@ func onErrorResponse(w http.ResponseWriter, status int, msg string) {
 }
 
 // servePOST is the era-neutral entry point for MCP POST requests. It reads and
-// decodes the JSON-RPC message once, resolves the optional legacy session, then
-// dispatches to the modern stateless path or the legacy path based on the era
-// detected from the request.
+// decodes the JSON-RPC message once, then dispatches to the modern stateless
+// path or the legacy path based on the era detected from the request.
 //
 // Keeping this dispatcher thin is deliberate: once the legacy MCP spec is fully
 // retired, the legacy branch and legacy.go can be removed in one step without
 // touching the modern path.
 func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 	startAt := time.Now()
-
-	var s *session
-	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
-		var err error
-		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
-		if err != nil {
-			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
-			http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
-			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
-			return
-		}
-	}
 
 	limit := m.maxRequestBodySize
 	if limit <= 0 {
@@ -86,7 +72,7 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Detect era: modern or legacy
 
-	m.serveLegacyPOST(w, r, rawMsg, s, startAt)
+	m.serveLegacyPOST(w, r, rawMsg, startAt)
 }
 
 // nameSeparator is used as the separator to avoid collision with any character in k8s resource names as well as base64 encoding.

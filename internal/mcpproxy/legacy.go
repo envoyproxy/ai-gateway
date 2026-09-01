@@ -185,9 +185,21 @@ func doNotForwardResponseToBackends(msg *jsonrpc.Response) bool {
 }
 
 // serveLegacyPOST handles legacy (pre-2026-07-28) POST requests. The raw JSON-RPC
-// message has already been decoded by servePOST; the optional session s has already
-// been resolved from the Mcp-Session-Id header (nil when absent).
-func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Request, rawMsg jsonrpc.Message, s *session, startAt time.Time) {
+// message has already been decoded by servePOST. Session resolution stays here so
+// the era-neutral dispatcher does not need to know about Mcp-Session-Id.
+func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Request, rawMsg jsonrpc.Message, startAt time.Time) {
+	var s *session
+	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
+		var sessErr error
+		s, sessErr = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
+		if sessErr != nil {
+			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", sessErr.Error()))
+			http.Error(w, fmt.Sprintf("invalid session ID: %v", sessErr), http.StatusBadRequest)
+			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
+			return
+		}
+	}
+
 	var (
 		ctx              = r.Context()
 		err              error
@@ -264,9 +276,6 @@ func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Reque
 
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:
-		// Modern path doesn't have responses (no server-to-client requests).
-		// If we get here with a modern request, something is wrong.
-		//
 		// For legacy path, we do require a Session ID. If it is not present, a 400 Bad Request response should be returned:
 		// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
 		if s == nil {

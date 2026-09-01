@@ -41,22 +41,21 @@ const (
 
 // MCP JSON-RPC error codes from the SDK (re-exported for local use).
 const (
-	errCodeParseError                 = -32700
-	errCodeInvalidRequest             = -32600
-	errCodeMethodNotFound             = -32601
-	errCodeInvalidParams              = -32602
-	errCodeHeaderMismatch             = mcp.CodeHeaderMismatch                    // -32020
-	errCodeMissingRequiredCapability  = mcp.CodeMissingRequiredClientCapabilities // -32021
-	errCodeUnsupportedProtocolVersion = mcp.CodeUnsupportedProtocolVersion        // -32022
+	errCodeParseError                = -32700
+	errCodeInvalidRequest            = -32600
+	errCodeMethodNotFound            = -32601
+	errCodeInvalidParams             = -32602
+	errCodeHeaderMismatch            = mcp.CodeHeaderMismatch                    // -32020
+	errCodeMissingRequiredCapability = mcp.CodeMissingRequiredClientCapabilities // -32021
 )
 
 // supportedVersions lists all protocol versions the gateway supports, newest first.
 var supportedVersions = []string{protocolVersion20260728, protocolVersion20251125, protocolVersion20250618}
 
-// versionEras maps every supported protocol version to the interaction model it
-// implies. Membership in this map is the sole definition of "supported": a
-// version absent here MUST be rejected with errCodeUnsupportedProtocolVersion
-// rather than guessed at.
+// versionEras maps known protocol versions to the interaction model they imply.
+// Only 2026-07-28 is modern; every other value — including versions absent from
+// this map — is treated as legacy, matching the original initialize path which
+// never rejected a client-proposed protocolVersion.
 //
 // Note that the presence of the Mcp-Protocol-Version header says nothing about
 // the era. The header was introduced in 2025-06-18, which requires clients to
@@ -113,14 +112,6 @@ type protocolError struct {
 
 func (e *protocolError) Error() string {
 	return fmt.Sprintf("mcp protocol error %d: %s", e.Code, e.Message)
-}
-
-// unsupportedProtocolVersionData is the data payload of an
-// UnsupportedProtocolVersionError. Clients use supported to pick a mutually
-// agreeable version and retry, so it MUST be populated.
-type unsupportedProtocolVersionData struct {
-	Supported []string `json:"supported"`
-	Requested string   `json:"requested"`
 }
 
 // eraDetection is the outcome of classifying a single request.
@@ -218,68 +209,17 @@ func jsonPresent(raw json.RawMessage) bool {
 
 // detectClientEra determines whether an incoming request is from a legacy or
 // modern client, and validates the request against the era it declares.
-//
-// The gateway proxies Streamable HTTP only, so request is required to be non-nil.
-//
-// Resolution order:
-//  1. Anything other than POST is legacy: the GET SSE endpoint and DELETE
-//     session termination were removed by the 2026-07-28 spec, which uses POST
-//     for all communication.
-//  2. A declared Mcp-Protocol-Version is authoritative. Its value picks the era;
-//     an unrecognised value is rejected rather than guessed at.
-//  3. With no declared version, modern-only methods and a bare Mcp-Method
-//     header both indicate a client that omitted a mandatory header. A session
-//     ID or a legacy-only method indicates legacy. Everything else defaults to
-//     legacy.
-//
-// Batched requests are out of scope: header mirroring is undefined for arrays,
-// so the decoder must reject them before reaching this function.
 func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 	if r.Method != http.MethodPost {
 		return eraDetection{era: eraLegacy}
 	}
 
+	// Every POST request to the MCP endpoint MUST include an MCP-Protocol-Version header.
+	// Ref: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#protocol-version-header
 	reqDetails := getRequestDetails(r, msg)
-
-	if reqDetails.headerVersion != "" {
-		declared, known := versionEras[reqDetails.headerVersion]
-		if !known {
-			return eraDetection{err: &protocolError{
-				Code:    errCodeUnsupportedProtocolVersion,
-				Message: fmt.Sprintf("Unsupported protocol version: %q", reqDetails.headerVersion),
-				Data: unsupportedProtocolVersionData{
-					Supported: supportedVersions,
-					Requested: reqDetails.headerVersion,
-				},
-				HTTPStatus: http.StatusBadRequest,
-			}}
-		}
-		if declared == eraModern {
-			return validateModernRequest(&reqDetails)
-		}
-		return validateLegacyRequest(&reqDetails)
+	if versionEras[reqDetails.headerVersion] == eraModern {
+		return validateModernRequest(&reqDetails)
 	}
-
-	// When there is no header version and if the method is modern, we reject it.
-	if reqDetails.hasMethod {
-		if _, modernOnly := modernOnlyMethods[reqDetails.method]; modernOnly {
-			return eraDetection{err: missingVersionHeader(fmt.Sprintf("%q requires a %s header", reqDetails.method, mcpProtocolVersionHeader))}
-		}
-	}
-
-	// A session ID or a legacy-only method means this is a legacy request.
-	_, legacyOnly := legacyOnlyMethods[reqDetails.method]
-	if reqDetails.sessionID != "" || (reqDetails.hasMethod && legacyOnly) {
-		return validateLegacyRequest(&reqDetails)
-	}
-	if reqDetails.headerMethod != "" {
-		// Mcp-Method and Mcp-Protocol-Version were both made mandatory by the
-		// same revision. A client that sends one without the other is
-		// non-conformant, and trusting the mirrored header without knowing the
-		// version would let it bypass the header/body validation below.
-		return eraDetection{err: missingVersionHeader(fmt.Sprintf("%s is present but %s is missing", mcpMethodHeader, mcpProtocolVersionHeader))}
-	}
-
 	return validateLegacyRequest(&reqDetails)
 }
 
@@ -310,26 +250,40 @@ func validateLegacyRequest(requestDetails *requestDetails) eraDetection {
 // validateModernRequest enforces the invariants a 2026-07-28 request must
 // satisfy before the gateway will treat its mirrored headers as trustworthy.
 func validateModernRequest(requestDetails *requestDetails) eraDetection {
+	// Modern path doesn't have responses (no server-to-client requests).
+	// If we get here with a modern request, something is wrong.
+	if !requestDetails.hasMethod {
+		return eraDetection{err: &protocolError{
+			Code:       errCodeInvalidRequest,
+			Message:    "JSON-RPC responses are not valid on the modern POST path",
+			HTTPStatus: http.StatusBadRequest,
+		}}
+	}
 	// SEP-2243: Mcp-Method is required on every request and notification, and a
 	// mirrored header that disagrees with the body lets an intermediary route
 	// on one operation while the server executes another. Both a missing header
 	// and a mismatched one are validation failures. Reject before anything
 	// downstream reads either source.
-	if requestDetails.hasMethod {
-		if requestDetails.headerMethod == "" {
-			return eraDetection{err: &protocolError{
-				Code:       errCodeHeaderMismatch,
-				Message:    fmt.Sprintf("Header mismatch: %s is required", mcpMethodHeader),
-				HTTPStatus: http.StatusBadRequest,
-			}}
-		}
-		if requestDetails.headerMethod != requestDetails.method {
-			return eraDetection{err: &protocolError{
-				Code:       errCodeHeaderMismatch,
-				Message:    fmt.Sprintf("Header mismatch: %s header value %q does not match body value %q", mcpMethodHeader, requestDetails.headerMethod, requestDetails.method),
-				HTTPStatus: http.StatusBadRequest,
-			}}
-		}
+	if requestDetails.headerMethod == "" {
+		return eraDetection{err: &protocolError{
+			Code:       errCodeHeaderMismatch,
+			Message:    fmt.Sprintf("Header mismatch: %s is required", mcpMethodHeader),
+			HTTPStatus: http.StatusBadRequest,
+		}}
+	}
+	if requestDetails.headerMethod != requestDetails.method {
+		return eraDetection{err: &protocolError{
+			Code:       errCodeHeaderMismatch,
+			Message:    fmt.Sprintf("Header mismatch: %s header value %q does not match body value %q", mcpMethodHeader, requestDetails.headerMethod, requestDetails.method),
+			HTTPStatus: http.StatusBadRequest,
+		}}
+	}
+	if _, legacyOnly := legacyOnlyMethods[requestDetails.method]; legacyOnly {
+		return eraDetection{err: &protocolError{
+			Code:       errCodeMethodNotFound,
+			Message:    fmt.Sprintf("Method not found: %q", requestDetails.method),
+			HTTPStatus: http.StatusNotFound,
+		}}
 	}
 
 	if requestDetails.sessionID != "" {
@@ -341,16 +295,6 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 			Message:    fmt.Sprintf("%s is not valid in protocol version %s", sessionIDHeader, requestDetails.headerVersion),
 			HTTPStatus: http.StatusBadRequest,
 		}}
-	}
-
-	if requestDetails.hasMethod {
-		if _, legacyOnly := legacyOnlyMethods[requestDetails.method]; legacyOnly {
-			return eraDetection{err: &protocolError{
-				Code:       errCodeMethodNotFound,
-				Message:    fmt.Sprintf("Method not found: %q", requestDetails.method),
-				HTTPStatus: http.StatusNotFound,
-			}}
-		}
 	}
 
 	meta, err := parseModernMeta(requestDetails.params)
@@ -393,15 +337,5 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 	return eraDetection{
 		era:     eraModern,
 		version: requestDetails.headerVersion,
-	}
-}
-
-// missingVersionHeader builds the rejection for a request that uses modern
-// features without declaring a version.
-func missingVersionHeader(detail string) *protocolError {
-	return &protocolError{
-		Code:       errCodeHeaderMismatch,
-		Message:    fmt.Sprintf("Header mismatch: %s", detail),
-		HTTPStatus: http.StatusBadRequest,
 	}
 }

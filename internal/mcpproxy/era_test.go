@@ -76,13 +76,6 @@ func TestJSONPresent(t *testing.T) {
 	require.True(t, jsonPresent([]byte(`0`)))
 }
 
-func TestMissingVersionHeader(t *testing.T) {
-	err := missingVersionHeader("some detail")
-	require.Equal(t, errCodeHeaderMismatch, err.Code)
-	require.Equal(t, http.StatusBadRequest, err.HTTPStatus)
-	require.Equal(t, "Header mismatch: some detail", err.Message)
-}
-
 // TestDetectClientEra_NonPOST covers the resolution rule that anything other
 // than POST is legacy, since the GET/DELETE endpoints were removed by the
 // modern spec.
@@ -127,31 +120,32 @@ func TestDetectClientEra_DeclaredVersion(t *testing.T) {
 		})
 	}
 
-	t.Run("unknown version is rejected", func(t *testing.T) {
+	t.Run("unknown version is treated as legacy", func(t *testing.T) {
 		r := newHTTPRequest(t, http.MethodPost, map[string]string{
 			mcpProtocolVersionHeader: "1999-01-01",
 		})
 		msg := newRequestMsg(t, "tools/call", "id", nil)
 		got := detectClientEra(r, msg)
-		require.NotNil(t, got.err)
-		require.Equal(t, errCodeUnsupportedProtocolVersion, got.err.Code)
-		require.Equal(t, http.StatusBadRequest, got.err.HTTPStatus)
-		data, ok := got.err.Data.(unsupportedProtocolVersionData)
-		require.True(t, ok)
-		require.Equal(t, "1999-01-01", data.Requested)
-		require.Equal(t, supportedVersions, data.Supported)
+		require.Nil(t, got.err)
+		require.Equal(t, eraLegacy, got.era)
+		require.Equal(t, "1999-01-01", got.version)
 	})
 }
 
+// TestDetectClientEra_NoVersionHeader covers the simplified resolution rule:
+// a missing Mcp-Protocol-Version is treated as legacy (map zero-value), matching
+// the Streamable HTTP MAY that servers supporting pre-2025-06-18 clients may
+// treat an omitted header as 2025-03-26.
 func TestDetectClientEra_NoVersionHeader(t *testing.T) {
-	t.Run("modern-only method without version header is rejected", func(t *testing.T) {
+	t.Run("modern-only method without version header is rejected as method not found", func(t *testing.T) {
 		for method := range modernOnlyMethods {
 			r := newHTTPRequest(t, http.MethodPost, nil)
 			msg := newRequestMsg(t, method, "id", nil)
 			got := detectClientEra(r, msg)
 			require.NotNil(t, got.err, "method %q should be rejected", method)
-			require.Equal(t, errCodeHeaderMismatch, got.err.Code)
-			require.Equal(t, http.StatusBadRequest, got.err.HTTPStatus)
+			// Missing version → legacy path → modern-only methods are unknown.
+			require.Equal(t, errCodeMethodNotFound, got.err.Code)
+			require.Equal(t, http.StatusOK, got.err.HTTPStatus)
 		}
 	})
 
@@ -174,13 +168,25 @@ func TestDetectClientEra_NoVersionHeader(t *testing.T) {
 		}
 	})
 
-	t.Run("Mcp-Method without version header is rejected", func(t *testing.T) {
+	t.Run("Mcp-Method without version header is treated as legacy", func(t *testing.T) {
+		// Mcp-Method alone is not discriminating: only the version header value
+		// selects the modern path. Without it, the request falls through to legacy.
 		r := newHTTPRequest(t, http.MethodPost, map[string]string{mcpMethodHeader: "tools/call"})
 		msg := newRequestMsg(t, "tools/call", "id", nil)
 		got := detectClientEra(r, msg)
-		require.NotNil(t, got.err)
-		require.Equal(t, errCodeHeaderMismatch, got.err.Code)
-		require.Equal(t, http.StatusBadRequest, got.err.HTTPStatus)
+		require.Nil(t, got.err)
+		require.Equal(t, eraLegacy, got.era)
+	})
+
+	t.Run("Mcp-Method with session ID is still legacy", func(t *testing.T) {
+		r := newHTTPRequest(t, http.MethodPost, map[string]string{
+			mcpMethodHeader: "tools/call",
+			sessionIDHeader: "sess",
+		})
+		msg := newRequestMsg(t, "tools/call", "id", nil)
+		got := detectClientEra(r, msg)
+		require.Nil(t, got.err)
+		require.Equal(t, eraLegacy, got.era)
 	})
 
 	t.Run("plain request with nothing declared defaults to legacy", func(t *testing.T) {
@@ -217,6 +223,20 @@ func TestValidateLegacyRequest(t *testing.T) {
 
 func TestValidateModernRequest(t *testing.T) {
 	caps := []byte(`{"tools":{}}`)
+
+	t.Run("JSON-RPC response is rejected", func(t *testing.T) {
+		// hasMethod=false means the body is a response, not a request/notification.
+		// The modern stateless POST path carries no server-initiated requests, so a
+		// response has nothing to answer and must be rejected.
+		got := validateModernRequest(&requestDetails{
+			headerVersion: protocolVersion20260728,
+			hasMethod:     false,
+		})
+		require.NotNil(t, got.err)
+		require.Equal(t, errCodeInvalidRequest, got.err.Code)
+		require.Equal(t, http.StatusBadRequest, got.err.HTTPStatus)
+		require.Contains(t, got.err.Message, "responses are not valid")
+	})
 
 	t.Run("well-formed call passes", func(t *testing.T) {
 		got := validateModernRequest(&requestDetails{
