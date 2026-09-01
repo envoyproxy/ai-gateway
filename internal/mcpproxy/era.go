@@ -138,8 +138,9 @@ type requestDetails struct {
 	method string
 	// params is the raw params object from the body.
 	params json.RawMessage
-	// hasMethod is true for JSON-RPC requests/notifications, false for responses.
-	hasMethod bool
+	// isRequest is true when the body is a JSON-RPC request or
+	// notification (both carry a method), and false when it is a response.
+	isRequest bool
 	// expectsResponse is true for requests with a valid id (calls), false for notifications.
 	expectsResponse bool
 }
@@ -171,7 +172,7 @@ func getRequestDetails(r *http.Request, msg jsonrpc.Message) requestDetails {
 	if req, ok := msg.(*jsonrpc.Request); ok && req != nil {
 		reqDetails.method = req.Method
 		reqDetails.params = json.RawMessage(req.Params)
-		reqDetails.hasMethod = true
+		reqDetails.isRequest = true
 		reqDetails.expectsResponse = req.ID.IsValid()
 	}
 	return reqDetails
@@ -228,7 +229,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 // authoritative. Errors ride a 200 response body, which is how legacy
 // Streamable HTTP carries JSON-RPC failures.
 func validateLegacyRequest(requestDetails *requestDetails) eraDetection {
-	if requestDetails.hasMethod {
+	if requestDetails.isRequest {
 		// this rejects modern methods even on legacy requests, so we can return early
 		if _, modernOnly := modernOnlyMethods[requestDetails.method]; modernOnly {
 			return eraDetection{err: &protocolError{
@@ -248,8 +249,8 @@ func validateLegacyRequest(requestDetails *requestDetails) eraDetection {
 // satisfy before the gateway will treat its mirrored headers as trustworthy.
 func validateModernRequest(requestDetails *requestDetails) eraDetection {
 	// Modern path doesn't have responses (no server-to-client requests).
-	// If we get here with a modern request, something is wrong.
-	if !requestDetails.hasMethod {
+	// If we get here with a response body, something is wrong.
+	if !requestDetails.isRequest {
 		return eraDetection{err: &protocolError{
 			Code:       errCodeInvalidRequest,
 			Message:    "JSON-RPC responses are not valid on the modern POST path",
