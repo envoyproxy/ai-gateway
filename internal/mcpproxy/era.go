@@ -49,9 +49,6 @@ const (
 	errCodeMissingRequiredCapability = mcp.CodeMissingRequiredClientCapabilities // -32021
 )
 
-// supportedVersions lists all protocol versions the gateway supports, newest first.
-var supportedVersions = []string{protocolVersion20260728, protocolVersion20251125, protocolVersion20250618}
-
 // versionEras maps known protocol versions to the interaction model they imply.
 // Only 2026-07-28 is modern; every other value — including versions absent from
 // this map — is treated as legacy, matching the original initialize path which

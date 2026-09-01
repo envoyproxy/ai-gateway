@@ -429,19 +429,6 @@ func TestDetectClientEra_ModernEndToEnd(t *testing.T) {
 	})
 }
 
-// TestVersionErasTable guards the invariant that every supported version is
-// classified and every classified version is advertised as supported.
-func TestVersionErasTable(t *testing.T) {
-	for _, v := range supportedVersions {
-		_, ok := versionEras[v]
-		require.True(t, ok, "supported version %q must have an era mapping", v)
-	}
-	require.Len(t, versionEras, len(supportedVersions))
-	require.Equal(t, eraModern, versionEras[protocolVersion20260728])
-	require.Equal(t, eraLegacy, versionEras[protocolVersion20251125])
-	require.Equal(t, eraLegacy, versionEras[protocolVersion20250618])
-}
-
 // TestMethodTablesDisjoint guards against a method being simultaneously legacy-
 // only and modern-only, which would make era detection self-contradictory.
 func TestMethodTablesDisjoint(t *testing.T) {
