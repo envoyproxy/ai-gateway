@@ -189,17 +189,6 @@ func doNotForwardResponseToBackends(msg *jsonrpc.Response) bool {
 // the era-neutral dispatcher does not need to know about Mcp-Session-Id.
 func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Request, rawMsg jsonrpc.Message, startAt time.Time) {
 	var s *session
-	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
-		var sessErr error
-		s, sessErr = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
-		if sessErr != nil {
-			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", sessErr.Error()))
-			http.Error(w, fmt.Sprintf("invalid session ID: %v", sessErr), http.StatusBadRequest)
-			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
-			return
-		}
-	}
-
 	var (
 		ctx              = r.Context()
 		err              error
@@ -273,6 +262,16 @@ func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Reque
 		// TODO: should we special case when this request is "Response" where method is empty?
 		metricsInstance.RecordMethodCount(ctx, requestMethod, params)
 	}()
+	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
+		var sessErr error
+		s, sessErr = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
+		if sessErr != nil {
+			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", sessErr.Error()))
+			http.Error(w, fmt.Sprintf("invalid session ID: %v", sessErr), http.StatusBadRequest)
+			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
+			return
+		}
+	}
 
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:

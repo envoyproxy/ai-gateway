@@ -20,7 +20,6 @@ import (
 
 // Protocol version constants.
 const (
-	protocolVersion20251125 = "2025-11-25"
 	protocolVersion20260728 = "2026-07-28"
 
 	// Modern MCP headers (2026-07-28 spec).
@@ -48,21 +47,6 @@ const (
 	errCodeHeaderMismatch            = mcp.CodeHeaderMismatch                    // -32020
 	errCodeMissingRequiredCapability = mcp.CodeMissingRequiredClientCapabilities // -32021
 )
-
-// versionEras maps known protocol versions to the interaction model they imply.
-// Only 2026-07-28 is modern; every other value — including versions absent from
-// this map — is treated as legacy, matching the original initialize path which
-// never rejected a client-proposed protocolVersion.
-//
-// Note that the presence of the Mcp-Protocol-Version header says nothing about
-// the era. The header was introduced in 2025-06-18, which requires clients to
-// send it on every request following initialization, so legacy clients set it
-// too. Only its value is discriminating.
-var versionEras = map[string]era{
-	protocolVersion20260728: eraModern,
-	protocolVersion20251125: eraLegacy,
-	protocolVersion20250618: eraLegacy,
-}
 
 // legacyOnlyMethods were removed by the 2026-07-28 spec (SEP-2575). Seeing one
 // on a modern request means the client is mixing eras.
@@ -162,7 +146,11 @@ type modernRequestMeta struct {
 	LogLevel           string          `json:"io.modelcontextprotocol/logLevel,omitempty"`
 }
 
-// getRequestDetails reads the headers and body once into a single value.
+// getRequestDetails gathers the header and body fields the era validators need
+// into a single value, reading each source once. The body may be a
+// jsonrpc.Request (a request or notification, both carrying a method) or a
+// jsonrpc.Response; only the former populates the method, params, isRequest, and
+// expectsResponse fields. For a response those fields remain zero-valued.
 func getRequestDetails(r *http.Request, msg jsonrpc.Message) requestDetails {
 	reqDetails := requestDetails{
 		headerVersion: r.Header.Get(mcpProtocolVersionHeader),
@@ -215,7 +203,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 	// Every POST request to the MCP endpoint MUST include an MCP-Protocol-Version header.
 	// Ref: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#protocol-version-header
 	reqDetails := getRequestDetails(r, msg)
-	if versionEras[reqDetails.headerVersion] == eraModern {
+	if reqDetails.headerVersion == protocolVersion20260728 {
 		return validateModernRequest(&reqDetails)
 	}
 	return validateLegacyRequest(&reqDetails)
@@ -248,8 +236,12 @@ func validateLegacyRequest(requestDetails *requestDetails) eraDetection {
 // validateModernRequest enforces the invariants a 2026-07-28 request must
 // satisfy before the gateway will treat its mirrored headers as trustworthy.
 func validateModernRequest(requestDetails *requestDetails) eraDetection {
-	// Modern path doesn't have responses (no server-to-client requests).
-	// If we get here with a response body, something is wrong.
+	// On the modern POST path the client only ever sends requests and
+	// notifications, never responses. A client-to-server JSON-RPC response would
+	// only exist if the server had sent the client a request; but on this path
+	// the server only sends notifications (e.g. notifications/tools/list_changed),
+	// never requests. So there is nothing for the client to respond to, and a
+	// response body reaching here means something is wrong.
 	if !requestDetails.isRequest {
 		return eraDetection{err: &protocolError{
 			Code:       errCodeInvalidRequest,

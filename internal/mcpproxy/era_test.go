@@ -106,7 +106,7 @@ func TestDetectClientEra_DeclaredVersion(t *testing.T) {
 		require.Equal(t, protocolVersion20260728, got.version)
 	})
 
-	for _, v := range []string{protocolVersion20251125, protocolVersion20250618} {
+	for _, v := range []string{"2025-11-25", "2025-06-18"} {
 		t.Run("legacy version "+v+" routes to legacy validation", func(t *testing.T) {
 			r := newHTTPRequest(t, http.MethodPost, map[string]string{
 				mcpProtocolVersionHeader: v,
@@ -346,7 +346,7 @@ func TestValidateModernRequest(t *testing.T) {
 			method:          "tools/call",
 			isRequest:       true,
 			expectsResponse: true,
-			params:          modernMeta(protocolVersion20251125, caps),
+			params:          modernMeta("2025-11-25", caps),
 		})
 		require.NotNil(t, got.err)
 		require.Equal(t, errCodeHeaderMismatch, got.err.Code)
