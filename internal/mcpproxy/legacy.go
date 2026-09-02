@@ -190,77 +190,28 @@ func doNotForwardResponseToBackends(msg *jsonrpc.Response) bool {
 func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Request, rawMsg jsonrpc.Message, startAt time.Time) {
 	var s *session
 	var (
-		ctx              = r.Context()
-		err              error
-		errType          metrics.MCPErrorType
-		requestMethod    string
-		span             tracingapi.MCPSpan
-		params           mcp.Params
-		applicationError bool
-		result           handlerResult
+		ctx           = r.Context()
+		err           error
+		errType       metrics.MCPErrorType
+		requestMethod string
+		span          tracingapi.MCPSpan
+		params        mcp.Params
+		result        handlerResult
 	)
+	// Arguments are captured in the closure so they are read after the handler
+	// returns, not at defer registration.
 	defer func() {
-		if m.l.Enabled(ctx, slog.LevelDebug) {
-			m.l.Debug("Completed MCP POST request",
-				slog.String("method", requestMethod),
-				slog.String("error_type", string(errType)),
-				slog.String("duration", time.Since(startAt).String()))
-		}
-
-		// The client-facing session is known for every method except initialize,
-		// which creates it and records it in handleInitializeRequest instead.
-		// Attributes may be set any time before the span ends, so recording it
-		// here covers every method from one place.
-		if span != nil && s != nil {
-			span.RecordClientSession(string(s.clientGatewaySessionID()))
-		}
-
-		// Some request methods (e.g. notifications/initialized, tools/list) record per-backend
-		// metrics inside their own handlers, or don't involve backends at all. In those cases,
-		// perBackendMetricsRecorded is set to true and we skip the generic metrics recording
-		// below to avoid double-counting. We still need to close the tracing span.
-		if m.perBackendMetricsRecorded {
-			if span != nil {
-				if err != nil {
-					span.EndSpanOnError(string(errType), err)
-				} else {
-					span.EndSpan()
-				}
-			}
-			return
-		}
-
-		// Determine the metrics instance based on whether a backend was resolved.
-		metricsInstance := m.metrics
-		if result.backendName != "" {
-			metricsInstance = m.metrics.WithBackend(result.backendName)
-		}
-
-		applicationError = false
-		if err != nil {
-			var errToolCall *errToolCall
-			if errors.As(err, &errToolCall) {
-				applicationError = true
-			}
-			if span != nil {
-				span.EndSpanOnError(string(errType), err)
-			}
-
-			if applicationError {
-				metricsInstance.RecordMethodErrorCount(ctx, requestMethod, params, metrics.MCPStatusFailed)
-			} else {
-				metricsInstance.RecordMethodErrorCount(ctx, requestMethod, params, metrics.MCPStatusError)
-			}
-			metricsInstance.RecordRequestErrorDuration(ctx, startAt, errType, params)
-			return
-		}
-
-		if span != nil {
-			span.EndSpan()
-		}
-		metricsInstance.RecordRequestDuration(ctx, startAt, params)
-		// TODO: should we special case when this request is "Response" where method is empty?
-		metricsInstance.RecordMethodCount(ctx, requestMethod, params)
+		m.recordPOSTCompletion(&postCompletion{
+			ctx:     ctx,
+			method:  requestMethod,
+			errType: errType,
+			err:     err,
+			startAt: startAt,
+			span:    span,
+			result:  result,
+			params:  params,
+			session: s,
+		})
 	}()
 	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
 		var sessErr error

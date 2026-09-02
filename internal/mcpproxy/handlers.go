@@ -6,9 +6,11 @@
 package mcpproxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // handlerResult contains metadata from single-backend handler execution.
@@ -28,6 +31,22 @@ import (
 // The struct can be extended with additional fields as needed (e.g., custom metrics tags).
 type handlerResult struct {
 	backendName string
+}
+
+// postCompletion is the final bookkeeping for a POST, shared by serveLegacyPOST
+// and serveModernPOST. Callers invoke recordPOSTCompletion from a defer so these
+// fields are read after the handler has set them. session is nil on the
+// stateless modern path; params may also be nil there.
+type postCompletion struct {
+	ctx     context.Context
+	method  string
+	errType metrics.MCPErrorType
+	err     error
+	startAt time.Time
+	span    tracingapi.MCPSpan
+	result  handlerResult
+	params  mcp.Params
+	session *session
 }
 
 func onErrorResponse(w http.ResponseWriter, status int, msg string) {
@@ -73,6 +92,70 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 	// TODO: Detect era: modern or legacy
 
 	m.serveLegacyPOST(w, r, rawMsg, startAt)
+}
+
+// recordPOSTCompletion logs completion, records metrics, and closes the tracing
+// span. Handlers that fan out to multiple backends (e.g. tools/list,
+// server/discover) set perBackendMetricsRecorded to skip generic per-backend
+// recording and avoid double-counting. The tracing span is still closed.
+func (m *mcpRequestContext) recordPOSTCompletion(c *postCompletion) {
+	if m.l.Enabled(c.ctx, slog.LevelDebug) {
+		m.l.Debug("Completed MCP POST request",
+			slog.String("method", c.method),
+			slog.String("error_type", string(c.errType)),
+			slog.String("duration", time.Since(c.startAt).String()))
+	}
+
+	// The client-facing session is known for every legacy method except
+	// initialize, which creates it and records it in handleInitializeRequest
+	// instead. Attributes may be set any time before the span ends, so
+	// recording it here covers every method from one place. Modern requests
+	// are stateless, so session is nil.
+	if c.span != nil && c.session != nil {
+		c.span.RecordClientSession(string(c.session.clientGatewaySessionID()))
+	}
+
+	if m.perBackendMetricsRecorded {
+		endMCPSpan(c.span, c.errType, c.err)
+		return
+	}
+
+	metricsInstance := m.metrics
+	if c.result.backendName != "" {
+		metricsInstance = m.metrics.WithBackend(c.result.backendName)
+	}
+
+	if c.err != nil {
+		applicationError := false
+		var errToolCall *errToolCall
+		if errors.As(c.err, &errToolCall) {
+			applicationError = true
+		}
+		endMCPSpan(c.span, c.errType, c.err)
+		if applicationError {
+			metricsInstance.RecordMethodErrorCount(c.ctx, c.method, c.params, metrics.MCPStatusFailed)
+		} else {
+			metricsInstance.RecordMethodErrorCount(c.ctx, c.method, c.params, metrics.MCPStatusError)
+		}
+		metricsInstance.RecordRequestErrorDuration(c.ctx, c.startAt, c.errType, c.params)
+		return
+	}
+
+	endMCPSpan(c.span, c.errType, nil)
+	metricsInstance.RecordRequestDuration(c.ctx, c.startAt, c.params)
+	// TODO: should we special case when this request is "Response" where method is empty?
+	metricsInstance.RecordMethodCount(c.ctx, c.method, c.params)
+}
+
+func endMCPSpan(span tracingapi.MCPSpan, errType metrics.MCPErrorType, err error) {
+	if span == nil {
+		return
+	}
+	if err != nil {
+		span.EndSpanOnError(string(errType), err)
+	} else {
+		span.EndSpan()
+	}
 }
 
 // nameSeparator is used as the separator to avoid collision with any character in k8s resource names as well as base64 encoding.
