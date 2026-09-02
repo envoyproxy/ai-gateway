@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"fmt"
 	"io"
 	"path"
 	"strconv"
@@ -35,8 +36,8 @@ func NewChatCompletionOpenAIToAnthropicTranslator(prefix string, modelNameOverri
 	}
 }
 
-// openAIToAnthropicTranslatorV1ChatCompletion reuses the GCP Anthropic
-// response translation; direct Anthropic only differs in request construction.
+// openAIToAnthropicTranslatorV1ChatCompletion reuses the GCP Anthropic implementation,
+// overriding direct-provider request construction, error labeling, and response-model reporting.
 type openAIToAnthropicTranslatorV1ChatCompletion struct {
 	openAIToGCPAnthropicTranslatorV1ChatCompletion
 	path string
@@ -48,6 +49,10 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, open
 ) {
 	params, err := buildAnthropicParams(openAIReq, filterapi.APISchemaAnthropic, o.modelNameOverride)
 	if err != nil {
+		return
+	}
+	if params.MaxTokens == 0 {
+		err = fmt.Errorf("%w: max_tokens is required by the Anthropic Messages API", internalapi.ErrInvalidRequestBody)
 		return
 	}
 

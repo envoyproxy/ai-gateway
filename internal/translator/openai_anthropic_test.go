@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -41,6 +43,48 @@ func TestOpenAIToAnthropicTranslator_RequestBody(t *testing.T) {
 	_, body, err = tr.RequestBody(nil, req, false)
 	require.NoError(t, err)
 	require.True(t, gjson.GetBytes(body, "stream").Bool())
+}
+
+func TestOpenAIToAnthropicTranslator_RequestBodyRequiresMaxTokens(t *testing.T) {
+	tr := NewChatCompletionOpenAIToAnthropicTranslator("v1", "")
+	_, _, err := tr.RequestBody(nil, &openai.ChatCompletionRequest{}, false)
+	require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+	require.ErrorContains(t, err, "max_tokens is required by the Anthropic Messages API")
+}
+
+func TestOpenAIToAnthropicTranslator_RequestBodyPreservesCacheControl(t *testing.T) {
+	ephemeral := anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()}
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-requested",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+				Role: openai.ChatMessageRoleDeveloper,
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{{
+					Type: "text",
+					Text: "You are a helpful assistant.",
+					AnthropicContentFields: &openai.AnthropicContentFields{
+						CacheControl: ephemeral,
+					},
+				}}},
+			},
+		}},
+		Tools: []openai.Tool{{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name: "get_weather",
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			},
+		}},
+	}
+
+	tr := NewChatCompletionOpenAIToAnthropicTranslator("v1", "")
+	_, body, err := tr.RequestBody(nil, req, false)
+	require.NoError(t, err)
+	require.Equal(t, "ephemeral", gjson.GetBytes(body, "system.0.cache_control.type").String())
+	require.Equal(t, "ephemeral", gjson.GetBytes(body, "tools.0.cache_control.type").String())
 }
 
 func TestOpenAIToAnthropicTranslator_UsesResponseModel(t *testing.T) {
