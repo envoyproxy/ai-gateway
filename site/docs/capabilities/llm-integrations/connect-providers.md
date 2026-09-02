@@ -466,6 +466,31 @@ spec:
         - name: openai-backend
 ```
 
+Configure a display name and context-window sizes for the Anthropic-compatible `/anthropic/v1/models` endpoint. These fields have no effect on the OpenAI-compatible `/models` endpoint, which has no equivalent fields. This is particularly useful when the `x-ai-eg-model` value is an internal alias (for example, mapped via `modelNameOverride` to a Bedrock or Vertex AI model ID) but you want Anthropic-native clients such as Claude Desktop or Claude Code to show a friendlier name and to know the model's real context window:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: model-metadata-anthropic
+spec:
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-sonnet-5
+      modelsDisplayName: "Claude Sonnet 5"
+      modelsMaxInputTokens: 1000000
+      modelsMaxTokens: 64000
+      backendRefs:
+        - name: anthropic-backend
+```
+
 ## Provider-Specific Considerations
 
 ### OpenAI-Compatible Providers

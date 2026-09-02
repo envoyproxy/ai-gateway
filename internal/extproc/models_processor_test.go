@@ -64,13 +64,20 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 
 func TestAnthropicModels_ProcessRequestHeaders(t *testing.T) {
 	now := time.Now()
+	maxInputTokens := int64(1_000_000)
+	maxTokens := int64(8192)
 	cfg := &filterapi.RuntimeConfig{DeclaredModels: []filterapi.Model{
 		{
-			Name:      "claude-opus-4-8",
-			OwnedBy:   "anthropic",
-			CreatedAt: now,
+			Name:           "claude-opus-4-8",
+			OwnedBy:        "anthropic",
+			CreatedAt:      now,
+			DisplayName:    "Claude Opus 4.8",
+			MaxInputTokens: &maxInputTokens,
+			MaxTokens:      &maxTokens,
 		},
 		{
+			// DisplayName, MaxInputTokens, and MaxTokens are intentionally left unset here to cover the
+			// case of a filterapi.Model built without going through the controller's defaulting.
 			Name:      "aws-bedrock",
 			OwnedBy:   "aws",
 			CreatedAt: now,
@@ -100,9 +107,26 @@ func TestAnthropicModels_ProcessRequestHeaders(t *testing.T) {
 	for i, m := range cfg.DeclaredModels {
 		require.Equal(t, "model", models.Data[i].Type)
 		require.Equal(t, m.Name, models.Data[i].ID)
-		require.Equal(t, m.Name, models.Data[i].DisplayName)
 		require.Equal(t, now.UTC().Format(time.RFC3339), models.Data[i].CreatedAt)
 	}
+	require.Equal(t, "Claude Opus 4.8", models.Data[0].DisplayName)
+	require.Equal(t, &maxInputTokens, models.Data[0].MaxInputTokens)
+	require.Equal(t, &maxTokens, models.Data[0].MaxTokens)
+	// DisplayName falls back to the model name when unset.
+	require.Equal(t, "aws-bedrock", models.Data[1].DisplayName)
+	require.Nil(t, models.Data[1].MaxInputTokens)
+	require.Nil(t, models.Data[1].MaxTokens)
+
+	// max_input_tokens/max_tokens are omitted entirely (not emitted as null) when unset, matching
+	// Anthropic's own representation of an unknown value.
+	var raw struct {
+		Data []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(ir.ImmediateResponse.Body, &raw))
+	require.Contains(t, raw.Data[0], "max_input_tokens")
+	require.Contains(t, raw.Data[0], "max_tokens")
+	require.NotContains(t, raw.Data[1], "max_input_tokens")
+	require.NotContains(t, raw.Data[1], "max_tokens")
 }
 
 func headers(in []*corev3.HeaderValueOption) map[string]string {

@@ -1767,6 +1767,10 @@ type Model struct {
 	DisplayName string `json:"display_name"`
 	// CreatedAt is the RFC 3339 datetime string representing when the model was released.
 	CreatedAt string `json:"created_at"`
+	// MaxInputTokens is the maximum input context window size in tokens for this model, or nil if unknown.
+	MaxInputTokens *int64 `json:"max_input_tokens,omitempty"`
+	// MaxTokens is the maximum value for the "max_tokens" request parameter for this model, or nil if unknown.
+	MaxTokens *int64 `json:"max_tokens,omitempty"`
 }
 
 // CountTokensRequest represents a request to the Anthropic Count Tokens API.

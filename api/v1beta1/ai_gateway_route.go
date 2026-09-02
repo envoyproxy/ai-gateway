@@ -306,6 +306,50 @@ type AIGatewayRouteRule struct {
 	// +optional
 	// +kubebuilder:validation:Format=date-time
 	ModelsCreatedAt *metav1.Time `json:"modelsCreatedAt,omitempty"`
+
+	// ModelsDisplayName represents a human-readable display name for the running models serving by the
+	// backends, which will be exported as the field of "display_name" in the Anthropic-compatible API
+	// "/anthropic/v1/models" endpoint. It has no effect on the OpenAI-compatible API "/v1/models" endpoint,
+	// which has no equivalent field.
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoints.
+	// All the matched models will share the same display name.
+	//
+	// Default to the model's own ID (the "x-ai-eg-model" header value) if not set.
+	//
+	// +optional
+	ModelsDisplayName *string `json:"modelsDisplayName,omitempty"`
+
+	// ModelsMaxInputTokens represents the maximum input context window size in tokens for the running
+	// models serving by the backends, which will be exported as the field of "max_input_tokens" in the
+	// Anthropic-compatible API "/anthropic/v1/models" endpoint. It has no effect on the OpenAI-compatible
+	// API "/v1/models" endpoint, which has no equivalent field.
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoints.
+	// All the matched models will share the same value.
+	//
+	// Omitted from the response if not set.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	ModelsMaxInputTokens *int64 `json:"modelsMaxInputTokens,omitempty"`
+
+	// ModelsMaxTokens represents the maximum value for the "max_tokens" request parameter for the running
+	// models serving by the backends, which will be exported as the field of "max_tokens" in the
+	// Anthropic-compatible API "/anthropic/v1/models" endpoint. It has no effect on the OpenAI-compatible
+	// API "/v1/models" endpoint, which has no equivalent field.
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoints.
+	// All the matched models will share the same value.
+	//
+	// Omitted from the response if not set.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	ModelsMaxTokens *int64 `json:"modelsMaxTokens,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
