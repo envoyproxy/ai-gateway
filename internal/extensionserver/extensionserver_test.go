@@ -455,6 +455,144 @@ func Test_maybeModifyCluster(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Regression test: a Backend can end up with fewer resolvable
+			// endpoints than Envoy Gateway expects (observed in practice
+			// with an unreachable static-IP Backend alongside FQDN
+			// siblings in the same rule), so LoadAssignment.Endpoints can
+			// be shorter than the rule's non-zero-weight BackendRefs.
+			// maybeModifyCluster must log and stop, not index out of
+			// range - see the "index out of range" panic this guards.
+			name: "fewer LoadAssignment endpoints than non-zero-weight backendRefs logs and stops",
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
+									Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+										SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+									}},
+								}}},
+							},
+						},
+						// Only one LocalityLbEndpoints entry, even though the rule
+						// has two non-zero-weight backendRefs ("aaa", "bbb") - "bbb"
+						// has no entry here, simulating Envoy Gateway omitting an
+						// unreachable backend's endpoints.
+					},
+				},
+			},
+			expectedLog: "msg=\"cluster LoadAssignment has fewer endpoint groups than non-zero-weight backendRefs\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_index=2 load_assignment_endpoints=1\n",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							// "aaa" still gets its metadata stamped - only the
+							// backend(s) past the LoadAssignment's length are
+							// skipped, not the whole cluster.
+							Priority: 0,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
+										Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+											SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+										}},
+									}},
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+													),
+													internalapi.InternalMetadataUpstreamHostKey: structpb.NewStringValue(
+														"aaa.bedrock-runtime.us-east-1.amazonaws.com",
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
+											internalapi.XDSRouteMetadataRouteNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer

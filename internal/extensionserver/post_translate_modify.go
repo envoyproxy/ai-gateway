@@ -378,6 +378,22 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				// Envoy Gateway can produce fewer LoadAssignment endpoint groups
+				// than there are non-zero-weight BackendRefs - e.g. when one
+				// backend currently has no resolvable endpoints (an unreachable
+				// static-IP Backend has been observed to do this, unlike an
+				// FQDN Backend). lbEndpointIndex only increases, so once it's
+				// out of range every remaining backendRef would be too; stop
+				// rather than index out of bounds. The unmatched backend(s)
+				// simply don't get their endpoint metadata stamped this cycle -
+				// they'll be picked up on the next reconcile once Envoy Gateway
+				// produces a LoadAssignment entry for them.
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					s.log.Info("cluster LoadAssignment has fewer endpoint groups than non-zero-weight backendRefs",
+						"cluster_name", cluster.Name, "backend_index", i,
+						"load_assignment_endpoints", len(cluster.LoadAssignment.Endpoints))
+					break
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name
