@@ -367,6 +367,31 @@ spec:
                     maxItems: 32
                     type: array
                 type: object
+              backendTrafficPolicy:
+                description: |-
+                  BackendTrafficPolicy configures the auto-generated Envoy Gateway BackendTrafficPolicy
+                  resources for this MCPRoute, for example the OAuth protected resource metadata policy
+                  created when SecurityPolicy.OAuth is configured.
+                properties:
+                  mergeType:
+                    description: |-
+                      MergeType determines how the auto-generated BackendTrafficPolicy (for example, the
+                      OAuth protected resource metadata policy) is merged with other BackendTrafficPolicy
+                      configurations targeting the same route or a parent Gateway/Listener.
+
+                      When set, the auto-generated BackendTrafficPolicy will merge with the closest parent
+                      BackendTrafficPolicy in the route's attachment hierarchy instead of overriding it
+                      entirely, per Envoy Gateway's merge semantics.
+
+                      If unset, no merging occurs, and the auto-generated BackendTrafficPolicy fully
+                      overrides any other BackendTrafficPolicy targeting the same route.
+
+                      See: https://gateway.envoyproxy.io/docs/tasks/traffic/backend-traffic-policy/
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Replace is not a valid MergeType for BackendTrafficPolicy
+                      rule: self != 'Replace'
+                type: object
               headers:
                 description: |-
                   Headers are HTTP headers that must match for this route to be selected.
@@ -4298,6 +4323,25 @@ spec:
                     - message: only one of grpc or http can be specified
                       rule: (has(self.grpc) && !has(self.http)) || (!has(self.grpc)
                         && has(self.http))
+                  mergeType:
+                    description: |-
+                      MergeType determines how the auto-generated SecurityPolicy for this MCPRoute (which
+                      enforces OAuth/JWT, API key, or external authorization) is merged with other
+                      SecurityPolicy configurations targeting the same route or a parent Gateway/Listener.
+
+                      When set, the auto-generated SecurityPolicy will merge with the closest parent
+                      SecurityPolicy in the route's attachment hierarchy (for example, one targeting a
+                      Gateway, Gateway listener, ListenerSet, or ListenerSet listener) instead of
+                      overriding it entirely, per Envoy Gateway's merge semantics.
+
+                      If unset, no merging occurs, and the auto-generated SecurityPolicy fully overrides
+                      any other SecurityPolicy targeting the same route.
+
+                      See: https://gateway.envoyproxy.io/docs/tasks/security/apikey-authn/
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Replace is not a valid MergeType for SecurityPolicy
+                      rule: self != 'Replace'
                   oauth:
                     description: OAuth defines the configuration for the MCP spec
                       compatible OAuth authentication.
@@ -6495,6 +6539,31 @@ spec:
                     maxItems: 32
                     type: array
                 type: object
+              backendTrafficPolicy:
+                description: |-
+                  BackendTrafficPolicy configures the auto-generated Envoy Gateway BackendTrafficPolicy
+                  resources for this MCPRoute, for example the OAuth protected resource metadata policy
+                  created when SecurityPolicy.OAuth is configured.
+                properties:
+                  mergeType:
+                    description: |-
+                      MergeType determines how the auto-generated BackendTrafficPolicy (for example, the
+                      OAuth protected resource metadata policy) is merged with other BackendTrafficPolicy
+                      configurations targeting the same route or a parent Gateway/Listener.
+
+                      When set, the auto-generated BackendTrafficPolicy will merge with the closest parent
+                      BackendTrafficPolicy in the route's attachment hierarchy instead of overriding it
+                      entirely, per Envoy Gateway's merge semantics.
+
+                      If unset, no merging occurs, and the auto-generated BackendTrafficPolicy fully
+                      overrides any other BackendTrafficPolicy targeting the same route.
+
+                      See: https://gateway.envoyproxy.io/docs/tasks/traffic/backend-traffic-policy/
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Replace is not a valid MergeType for BackendTrafficPolicy
+                      rule: self != 'Replace'
+                type: object
               headers:
                 description: |-
                   Headers are HTTP headers that must match for this route to be selected.
@@ -10426,6 +10495,25 @@ spec:
                     - message: only one of grpc or http can be specified
                       rule: (has(self.grpc) && !has(self.http)) || (!has(self.grpc)
                         && has(self.http))
+                  mergeType:
+                    description: |-
+                      MergeType determines how the auto-generated SecurityPolicy for this MCPRoute (which
+                      enforces OAuth/JWT, API key, or external authorization) is merged with other
+                      SecurityPolicy configurations targeting the same route or a parent Gateway/Listener.
+
+                      When set, the auto-generated SecurityPolicy will merge with the closest parent
+                      SecurityPolicy in the route's attachment hierarchy (for example, one targeting a
+                      Gateway, Gateway listener, ListenerSet, or ListenerSet listener) instead of
+                      overriding it entirely, per Envoy Gateway's merge semantics.
+
+                      If unset, no merging occurs, and the auto-generated SecurityPolicy fully overrides
+                      any other SecurityPolicy targeting the same route.
+
+                      See: https://gateway.envoyproxy.io/docs/tasks/security/apikey-authn/
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Replace is not a valid MergeType for SecurityPolicy
+                      rule: self != 'Replace'
                   oauth:
                     description: OAuth defines the configuration for the MCP spec
                       compatible OAuth authentication.

@@ -64,6 +64,8 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		wantBTP        bool
 		wantFilter     bool
 		wantJWKS       *egv1a1.RemoteJWKS
+		wantMergeType  *egv1a1.MergeType
+		wantBTPMerge   *egv1a1.MergeType
 		wantErr        bool
 	}{
 		{
@@ -328,6 +330,74 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			wantJWKS:   nil,
 			wantErr:    false,
 		},
+		{
+			name: "oauth configured with mergeType on SecurityPolicy and BackendTrafficPolicy",
+			mcpRoute: &aigv1b1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+						MergeType: ptr.To(egv1a1.StrategicMerge),
+						OAuth: &aigv1b1.MCPRouteOAuth{
+							Issuer:    server.URL,
+							Audiences: []string{"test-audience"},
+							JWKS: &aigv1b1.JWKS{
+								RemoteJWKS: &egv1a1.RemoteJWKS{
+									URI: server.URL + "/.well-known/jwks.json",
+								},
+							},
+							ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
+								Resource:        "https://api.example.com/mcp",
+								ScopesSupported: []string{"read", "write"},
+							},
+						},
+					},
+					BackendTrafficPolicy: &aigv1b1.MCPRouteBackendTrafficPolicy{
+						MergeType: ptr.To(egv1a1.StrategicMerge),
+					},
+				},
+			},
+			wantSecPol:    true,
+			wantJWT:       true,
+			wantBTP:       true,
+			wantFilter:    true,
+			wantJWKS:      &egv1a1.RemoteJWKS{URI: server.URL + "/.well-known/jwks.json"},
+			wantMergeType: ptr.To(egv1a1.StrategicMerge),
+			wantBTPMerge:  ptr.To(egv1a1.StrategicMerge),
+			wantErr:       false,
+		},
+		{
+			name: "api key authentication configured with mergeType on SecurityPolicy only",
+			mcpRoute: &aigv1b1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+						MergeType: ptr.To(egv1a1.StrategicMerge),
+						APIKeyAuth: &egv1a1.APIKeyAuth{
+							CredentialRefs: []gwapiv1.SecretObjectReference{
+								{Name: "client-keys"},
+							},
+							ExtractFrom: []*egv1a1.ExtractFrom{
+								{Headers: []string{"x-api-key"}},
+							},
+						},
+					},
+				},
+			},
+			wantSecPol: true,
+			wantJWT:    false,
+			wantAPIKeyAuth: &egv1a1.APIKeyAuth{
+				CredentialRefs: []gwapiv1.SecretObjectReference{
+					{Name: "client-keys"},
+				},
+				ExtractFrom: []*egv1a1.ExtractFrom{
+					{Headers: []string{"x-api-key"}},
+				},
+			},
+			wantBTP:       false,
+			wantFilter:    false,
+			wantMergeType: ptr.To(egv1a1.StrategicMerge),
+			wantErr:       false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -389,6 +459,8 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 				// TODO: use sectionName to target the MCP proxy rule only when the HTTPRouteRule name is in stable channel.
 				require.Nil(t, securityPolicy.Spec.TargetRefs[0].SectionName)
 
+				require.Equal(t, tt.wantMergeType, securityPolicy.Spec.MergeType)
+
 			} else {
 				require.Error(t, secPolErr, "SecurityPolicy should not exist")
 			}
@@ -399,6 +471,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 
 			if tt.wantBTP {
 				require.NoError(t, btpErr, "BackendTrafficPolicy should exist")
+				require.Equal(t, tt.wantBTPMerge, backendTrafficPolicy.Spec.MergeType)
 			} else {
 				require.Error(t, btpErr, "BackendTrafficPolicy should not exist")
 			}
