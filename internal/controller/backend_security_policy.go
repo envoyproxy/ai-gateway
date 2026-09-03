@@ -118,9 +118,17 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 	}
 
 	if requiresRotation {
-		res, err = c.rotateCredential(ctx, bsp)
+		var rotated bool
+		res, rotated, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
 			return res, err
+		}
+		if rotated {
+			// The rotator wrote a new credential. Its watch event drives the rebuild from
+			// secretController, where the informer has already observed the write. Fanning out here
+			// as well would rebuild once from a cache that has not, publishing the previous
+			// credential until the second rebuild replaced it.
+			return res, nil
 		}
 	}
 	err = c.syncBackendSecurityPolicy(ctx, bsp)
@@ -128,7 +136,7 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
-func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, rotated bool, err error) {
 	var rotator rotators.Rotator
 
 	switch bsp.Spec.Type {
@@ -139,10 +147,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
 			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, oidc, roleArn, region)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 		} else {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, false, nil
 		}
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		clientID := bsp.Spec.AzureCredentials.ClientID
@@ -155,11 +163,11 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			var oidcProvider tokenprovider.TokenProvider
 			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 			provider, err = tokenprovider.NewAzureTokenProvider(ctx, tenantID, clientID, oidcProvider, options)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 		} else if secretRef := bsp.Spec.AzureCredentials.ClientSecretRef; secretRef != nil {
 			secretNamespace := bsp.Namespace
@@ -171,28 +179,28 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
 			if err != nil {
 				c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 			secretValue, exists := secret.Data[clientSecretKey]
 			if !exists {
-				return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
+				return ctrl.Result{}, false, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
 			}
 			clientSecret := string(secretValue)
 			provider, err = tokenprovider.NewAzureClientSecretTokenProvider(tenantID, clientID, clientSecret, options)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 		} else {
-			return ctrl.Result{}, fmt.Errorf("one of secret ref or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
+			return ctrl.Result{}, false, fmt.Errorf("one of secret ref or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
 
 		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, provider)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, false, err
 		}
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
-			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
+			return ctrl.Result{}, false, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
 		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
@@ -200,11 +208,11 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			var oidcProvider tokenprovider.TokenProvider
 			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
 			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+				return ctrl.Result{}, false, fmt.Errorf("failed to initialize OIDC provider: %w", err)
 			}
 			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, bsp, preRotationWindow, oidcProvider)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 		} else if credentialFile := bsp.Spec.GCPCredentials.CredentialsFile; credentialFile != nil {
 			secretNamespace := bsp.Namespace
@@ -216,63 +224,72 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
 			if err != nil {
 				c.logger.Error(err, "failed to lookup gcp service account key secret", "namespace", secretNamespace, "name", secretName)
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 			serviceAccountKeyJSON, exists := secret.Data[rotators.GCPServiceAccountJSON]
 			if !exists {
-				return ctrl.Result{}, fmt.Errorf("missing gcp service account key %s", rotators.GCPServiceAccountJSON)
+				return ctrl.Result{}, false, fmt.Errorf("missing gcp service account key %s", rotators.GCPServiceAccountJSON)
 			}
 			var tokenProvider tokenprovider.TokenProvider
 			tokenProvider, err = tokenprovider.NewGCPTokenProvider(ctx, serviceAccountKeyJSON)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 
 			rotator, err = rotators.NewGCPTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, tokenProvider)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, false, err
 			}
 		} else {
 			// Use Application Default Credentials (ADC) - handled by extproc, skip rotation
 			c.logger.Info("Using GCP Application Default Credentials (ADC), skipping rotation",
 				"namespace", bsp.Namespace, "name", bsp.Name)
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, false, nil
 		}
 
 	default:
 		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", bsp.Spec.Type)
 		c.logger.Error(err, "unsupported backend security type", "namespace", bsp.Namespace, "name", bsp.Name)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
 	}
-	res, err = c.executeRotation(ctx, rotator, bsp)
+	res, rotated, err = c.executeRotation(ctx, rotator, bsp)
 	if err != nil {
 		c.logger.Error(err, "failed to execute rotation", "namespace", bsp.Namespace, "name", bsp.Name)
-		return res, fmt.Errorf("failed to execute rotation for backend security policy %s/%s: %w", bsp.Namespace, bsp.Name, err)
+		return res, rotated, fmt.Errorf("failed to execute rotation for backend security policy %s/%s: %w", bsp.Namespace, bsp.Name, err)
 	}
 
-	if secretName := getBSPGeneratedSecretName(bsp); secretName != "" {
-		var secret *corev1.Secret
-		secret, err = rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
-		if err != nil {
-			return res, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
-				bsp.Namespace, secretName, err)
+	// A rotator ran, so the secret exists. If the name helper disagrees, it ends up unindexed and
+	// unowned.
+	secretName := getBSPGeneratedSecretName(bsp)
+	if secretName == "" {
+		return res, rotated, fmt.Errorf("BUG: no generated secret name defined for rotating type %s", bsp.Spec.Type)
+	}
+	secret, err := rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// The rotator created the secret moments ago and the cache has not caught up. That
+			// write is indexed to this policy, so its watch event brings the reconcile back.
+			return res, rotated, nil
 		}
-		ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme())
-		if !ok {
-			updated := secret.DeepCopy()
-			if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
-				panic(fmt.Errorf("BUG: failed to set controller reference for secret %s/%s: %w", bsp.Namespace, bsp.Name, err))
-			}
-			if err = c.client.Update(ctx, updated); err != nil {
-				return res, fmt.Errorf("failed to update secret %s/%s with owner reference: %w",
-					updated.Namespace, updated.Name, err)
-			}
+		return res, rotated, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
+			bsp.Namespace, secretName, err)
+	}
+	if ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme()); !ok {
+		updated := secret.DeepCopy()
+		if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
+			panic(fmt.Errorf("BUG: failed to set controller reference for secret %s/%s: %w", bsp.Namespace, bsp.Name, err))
+		}
+		// Patch rather than Update: the cached read carries the resourceVersion from before the
+		// rotator's write, and Update would reject that as a conflict.
+		if err = c.client.Patch(ctx, updated, client.MergeFrom(secret)); err != nil {
+			return res, rotated, fmt.Errorf("failed to set owner reference on secret %s/%s: %w",
+				updated.Namespace, updated.Name, err)
 		}
 	}
-	return res, nil
+	return res, rotated, nil
 }
 
-func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, rotated bool, err error) {
 	requeue := time.Minute
 	var rotationTime time.Time
 	rotationTime, err = rotator.GetPreRotationTime(ctx)
@@ -285,6 +302,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 			if err != nil {
 				c.logger.Error(err, "failed to rotate token, retry in one minute")
 			} else {
+				rotated = true
 				rotationTime = expirationTime.Add(-preRotationWindow)
 				if r := time.Until(rotationTime); r > 0 {
 					requeue = r
@@ -302,7 +320,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 				bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 		}
 	}
-	return ctrl.Result{RequeueAfter: requeue}, err
+	return ctrl.Result{RequeueAfter: requeue}, rotated, err
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
@@ -331,11 +349,23 @@ func backendSecurityPolicyKey(namespace, name string) string {
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) error {
+	return syncBackendSecurityPolicyTargets(ctx, c.client, c.logger, bsp, c.aiServiceBackendEventChan, c.inferencePoolEventChan)
+}
+
+// syncBackendSecurityPolicyTargets rebuilds the filter config of everything bsp targets, by sending
+// each target to its own controller.
+func syncBackendSecurityPolicyTargets(
+	ctx context.Context,
+	cl client.Client,
+	logger logr.Logger,
+	bsp *aigv1b1.BackendSecurityPolicy,
+	aiServiceBackendEventChan, inferencePoolEventChan chan event.GenericEvent,
+) error {
 	for _, targetRef := range bsp.Spec.TargetRefs {
 		switch {
 		case targetRef.Group == aiServiceBackendGroup && targetRef.Kind == aiServiceBackendKind:
 			var aiBackend aigv1b1.AIServiceBackend
-			err := c.client.Get(ctx, client.ObjectKey{
+			err := cl.Get(ctx, client.ObjectKey{
 				Name:      string(targetRef.Name),
 				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
 			}, &aiBackend)
@@ -343,14 +373,14 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 				if client.IgnoreNotFound(err) != nil {
 					return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
 				}
-				c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
 				continue
 			}
-			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-			c.aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
+			logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
+			aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
 		case targetRef.Group == inferencePoolGroup && targetRef.Kind == inferencePoolKind:
 			var inferencePool gwaiev1.InferencePool
-			err := c.client.Get(ctx, client.ObjectKey{
+			err := cl.Get(ctx, client.ObjectKey{
 				Name:      string(targetRef.Name),
 				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
 			}, &inferencePool)
@@ -358,11 +388,11 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 				if client.IgnoreNotFound(err) != nil {
 					return fmt.Errorf("failed to get targeted InferencePool %s: %w", targetRef.Name, err)
 				}
-				c.logger.Info("Targeted InferencePool not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				logger.Info("Targeted InferencePool not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
 				continue
 			}
-			c.logger.Info("Syncing InferencePool", "namespace", inferencePool.Namespace, "name", inferencePool.Name)
-			c.inferencePoolEventChan <- event.GenericEvent{Object: &inferencePool}
+			logger.Info("Syncing InferencePool", "namespace", inferencePool.Namespace, "name", inferencePool.Name)
+			inferencePoolEventChan <- event.GenericEvent{Object: &inferencePool}
 		}
 	}
 
@@ -414,28 +444,33 @@ func validateGCPCredentialsParams(gcpCreds *aigv1b1.BackendSecurityPolicyGCPCred
 	return nil
 }
 
-// getBSPGeneratedSecretName returns a secret's name generated by the input bsp
-// if there's any. This returns an empty string if there's no generated secret.
+// getBSPGeneratedSecretName returns the secret a rotator writes for bsp, or "" if nothing rotates.
+// The filter config and backendSecurityPolicyIndexFunc must derive the same name. Unknown types
+// return "" instead of panicking: indexers run outside panic recovery.
 func getBSPGeneratedSecretName(bsp *aigv1b1.BackendSecurityPolicy) string {
 	switch bsp.Spec.Type {
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
+		if bsp.Spec.AWSCredentials == nil || bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
 			return ""
 		}
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
-		if bsp.Spec.AzureCredentials.OIDCExchangeToken == nil {
+		// A client secret and an OIDC exchange are both traded for an access token.
+		azure := bsp.Spec.AzureCredentials
+		if azure == nil || (azure.ClientSecretRef == nil && azure.OIDCExchangeToken == nil) {
 			return ""
 		}
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
-		if bsp.Spec.GCPCredentials.WorkloadIdentityFederationConfig == nil {
+		// A service account key and WIF are both traded for an access token; ADC resolves in extproc.
+		gcp := bsp.Spec.GCPCredentials
+		if gcp == nil || (gcp.CredentialsFile == nil && gcp.WorkloadIdentityFederationConfig == nil) {
 			return ""
 		}
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey,
 		aigv1b1.BackendSecurityPolicyTypeAzureAPIKey,
 		aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
-		return "" // APIKey does not require rotation.
+		return "" // The credential is read straight from the referenced secret.
 	default:
-		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))
+		return "" // Unrecognized type.
 	}
 	return rotators.GetBSPSecretName(bsp.Name)
 }

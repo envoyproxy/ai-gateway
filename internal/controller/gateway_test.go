@@ -1564,7 +1564,8 @@ func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled(t 
 	const gwNamespace, configNamespace = "ns", "some-namespace"
 	inner, ok := requireNewFakeClientWithIndexes(t).(client.WithWatch)
 	require.True(t, ok)
-	// Fail only the credential read; failing every read makes the test pass vacuously.
+	// Fail only the credential read. Failing every Secret Get would also break the config-bundle
+	// write and the reconcile would error regardless, which would make this test pass vacuously.
 	fakeClient := interceptor.NewClient(inner, interceptor.Funcs{
 		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 			if _, isSecret := obj.(*corev1.Secret); isSecret && key.Name == "api-key" {
