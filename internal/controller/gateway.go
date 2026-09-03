@@ -8,6 +8,9 @@ package controller
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	stdjson "encoding/json" //nolint: depguard // byte-stable hashing; sonic does not guarantee stable field order.
 	"errors"
 	"fmt"
 	"slices"
@@ -135,10 +138,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
 	}
 
+	// Envoy Gateway watches Gateways, not GatewayConfigs, so a config edit reaches the data plane
+	// only through the stamp below.
+	if err = c.stampGatewayConfigHash(ctx, gw, gwConfig); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
+	var declaredMetadataNamespaces []string
+	if gwConfig != nil && gwConfig.Spec.ExtProc != nil {
+		declaredMetadataNamespaces = gwConfig.Spec.ExtProc.MetadataForwardingNamespaces
+	}
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, declaredMetadataNamespaces)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -379,6 +392,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
 	defaultLLMCosts []aigv1b1.LLMRequestCost,
+	declaredMetadataNamespaces []string,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
@@ -564,6 +578,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	var effectiveMCPRoute bool
 	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
 	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
+
+	c.warnUndeclaredMetadataNamespaces(ec, declaredMetadataNamespaces, gatewayName, gatewayNamespace)
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
@@ -1379,6 +1395,67 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		namespace = daemonSets[0].Namespace
 	}
 	return
+}
+
+// warnUndeclaredMetadataNamespaces logs an error for every credentialOverride.fromDynamicMetadata
+// namespace the GatewayConfig leaves out: Envoy will not forward it, so those backends fall back
+// to the static credential. One line per namespace, naming every backend that reads it.
+func (c *GatewayController) warnUndeclaredMetadataNamespaces(ec *filterapi.Config, declared []string, gatewayName, gatewayNamespace string) {
+	var undeclared []string
+	backends := make(map[string][]string)
+	for i := range ec.Backends {
+		b := &ec.Backends[i]
+		if b.Auth == nil || b.Auth.CredentialOverride == nil {
+			continue
+		}
+		ns := b.Auth.CredentialOverride.DynamicMetadataNamespace
+		if ns == "" || slices.Contains(declared, ns) {
+			continue
+		}
+		if _, ok := backends[ns]; !ok {
+			undeclared = append(undeclared, ns)
+		}
+		backends[ns] = append(backends[ns], b.Name)
+	}
+	for _, ns := range undeclared {
+		c.logger.Error(nil, "credentialOverride reads a dynamic metadata namespace the GatewayConfig does not declare in extProc.metadataForwardingNamespaces; Envoy will not forward it, so these backends fall back to the configured credential",
+			"namespace", ns, "backends", backends[ns], "gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+	}
+}
+
+// gatewayConfigHashAnnotationKey carries a hash of the referenced GatewayConfig spec; see
+// stampGatewayConfigHash.
+const gatewayConfigHashAnnotationKey = "aigateway.envoyproxy.io/gateway-config-hash"
+
+// stampGatewayConfigHash writes a hash of the GatewayConfig spec into a Gateway annotation, so a
+// config change updates a resource Envoy Gateway watches. The annotation is removed when no
+// config is referenced.
+func (c *GatewayController) stampGatewayConfigHash(ctx context.Context, gw *gwapiv1.Gateway, gwConfig *aigv1b1.GatewayConfig) error {
+	var desired string
+	if gwConfig != nil {
+		marshaled, err := stdjson.Marshal(gwConfig.Spec)
+		if err != nil {
+			return fmt.Errorf("failed to marshal GatewayConfig spec: %w", err)
+		}
+		sum := sha256.Sum256(marshaled)
+		desired = hex.EncodeToString(sum[:8])
+	}
+	if gw.Annotations[gatewayConfigHashAnnotationKey] == desired {
+		return nil
+	}
+	patch := client.MergeFrom(gw.DeepCopy())
+	if desired == "" {
+		delete(gw.Annotations, gatewayConfigHashAnnotationKey)
+	} else {
+		if gw.Annotations == nil {
+			gw.Annotations = make(map[string]string)
+		}
+		gw.Annotations[gatewayConfigHashAnnotationKey] = desired
+	}
+	if err := c.client.Patch(ctx, gw, patch); err != nil {
+		return fmt.Errorf("failed to patch Gateway with GatewayConfig hash: %w", err)
+	}
+	return nil
 }
 
 // fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
