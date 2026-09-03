@@ -214,12 +214,11 @@ func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Reque
 		})
 	}()
 	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
-		var sessErr error
-		s, sessErr = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
-		if sessErr != nil {
-			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", sessErr.Error()))
-			http.Error(w, fmt.Sprintf("invalid session ID: %v", sessErr), http.StatusBadRequest)
-			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidSessionID, nil)
+		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
+		if err != nil {
+			errType = metrics.MCPErrorInvalidSessionID
+			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
+			http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
 			return
 		}
 	}

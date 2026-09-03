@@ -74,18 +74,33 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			onErrorResponse(w, http.StatusRequestEntityTooLarge, "request body too large")
-			m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInternal, nil)
+			m.recordPOSTCompletion(&postCompletion{
+				ctx:     r.Context(),
+				errType: metrics.MCPErrorInternal,
+				err:     err,
+				startAt: startAt,
+			})
 			return
 		}
 		onErrorResponse(w, http.StatusBadRequest, err.Error())
-		m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInternal, nil)
+		m.recordPOSTCompletion(&postCompletion{
+			ctx:     r.Context(),
+			errType: metrics.MCPErrorInternal,
+			err:     err,
+			startAt: startAt,
+		})
 		return
 	}
 
 	rawMsg, err := jsonrpc.DecodeMessage(body)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON-RPC message: %v", err))
-		m.metrics.RecordRequestErrorDuration(r.Context(), startAt, metrics.MCPErrorInvalidJSONRPC, nil)
+		m.recordPOSTCompletion(&postCompletion{
+			ctx:     r.Context(),
+			errType: metrics.MCPErrorInvalidJSONRPC,
+			err:     err,
+			startAt: startAt,
+		})
 		return
 	}
 

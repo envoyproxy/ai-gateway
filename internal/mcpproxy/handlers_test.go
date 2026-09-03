@@ -780,10 +780,11 @@ func TestServePOST_OversizedBody(t *testing.T) {
 
 func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
 	tests := []struct {
-		name        string
-		setup       func(*mcpRequestContext) *http.Request
-		wantStatus  int
-		wantErrType metrics.MCPErrorType
+		name           string
+		setup          func(*mcpRequestContext) *http.Request
+		wantStatus     int
+		wantErrType    metrics.MCPErrorType
+		wantMethodName string // empty when the method is not known yet
 	}{
 		{
 			name: "invalid session ID",
@@ -794,6 +795,16 @@ func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
 			},
 			wantStatus:  http.StatusBadRequest,
 			wantErrType: metrics.MCPErrorInvalidSessionID,
+			// Session validation runs before requestMethod is assigned.
+		},
+		{
+			name: "missing session ID",
+			setup: func(*mcpRequestContext) *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"test-tool"},"id":"1"}`))
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrType:    metrics.MCPErrorInvalidSessionID,
+			wantMethodName: "tools/call",
 		},
 		{
 			name: "oversized body",
@@ -842,6 +853,13 @@ func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
 				attribute.String("error.type", string(tt.wantErrType))))
 			require.Equal(t, 1, int(count)) // nolint: gosec
 			require.Greater(t, sum, 0.0)
+
+			if tt.wantMethodName != "" {
+				methodCount := testotel.GetCounterValue(t, mr, "mcp.method.count", attribute.NewSet(
+					attribute.String("mcp.method.name", tt.wantMethodName),
+					attribute.String("status", string(metrics.MCPStatusError))))
+				require.Equal(t, 1, int(methodCount))
+			}
 		})
 	}
 }
