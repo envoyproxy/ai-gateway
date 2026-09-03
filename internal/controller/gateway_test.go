@@ -36,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	"sigs.k8s.io/yaml"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -1713,11 +1712,7 @@ func TestGatewayController_reconcileFilterConfigSecret_ReadsCredentialsFromCache
 	require.True(t, effective)
 	require.Zero(t, credentialGets, "the credential must come from the cache, not the API server")
 
-	legacy, err := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
-		legacyFilterConfigSecretName("gw", gwNamespace), metav1.GetOptions{})
-	require.NoError(t, err)
-	var cfg filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(legacy.StringData[FilterConfigKeyInSecret]), &cfg))
+	cfg := requireFilterConfigFromBundle(t, kube, configNamespace, "gw", gwNamespace)
 	require.Len(t, cfg.Backends, len(backendNames))
 	for _, b := range cfg.Backends {
 		require.NotNil(t, b.Auth, b.Name)
@@ -3243,8 +3238,6 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	_, err = kube.CoreV1().Secrets(namespace).Get(t.Context(),
 		filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, maxFilterConfigBundleSlots-1), metav1.GetOptions{})
 	require.True(t, apierrors.IsNotFound(err))
-	_, legacyOK := indexSecret.StringData[FilterConfigKeyInSecret]
-	require.False(t, legacyOK)
 }
 
 func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) {

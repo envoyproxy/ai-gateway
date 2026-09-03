@@ -94,7 +94,7 @@ static_resources:
                             headers:
                               - name: x-ai-eg-model
                                 string_match:
-                                  exact: gpt-4o-mini
+                                  exact: gpt-5-nano
                           route:
                             auto_host_rewrite: true
                             cluster: openai
