@@ -40,8 +40,6 @@ import (
 )
 
 const (
-	// FilterConfigKeyInSecret is the key to store the filter config in the secret.
-	FilterConfigKeyInSecret = "filter-config.yaml" //nolint: gosec
 	// defaultOwnedBy is the default value for the ModelsOwnedBy field in the filter config.
 	defaultOwnedBy = "Envoy AI Gateway"
 )
@@ -179,6 +177,28 @@ func headerMutationToFilterAPI(m *aigv1b1.HTTPHeaderMutation) *filterapi.HTTPHea
 	}
 	for _, h := range m.Set {
 		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: strings.ToLower(string(h.Name)), Value: h.Value})
+	}
+	return ret
+}
+
+// headerValueFiltersToFilterAPI converts aigv1b1.HTTPHeaderValueFilter to filterapi.HTTPHeaderValueFilter.
+func headerValueFiltersToFilterAPI(filters []aigv1b1.HTTPHeaderValueFilter) []filterapi.HTTPHeaderValueFilter {
+	if len(filters) == 0 {
+		return nil
+	}
+	ret := make([]filterapi.HTTPHeaderValueFilter, 0, len(filters))
+	for _, f := range filters {
+		mode := f.Mode
+		if mode == "" {
+			// The CRD defaults this, but objects persisted before the default was added still reach us
+			// without it. Fall back to the same value rather than silently disabling the filter.
+			mode = aigv1b1.HTTPHeaderValueFilterModeDenylist
+		}
+		ret = append(ret, filterapi.HTTPHeaderValueFilter{
+			Name:   strings.ToLower(string(f.Name)),
+			Mode:   string(mode),
+			Values: f.Values,
+		})
 	}
 	return ret
 }
@@ -483,6 +503,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					b.HeaderValueFilters = headerValueFiltersToFilterAPI(backendObj.Spec.HeaderValueFilters)
 				}
 
 				if bsp != nil {
@@ -551,48 +572,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	if err = c.writeFilterConfigBundle(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled, uuid); err != nil {
 		return false, err
 	}
-	// TODO(huabing): this can be removed in the next release.
-	if err = c.writeLegacyFilterConfigSecret(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled); err != nil {
-		return false, err
-	}
 	return hasEffectiveRoute, nil
-}
-
-func (c *GatewayController) writeLegacyFilterConfigSecret(
-	ctx context.Context,
-	gatewayName,
-	gatewayNamespace,
-	configSecretNamespace string,
-	marshaled []byte,
-) error {
-	legacySecretName := legacyFilterConfigSecretName(gatewayName, gatewayNamespace)
-
-	// Create legacy secret only if the secret name and content still fit Kubernetes limits.
-	if len(legacySecretName) > k8sObjectNameMaxLen || len(marshaled) > corev1.MaxSecretSize {
-		return nil
-	}
-
-	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, legacySecretName, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: legacySecretName, Namespace: configSecretNamespace},
-				StringData: data,
-			}
-			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-				return fmt.Errorf("failed to create secret %s: %w", legacySecretName, err)
-			}
-			return nil
-		}
-		return fmt.Errorf("failed to get secret %s: %w", legacySecretName, err)
-	}
-
-	secret.StringData = data
-	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
-	}
-	return nil
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.

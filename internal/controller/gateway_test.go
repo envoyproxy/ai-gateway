@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	"sigs.k8s.io/yaml"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -1712,11 +1711,7 @@ func TestGatewayController_reconcileFilterConfigSecret_ReadsCredentialsFromCache
 	require.True(t, effective)
 	require.Zero(t, credentialGets, "the credential must come from the cache, not the API server")
 
-	legacy, err := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
-		legacyFilterConfigSecretName("gw", gwNamespace), metav1.GetOptions{})
-	require.NoError(t, err)
-	var cfg filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(legacy.StringData[FilterConfigKeyInSecret]), &cfg))
+	cfg := requireFilterConfigFromBundle(t, kube, configNamespace, "gw", gwNamespace)
 	require.Len(t, cfg.Backends, len(backendNames))
 	for _, b := range cfg.Backends {
 		require.NotNil(t, b.Auth, b.Name)
@@ -2966,6 +2961,94 @@ func Test_schemaToFilterAPI(t *testing.T) {
 	}
 }
 
+func Test_headerValueFiltersToFilterAPI(t *testing.T) {
+	for i, tc := range []struct {
+		name     string
+		in       []aigv1b1.HTTPHeaderValueFilter
+		expected []filterapi.HTTPHeaderValueFilter
+	}{
+		{
+			name:     "nil",
+			in:       nil,
+			expected: nil,
+		},
+		{
+			name:     "empty",
+			in:       []aigv1b1.HTTPHeaderValueFilter{},
+			expected: nil,
+		},
+		{
+			name: "denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"thinking-token-count-2026-05-13"},
+			}},
+		},
+		{
+			name: "allowlist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeAllowlist,
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Allowlist",
+				Values: []string{"advanced-tool-use-2025-11-20"},
+			}},
+		},
+		{
+			// Header names are case-insensitive; the data plane matches on the lower-cased form.
+			name: "header name is lower-cased",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "Anthropic-Beta",
+				Mode:   aigv1b1.HTTPHeaderValueFilterModeDenylist,
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			// The CRD defaults Mode, but an object persisted without it must not silently disable
+			// the filter.
+			name: "empty mode defaults to Denylist",
+			in: []aigv1b1.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Values: []string{"a"},
+			}},
+			expected: []filterapi.HTTPHeaderValueFilter{{
+				Name:   "anthropic-beta",
+				Mode:   "Denylist",
+				Values: []string{"a"},
+			}},
+		},
+		{
+			name: "multiple headers",
+			in: []aigv1b1.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: aigv1b1.HTTPHeaderValueFilterModeDenylist, Values: []string{"a"}},
+				{Name: "x-custom", Mode: aigv1b1.HTTPHeaderValueFilterModeAllowlist, Values: []string{"b"}},
+			},
+			expected: []filterapi.HTTPHeaderValueFilter{
+				{Name: "anthropic-beta", Mode: "Denylist", Values: []string{"a"}},
+				{Name: "x-custom", Mode: "Allowlist", Values: []string{"b"}},
+			},
+		},
+	} {
+		t.Run(strconv.Itoa(i)+"/"+tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, headerValueFiltersToFilterAPI(tc.in))
+		})
+	}
+}
+
 func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
@@ -3154,8 +3237,6 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	_, err = kube.CoreV1().Secrets(namespace).Get(t.Context(),
 		filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, maxFilterConfigBundleSlots-1), metav1.GetOptions{})
 	require.True(t, apierrors.IsNotFound(err))
-	_, legacyOK := indexSecret.StringData[FilterConfigKeyInSecret]
-	require.False(t, legacyOK)
 }
 
 func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) {
