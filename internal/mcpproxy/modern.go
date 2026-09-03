@@ -491,13 +491,11 @@ func (m *mcpRequestContext) sendModernRequest(ctx context.Context, req *jsonrpc.
 		return nil, fmt.Errorf("invalid tools/call params: missing required name")
 	}
 
-	m.l.Warn("modern outbound request to backend", slog.String("backend", backend.Name), slog.String("method", req.Method), slog.String("params", string(req.Params)), slog.String("body", string(body)))
 	resp, err := m.client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	m.l.Warn("modern outbound response received", "backend=", backend.Name, "method=", req.Method, "status=", resp.StatusCode, "contentType=", resp.Header.Get("Content-Type"))
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("backend returned status %d: %s", resp.StatusCode, string(respBody))
@@ -527,14 +525,44 @@ func (m *mcpRequestContext) sendModernRequest(ctx context.Context, req *jsonrpc.
 	if err := json.Unmarshal(jsonPayload, &rpcResp); err != nil {
 		return nil, fmt.Errorf("parse response: %w (body: %.200s)", err, string(jsonPayload))
 	}
-	if errField, ok := rpcResp["error"]; ok && string(errField) != "null" {
-		return nil, fmt.Errorf("backend error: %s", string(errField))
+	if err := validateModernJSONRPCResponse(req, rpcResp); err != nil {
+		return nil, err
 	}
-	result, ok := rpcResp["result"]
-	if !ok || string(result) == "null" {
-		return nil, fmt.Errorf("backend returned no result")
+	return rpcResp["result"], nil
+}
+
+// validateModernJSONRPCResponse checks the minimum response shape needed for
+// safe aggregation: the response id matches the request, and exactly one of
+// result or error is present (non-null). It does not require modern result
+// fields such as resultType; the gateway injects those on the client-facing
+// response when needed.
+func validateModernJSONRPCResponse(req *jsonrpc.Request, rpcResp map[string]json.RawMessage) error {
+	wantID, err := json.Marshal(req.ID.Raw())
+	if err != nil {
+		return fmt.Errorf("marshal request id: %w", err)
 	}
-	return result, nil
+	gotID, ok := rpcResp["id"]
+	if !ok || string(gotID) == "null" {
+		return fmt.Errorf("backend response missing id")
+	}
+	if string(gotID) != string(wantID) {
+		return fmt.Errorf("response id mismatch: got %s, want %s", gotID, wantID)
+	}
+
+	result, hasResult := rpcResp["result"]
+	resultPresent := hasResult && string(result) != "null"
+	errField, hasError := rpcResp["error"]
+	errorPresent := hasError && string(errField) != "null"
+
+	switch {
+	case resultPresent && errorPresent:
+		return fmt.Errorf("backend response has both result and error")
+	case errorPresent:
+		return fmt.Errorf("backend error: %s", string(errField))
+	case !resultPresent:
+		return fmt.Errorf("backend returned no result")
+	}
+	return nil
 }
 
 // extractJSONFromSSE parses an SSE response body and extracts the last JSON-RPC

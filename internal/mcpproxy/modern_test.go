@@ -8,6 +8,7 @@ package mcpproxy
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,7 +43,16 @@ func modernBackendHandler(t *testing.T, callCount *perBackendCallCount, failBack
 			return
 		}
 		result := respFn(backend, method)
-		var id any = 1
+		// Echo the request id so sendModernRequest's id-match validation passes.
+		id := json.RawMessage(`"1"`)
+		if reqBody, err := io.ReadAll(r.Body); err == nil {
+			var envelope struct {
+				ID json.RawMessage `json:"id"`
+			}
+			if json.Unmarshal(reqBody, &envelope) == nil && len(envelope.ID) > 0 {
+				id = envelope.ID
+			}
+		}
 		body := map[string]any{"jsonrpc": "2.0", "id": id, "result": result}
 		encoded, err := json.Marshal(body)
 		require.NoError(t, err)
@@ -296,7 +306,7 @@ func TestHandleModernToolsList_AggregatesAndPrefixes(t *testing.T) {
 	var tools struct {
 		Tools []*mcp.Tool `json:"tools"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(`{"tools":%s}`, result["tools"])), &tools))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"tools":%s}`, result["tools"]), &tools))
 	names := make([]string, 0, len(tools.Tools))
 	for _, tl := range tools.Tools {
 		names = append(names, tl.Name)
@@ -328,7 +338,7 @@ func TestHandleModernToolsList_ToolSelectorFilters(t *testing.T) {
 	var tools struct {
 		Tools []*mcp.Tool `json:"tools"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(`{"tools":%s}`, result["tools"])), &tools))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"tools":%s}`, result["tools"]), &tools))
 	names := make([]string, 0)
 	for _, tl := range tools.Tools {
 		names = append(names, tl.Name)
@@ -368,7 +378,7 @@ func TestHandleModernResourcesList_AggregatesAndPrefixes(t *testing.T) {
 	var out struct {
 		Resources []*mcp.Resource `json:"resources"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(`{"resources":%s}`, result["resources"])), &out))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"resources":%s}`, result["resources"]), &out))
 	require.Len(t, out.Resources, 2)
 	names := []string{out.Resources[0].Name, out.Resources[1].Name}
 	require.Contains(t, names, downstreamResourceName("cfg", "backend1"))
@@ -403,7 +413,7 @@ func TestHandleModernResourceTemplatesList_Aggregates(t *testing.T) {
 	var out struct {
 		ResourceTemplates []*mcp.ResourceTemplate `json:"resourceTemplates"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(`{"resourceTemplates":%s}`, result["resourceTemplates"])), &out))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"resourceTemplates":%s}`, result["resourceTemplates"]), &out))
 	require.Len(t, out.ResourceTemplates, 2)
 }
 
@@ -435,7 +445,7 @@ func TestHandleModernPromptsList_Aggregates(t *testing.T) {
 	var out struct {
 		Prompts []*mcp.Prompt `json:"prompts"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(`{"prompts":%s}`, result["prompts"])), &out))
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"prompts":%s}`, result["prompts"]), &out))
 	require.Len(t, out.Prompts, 2)
 	names := []string{out.Prompts[0].Name, out.Prompts[1].Name}
 	require.Contains(t, names, downstreamResourceName("greet", "backend1"))
@@ -481,10 +491,10 @@ func TestSendToAllModernBackends_UnmarshalFailureSkipped(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		if backend == "backend1" {
 			// result is a string, cannot unmarshal into ListToolsResult.
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"not-an-object"}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":"not-an-object"}`))
 			return
 		}
-		body := map[string]any{"jsonrpc": "2.0", "id": 1, "result": mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "ok"}}}}
+		body := map[string]any{"jsonrpc": "2.0", "id": "1", "result": mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "ok"}}}}
 		encoded, _ := json.Marshal(body)
 		_, _ = w.Write(encoded)
 	}))
@@ -511,7 +521,7 @@ func TestSendModernRequest_PlainJSON(t *testing.T) {
 		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
 		require.Equal(t, "test-route", r.Header.Get(internalapi.MCPRouteHeader))
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"ok":true}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{"ok":true}}`))
 	}))
 	defer server.Close()
 
@@ -528,7 +538,7 @@ func TestSendModernRequest_PlainJSON(t *testing.T) {
 func TestSendModernRequest_SSE(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"sse\":true}}\n\n"))
+		_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"sse\":true}}\n\n"))
 	}))
 	defer server.Close()
 
@@ -561,7 +571,7 @@ func TestSendModernRequest_BackendError(t *testing.T) {
 
 func TestSendModernRequest_JSONRPCError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"bad"}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","error":{"code":-32000,"message":"bad"}}`))
 	}))
 	defer server.Close()
 
@@ -577,7 +587,7 @@ func TestSendModernRequest_JSONRPCError(t *testing.T) {
 
 func TestSendModernRequest_NoResult(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":null}`))
 	}))
 	defer server.Close()
 
@@ -589,6 +599,54 @@ func TestSendModernRequest_NoResult(t *testing.T) {
 	_, err := proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no result")
+}
+
+func TestSendModernRequest_IDMismatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"other","result":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{}
+	req := modernReq(t, "tools/list", nil)
+
+	_, err := proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response id mismatch")
+}
+
+func TestSendModernRequest_BothResultAndError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{"ok":true},"error":{"code":-32000,"message":"bad"}}`))
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{}
+	req := modernReq(t, "tools/list", nil)
+
+	_, err := proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "both result and error")
+}
+
+func TestSendModernRequest_MissingID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{}
+	req := modernReq(t, "tools/list", nil)
+
+	_, err := proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing id")
 }
 
 func TestSendModernRequest_ToolsCallMissingName(t *testing.T) {
@@ -606,7 +664,7 @@ func TestSendModernRequest_ForwardsHeaders(t *testing.T) {
 	var gotHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeader = r.Header.Get("X-Fwd")
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{}}`))
 	}))
 	defer server.Close()
 
