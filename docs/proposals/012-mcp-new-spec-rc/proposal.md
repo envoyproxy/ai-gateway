@@ -163,10 +163,10 @@ The following tables classify every item from the [official changelog](https://m
 
 ### Immediate Scope (This Proposal Delivers)
 
-| Phase       | Objective                                                                                          | Outcome                                                                 |
-| ----------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Phase 0** | Build the modern path as additive, unreferenced code staged along the request lifecycle (PRs 0.1–0.4) | Zero behavior change; all existing tests pass; unlocks Phase 1          |
-| **Phase 1** | Activate era dispatch — Modern↔Modern (Cell 2) goes live; Legacy↔Legacy (Cell 1) unchanged         | Spec-conformant gateway for modern clients and modern backends          |
+| Phase       | Objective                                                                                             | Outcome                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Phase 0** | Build the modern path as additive, unreferenced code staged along the request lifecycle (PRs 0.1–0.4) | Zero behavior change; all existing tests pass; unlocks Phase 1 |
+| **Phase 1** | Activate era dispatch — Modern↔Modern (Cell 2) goes live; Legacy↔Legacy (Cell 1) unchanged          | Spec-conformant gateway for modern clients and modern backends |
 
 ### Deferred (Future Proposals)
 
@@ -450,13 +450,13 @@ Client request
 
 **Downstream PR mapping (current work):**
 
-| Lifecycle stage                         | Proposal PR | Tracking PR                                                                 | Notes |
-| --------------------------------------- | ----------- | --------------------------------------------------------------------------- | ----- |
-| Ingress & classification                | **0.1**     | [#2518](https://github.com/envoyproxy/ai-gateway/pull/2518)                 | Owns `detectClientEra` + modern validation; sole classification boundary |
-| Backend selection & discovery           | **0.2**     | Split from [#2545](https://github.com/envoyproxy/ai-gateway/pull/2545)      | Discovery / era evidence / version intersection only |
-| Modern forwarding & response handling   | **0.3**     | Split from [#2545](https://github.com/envoyproxy/ai-gateway/pull/2545)      | Consumes 0.1 validated request; no second client-era check |
-| Subscriptions                           | **0.4**     | Follow-up after 0.2/0.3                                                     | Keep `subscriptions/listen` ownership explicit; not part of discovery |
-| Activation                              | **1.1**     | After 0.1–0.4 land                                                          | First behavior change |
+| Lifecycle stage                       | Proposal PR | Tracking PR                                                            | Notes                                                                    |
+| ------------------------------------- | ----------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Ingress & classification              | **0.1**     | [#2518](https://github.com/envoyproxy/ai-gateway/pull/2518)            | Owns `detectClientEra` + modern validation; sole classification boundary |
+| Backend selection & discovery         | **0.2**     | Split from [#2545](https://github.com/envoyproxy/ai-gateway/pull/2545) | Discovery / era evidence / version intersection only                     |
+| Modern forwarding & response handling | **0.3**     | Split from [#2545](https://github.com/envoyproxy/ai-gateway/pull/2545) | Consumes 0.1 validated request; no second client-era check               |
+| Subscriptions                         | **0.4**     | Follow-up after 0.2/0.3                                                | Keep `subscriptions/listen` ownership explicit; not part of discovery    |
+| Activation                            | **1.1**     | After 0.1–0.4 land                                                     | First behavior change                                                    |
 
 > **Boundary problem this staging fixes:** [#2518](https://github.com/envoyproxy/ai-gateway/pull/2518) introduces `detectClientEra` with validation, while [#2545](https://github.com/envoyproxy/ai-gateway/pull/2545) independently re-infers the client era. Under this plan, **only PR 0.1 classifies the client**; later stages receive a validated request (or a protocol error) and must not re-run era detection.
 
@@ -625,7 +625,6 @@ Kept separate so PR 1.1 stays reviewable. Likely none committed up front, pulled
 
 ---
 
-
 ### Phase 2–4: Deferred (Documented for Architectural Context)
 
 > **Status:** Deferred per review. Cross-era support can wait until modern clients emerge and legacy backends remain common. These phases are retained for completeness but are **not in active scope**.
@@ -683,29 +682,29 @@ Phase 4 — Auth Hardening, Deprecations, and Cleanup
 
 Every item from the spec changelog and the tracking issue, mapped to a phase:
 
-| Issue Ref | SEP / Change | Title                                                                                                         | Phase                                              |
-| --------- | ------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| #A1       | SEP-2567     | Stateless sessions (remove `Mcp-Session-Id`)                                                                  | Phase 0.3 (handlers), Phase 1 (activation)                         |
-| #A2       | SEP-2575     | Stateless protocol (`server/discover`, `subscriptions/listen`, remove `initialize`/`ping`/`logging/setLevel`) | Phase 0.2 (discover), Phase 0.4 (listen), Phase 1 (activation)     |
+| Issue Ref | SEP / Change | Title                                                                                                         | Phase                                                                |
+| --------- | ------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| #A1       | SEP-2567     | Stateless sessions (remove `Mcp-Session-Id`)                                                                  | Phase 0.3 (handlers), Phase 1 (activation)                           |
+| #A2       | SEP-2575     | Stateless protocol (`server/discover`, `subscriptions/listen`, remove `initialize`/`ping`/`logging/setLevel`) | Phase 0.2 (discover), Phase 0.4 (listen), Phase 1 (activation)       |
 | #A3       | SEP-2322     | MRTR + `resultType`                                                                                           | Phase 0.3 (passthrough), Phase 1 (activation), Phase 2 (translation) |
-| #A4       | SEP-2575     | Per-request `_meta` fields                                                                                    | Phase 0.1 (validation), Phase 0.3 (injection), Phase 1             |
-| #B1       | SEP-2549     | Cacheable results (`ttlMs`, `cacheScope`)                                                                     | Phase 3 (proxy-level); discover hints only in Phase 0.2            |
-| #B2       | —            | Deterministic `tools/list` ordering                                                                           | Phase 3                                                            |
-| #C1       | SEP-2468     | Authorization response `iss` validation                                                                       | Phase 4                                                            |
-| #C2       | SEP-2352     | Client credentials issuer binding                                                                             | Phase 4                                                            |
-| #D1       | SEP-2243     | `Mcp-Method`/`Mcp-Name` headers + `x-mcp-header`                                                              | Phase 0.1 (validate), Phase 0.3 (forward), Phase 3 (`x-mcp-header`) |
-| #D2       | SEP-414      | OTel `_meta` conventions                                                                                      | Phase 3 (verify)                                                   |
-| #D3       | —            | `extensions` field on capabilities                                                                            | Phase 3                                                            |
-| #D4       | —            | Error code renumbering                                                                                        | Phase 0.1 (constants), Phase 1 (enforcement)                       |
-| #D5       | SEP-2575     | Remove `notifications/elicitation/complete`                                                                   | Phase 1 (no-op; MRTR replaces)                                     |
-| #D6       | SEP-2106     | JSON Schema 2020-12                                                                                           | No work (pass-through)                                             |
-| #E1       | SEP-2577     | Deprecate Roots/Sampling/Logging                                                                              | Phase 4                                                            |
-| #E2       | SEP-2596     | Deprecate HTTP+SSE + `includeContext`                                                                         | Phase 4                                                            |
-| #E3       | SEP-2663     | Tasks → extension                                                                                             | Phase 4                                                            |
-| #E4       | PR #2858     | Deprecate DCR → CIMD                                                                                          | Phase 4                                                            |
-| #F1       | —            | Backward compatibility (dual-era)                                                                             | Phase 0.1 (detection), Phase 2 (translation)                       |
-| #F2       | —            | Docs and examples                                                                                             | Phase 4                                                            |
-| #F3       | —            | Conformance and E2E testing                                                                                   | Phase 1 (Cell 2 E2E), Phase 4 (full matrix)                        |
+| #A4       | SEP-2575     | Per-request `_meta` fields                                                                                    | Phase 0.1 (validation), Phase 0.3 (injection), Phase 1               |
+| #B1       | SEP-2549     | Cacheable results (`ttlMs`, `cacheScope`)                                                                     | Phase 3 (proxy-level); discover hints only in Phase 0.2              |
+| #B2       | —            | Deterministic `tools/list` ordering                                                                           | Phase 3                                                              |
+| #C1       | SEP-2468     | Authorization response `iss` validation                                                                       | Phase 4                                                              |
+| #C2       | SEP-2352     | Client credentials issuer binding                                                                             | Phase 4                                                              |
+| #D1       | SEP-2243     | `Mcp-Method`/`Mcp-Name` headers + `x-mcp-header`                                                              | Phase 0.1 (validate), Phase 0.3 (forward), Phase 3 (`x-mcp-header`)  |
+| #D2       | SEP-414      | OTel `_meta` conventions                                                                                      | Phase 3 (verify)                                                     |
+| #D3       | —            | `extensions` field on capabilities                                                                            | Phase 3                                                              |
+| #D4       | —            | Error code renumbering                                                                                        | Phase 0.1 (constants), Phase 1 (enforcement)                         |
+| #D5       | SEP-2575     | Remove `notifications/elicitation/complete`                                                                   | Phase 1 (no-op; MRTR replaces)                                       |
+| #D6       | SEP-2106     | JSON Schema 2020-12                                                                                           | No work (pass-through)                                               |
+| #E1       | SEP-2577     | Deprecate Roots/Sampling/Logging                                                                              | Phase 4                                                              |
+| #E2       | SEP-2596     | Deprecate HTTP+SSE + `includeContext`                                                                         | Phase 4                                                              |
+| #E3       | SEP-2663     | Tasks → extension                                                                                             | Phase 4                                                              |
+| #E4       | PR #2858     | Deprecate DCR → CIMD                                                                                          | Phase 4                                                              |
+| #F1       | —            | Backward compatibility (dual-era)                                                                             | Phase 0.1 (detection), Phase 2 (translation)                         |
+| #F2       | —            | Docs and examples                                                                                             | Phase 4                                                              |
+| #F3       | —            | Conformance and E2E testing                                                                                   | Phase 1 (Cell 2 E2E), Phase 4 (full matrix)                          |
 
 ## Gotchas and Risks
 
