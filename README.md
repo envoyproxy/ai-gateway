@@ -97,6 +97,7 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
 - [Blog](https://aigateway.envoyproxy.io/blog/introducing-envoy-ai-gateway) introducing Envoy AI Gateway.
 - [Documentation](https://aigateway.envoyproxy.io/docs) for Envoy AI Gateway.
 - [Quickstart](https://aigateway.envoyproxy.io/docs/getting-started/) to use Envoy AI Gateway in a few simple steps.
+- [CLI installation](https://aigateway.envoyproxy.io/docs/cli/aigwinstall) to install `aigw` with one command and run the gateway locally without Kubernetes.
 - [Concepts](https://aigateway.envoyproxy.io/docs/concepts/) to understand the architecture and resources of Envoy AI Gateway.
 - [Talks and Presentations](https://aigateway.envoyproxy.io/talks) about Envoy AI Gateway.
 

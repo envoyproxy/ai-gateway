@@ -13,6 +13,13 @@ base = "site/"
 publish = "build/"
 command = "npm run build"
 
+# Stable, brandable URL for the aigw one-command installer: `curl -fsSL https://aigateway.envoyproxy.io/install.sh | sh`.
+# Update the target once if the repository moves.
+[[redirects]]
+  from = "/install.sh"
+  to = "https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/install.sh"
+  status = 301
+
 [[headers]]
   for = "/*"
   [headers.values]
