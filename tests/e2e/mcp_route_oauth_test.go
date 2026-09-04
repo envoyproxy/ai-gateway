@@ -393,4 +393,67 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
+
+	t.Run("CORS preflight is answered without authentication", func(t *testing.T) {
+		// A browser-issued CORS preflight (OPTIONS with Origin + Access-Control-Request-Method) must be
+		// answered by Envoy's cors filter (native SecurityPolicy.CORS), which is ordered before jwt_authn,
+		// so it is NOT rejected with 401. This is the behavior that unit tests cannot prove.
+		mcpURL := fmt.Sprintf("%s/mcp", fwd.Address())
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodOptions, mcpURL, nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", "https://inspector.example.com")
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		req.Header.Set("Access-Control-Request-Headers", "content-type,authorization,mcp-session-id,mcp-protocol-version")
+
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, "CORS preflight must not be authenticated")
+		require.Equal(t, http.StatusOK, resp.StatusCode, "Envoy's cors filter answers a matching preflight with 200")
+		require.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+		require.Contains(t, resp.Header.Get("Access-Control-Allow-Methods"), "POST")
+		require.Contains(t, resp.Header.Get("Access-Control-Allow-Methods"), "DELETE")
+		require.Contains(t, strings.ToLower(resp.Header.Get("Access-Control-Allow-Headers")), "authorization")
+	})
+
+	t.Run("401 challenge exposes CORS headers", func(t *testing.T) {
+		// The 401 WWW-Authenticate challenge (BackendTrafficPolicy override) must be readable cross-origin:
+		// Access-Control-Allow-Origin so the browser can read the response, and Access-Control-Expose-Headers
+		// so JavaScript can read the WWW-Authenticate OAuth challenge.
+		mcpURL := fmt.Sprintf("%s/mcp", fwd.Address())
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, mcpURL, nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", "https://inspector.example.com")
+
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		require.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+		require.Contains(t, resp.Header.Get("Access-Control-Expose-Headers"), "WWW-Authenticate",
+			"browser clients must be able to read the WWW-Authenticate challenge cross-origin")
+	})
+
+	t.Run("well-known metadata exposes CORS Allow-Origin", func(t *testing.T) {
+		for _, path := range []string{
+			"/.well-known/oauth-protected-resource/mcp",
+			"/.well-known/oauth-authorization-server/mcp",
+			"/.well-known/openid-configuration/mcp",
+		} {
+			t.Run(path, func(t *testing.T) {
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fwd.Address()+path, nil)
+				require.NoError(t, err)
+				req.Header.Set("Origin", "https://inspector.example.com")
+
+				resp, err := httpClient.Do(req)
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = resp.Body.Close() })
+
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+				require.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+			})
+		}
+	})
 }

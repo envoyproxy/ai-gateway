@@ -74,7 +74,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{},
 				},
 			},
-			wantSecPol: false,
+			wantSecPol: true, // SecurityPolicy is always created to carry CORS, even with no auth.
 			wantJWT:    false,
 			wantBTP:    false,
 			wantFilter: false,
@@ -358,6 +358,14 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 
 			if tt.wantSecPol {
 				require.NoError(t, secPolErr, "SecurityPolicy should exist")
+
+				// CORS is configured on every SecurityPolicy, regardless of authentication.
+				require.NotNil(t, securityPolicy.Spec.CORS, "SecurityPolicy should always carry CORS")
+				require.Equal(t, []egv1a1.Origin{"*"}, securityPolicy.Spec.CORS.AllowOrigins)
+				require.Equal(t, []string{"GET", "POST", "DELETE"}, securityPolicy.Spec.CORS.AllowMethods)
+				require.Equal(t, []string{"Content-Type", "Authorization", "Mcp-Session-Id", "Mcp-Protocol-Version"}, securityPolicy.Spec.CORS.AllowHeaders)
+				require.Equal(t, []string{"Mcp-Session-Id", "WWW-Authenticate"}, securityPolicy.Spec.CORS.ExposeHeaders)
+
 				if tt.wantJWT {
 					require.NotNil(t, securityPolicy.Spec.JWT)
 					require.NotEmpty(t, securityPolicy.Spec.JWT.Providers)
@@ -399,6 +407,10 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 
 			if tt.wantBTP {
 				require.NoError(t, btpErr, "BackendTrafficPolicy should exist")
+				// The 401 challenge override exposes the OAuth challenge to browsers.
+				btpHeader := backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header
+				require.Equal(t, "*", corsHeaderValue(btpHeader, "Access-Control-Allow-Origin"))
+				require.Equal(t, "Mcp-Session-Id, WWW-Authenticate", corsHeaderValue(btpHeader, "Access-Control-Expose-Headers"))
 			} else {
 				require.Error(t, btpErr, "BackendTrafficPolicy should not exist")
 			}
@@ -407,13 +419,60 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			var httpRouteFilter egv1a1.HTTPRouteFilter
 			filterErr := fakeClient.Get(t.Context(), client.ObjectKey{Name: httpRouteFilterName, Namespace: tt.mcpRoute.Namespace}, &httpRouteFilter)
 
+			authServerMetadataFilterName := internalapi.MCPGeneratedResourceCommonPrefix + tt.mcpRoute.Name + oauthAuthServerMetadataSuffix
+			var authServerMetadataFilter egv1a1.HTTPRouteFilter
+			authServerFilterErr := fakeClient.Get(t.Context(), client.ObjectKey{Name: authServerMetadataFilterName, Namespace: tt.mcpRoute.Namespace}, &authServerMetadataFilter)
+
 			if tt.wantFilter {
 				require.NoError(t, filterErr, "HTTPRouteFilter should exist")
+				require.NoError(t, authServerFilterErr, "AuthServer metadata HTTPRouteFilter should exist")
+				// Both well-known metadata direct responses expose only Allow-Origin (no Expose/Methods/Allow-Headers).
+				for _, wkHeader := range []*gwapiv1.HTTPHeaderFilter{
+					httpRouteFilter.Spec.DirectResponse.Header,
+					authServerMetadataFilter.Spec.DirectResponse.Header,
+				} {
+					require.Equal(t, "*", corsHeaderValue(wkHeader, "Access-Control-Allow-Origin"))
+					require.Empty(t, corsHeaderValue(wkHeader, "Access-Control-Expose-Headers"))
+					require.Empty(t, corsHeaderValue(wkHeader, "Access-Control-Allow-Methods"))
+					require.Empty(t, corsHeaderValue(wkHeader, "Access-Control-Allow-Headers"))
+				}
 			} else {
 				require.Error(t, filterErr, "HTTPRouteFilter should not exist")
 			}
 		})
 	}
+}
+
+// corsHeaderValue returns the value of the named header set by the HTTPHeaderFilter, or "" if absent.
+func corsHeaderValue(filter *gwapiv1.HTTPHeaderFilter, name string) string {
+	for _, h := range filter.Set {
+		if string(h.Name) == name {
+			return h.Value
+		}
+	}
+	return ""
+}
+
+func Test_ensureWellKnownCORSHeaders(t *testing.T) {
+	filter := &gwapiv1.HTTPHeaderFilter{}
+	ensureWellKnownCORSHeaders(filter)
+
+	// Public metadata GETs only need Allow-Origin; none of the MCP request/response headers apply.
+	require.Len(t, filter.Set, 1)
+	require.Equal(t, "*", corsHeaderValue(filter, "Access-Control-Allow-Origin"))
+	require.Empty(t, corsHeaderValue(filter, "Access-Control-Expose-Headers"))
+	require.Empty(t, corsHeaderValue(filter, "Access-Control-Allow-Methods"))
+	require.Empty(t, corsHeaderValue(filter, "Access-Control-Allow-Headers"))
+}
+
+func Test_ensureUnauthorizedChallengeCORSHeaders(t *testing.T) {
+	filter := &gwapiv1.HTTPHeaderFilter{}
+	ensureUnauthorizedChallengeCORSHeaders(filter)
+
+	// The 401 challenge needs Allow-Origin to be readable and Expose-Headers so the browser can read
+	// the WWW-Authenticate OAuth challenge.
+	require.Equal(t, "*", corsHeaderValue(filter, "Access-Control-Allow-Origin"))
+	require.Equal(t, "Mcp-Session-Id, WWW-Authenticate", corsHeaderValue(filter, "Access-Control-Expose-Headers"))
 }
 
 func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
@@ -477,9 +536,12 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	err = c.syncMCPRouteSecurityPolicy(t.Context(), mcpRouteWithoutSecurityPolicy, httpRouteName)
 	require.NoError(t, err)
 
+	// The SecurityPolicy persists (now CORS-only) after auth/OAuth is removed; only the OAuth-specific
+	// resources below are cleaned up.
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
-	require.Error(t, err, "SecurityPolicy should be deleted after cleanup")
-	require.True(t, apierrors.IsNotFound(err), "SecurityPolicy should not be found after cleanup")
+	require.NoError(t, err, "SecurityPolicy should persist (CORS-only) after cleanup")
+	require.Nil(t, securityPolicy.Spec.JWT, "JWT should be removed after OAuth is disabled")
+	require.NotNil(t, securityPolicy.Spec.CORS, "CORS should remain on the SecurityPolicy")
 
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
 	require.Error(t, err, "BackendTrafficPolicy should be deleted after cleanup")
@@ -545,10 +607,11 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 	require.NoError(t, fakeClient.Update(t.Context(), mcpRoute))
 	require.NoError(t, c.syncMCPRouteSecurityPolicy(t.Context(), mcpRoute, httpRouteName))
 
-	// SecurityPolicy should remain with API key config only.
+	// SecurityPolicy should remain with API key config only, and still carry CORS.
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &sp))
 	require.Nil(t, sp.Spec.JWT)
 	require.NotNil(t, sp.Spec.APIKeyAuth)
+	require.NotNil(t, sp.Spec.CORS, "CORS should remain after OAuth is disabled")
 
 	// OAuth-specific resources should be removed.
 	err := fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &egv1a1.BackendTrafficPolicy{})
