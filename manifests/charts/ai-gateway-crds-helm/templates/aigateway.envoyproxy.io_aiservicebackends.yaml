@@ -319,6 +319,21 @@ spec:
 
                   This is required to be set.
                 properties:
+                  capabilities:
+                    description: |-
+                      Capabilities configures optional behavior for API schema translations.
+                      This field is only supported when name is OpenAI.
+                    properties:
+                      messagesTranslation:
+                        default: ChatCompletions
+                        description: |-
+                          MessagesTranslation selects the OpenAI API endpoint used when translating
+                          Anthropic Messages requests. When omitted, ChatCompletions is used.
+                        enum:
+                        - ChatCompletions
+                        - Responses
+                        type: string
+                    type: object
                   name:
                     description: Name is the name of the API schema of the AIGatewayRoute
                       or AIServiceBackend.
@@ -364,6 +379,9 @@ spec:
                 required:
                 - name
                 type: object
+                x-kubernetes-validations:
+                - message: capabilities is only supported for the OpenAI schema
+                  rule: '!has(self.capabilities) || self.name == ''OpenAI'''
             required:
             - backendRef
             - schema
@@ -788,6 +806,21 @@ spec:
 
                   This is required to be set.
                 properties:
+                  capabilities:
+                    description: |-
+                      Capabilities configures optional behavior for API schema translations.
+                      This field is only supported when name is OpenAI.
+                    properties:
+                      messagesTranslation:
+                        default: ChatCompletions
+                        description: |-
+                          MessagesTranslation selects the OpenAI API endpoint used when translating
+                          Anthropic Messages requests. When omitted, ChatCompletions is used.
+                        enum:
+                        - ChatCompletions
+                        - Responses
+                        type: string
+                    type: object
                   name:
                     description: Name is the name of the API schema of the AIGatewayRoute
                       or AIServiceBackend.
@@ -833,6 +866,9 @@ spec:
                 required:
                 - name
                 type: object
+                x-kubernetes-validations:
+                - message: capabilities is only supported for the OpenAI schema
+                  rule: '!has(self.capabilities) || self.name == ''OpenAI'''
             required:
             - backendRef
             - schema

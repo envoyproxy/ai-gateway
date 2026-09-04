@@ -341,6 +341,11 @@ func redactAnthropicContent(content *anthropic.MessagesContentBlock) anthropic.M
 		thinkingCopy.Thinking = redaction.RedactString(content.Thinking.Thinking)
 		redactedContent.Thinking = &thinkingCopy
 	}
+	if content.RedactedThinking != nil {
+		redactedThinkingCopy := *content.RedactedThinking
+		redactedThinkingCopy.Data = redaction.RedactString(content.RedactedThinking.Data)
+		redactedContent.RedactedThinking = &redactedThinkingCopy
+	}
 
 	// Redact tool use input (may contain sensitive data)
 	if content.Tool != nil {

@@ -566,6 +566,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
 - [AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendstatus)
 - [APISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischema)
+- [APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischemacapabilities)
 - [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile)
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken)
@@ -610,6 +611,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter)
+- [OpenAIMessagesTranslation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-openaimessagestranslation)
 - [PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata)
 - [QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)
@@ -933,6 +935,28 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaAWSOpenAI is the OpenAI-compatible API schema provided by AWS.<br />"
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-apischemacapabilities">APISchemaCapabilities</a>
+
+
+
+**Appears in:**
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-versionedapischema)
+
+APISchemaCapabilities configures optional behavior for API schema translations.
+
+##### Fields
+
+
+
+<ApiField
+  name="messagesTranslation"
+  type="[OpenAIMessagesTranslation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-openaimessagestranslation)"
+  required="false"
+  defaultValue="ChatCompletions"
+  description="MessagesTranslation selects the OpenAI API endpoint used when translating<br />Anthropic Messages requests. When omitted, ChatCompletions is used."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile">AWSCredentialsFile</a>
 
 
@@ -2291,6 +2315,31 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-openaimessagestranslation">OpenAIMessagesTranslation</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischemacapabilities)
+
+OpenAIMessagesTranslation selects the OpenAI API endpoint used for translated
+Anthropic Messages requests.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="ChatCompletions"
+  type="enum"
+  required="false"
+  description="OpenAIMessagesTranslationChatCompletions translates Anthropic Messages requests<br />to the OpenAI Chat Completions API.<br />"
+/><ApiField
+  name="Responses"
+  type="enum"
+  required="false"
+  description="OpenAIMessagesTranslationResponses translates Anthropic Messages requests<br />to the OpenAI Responses API.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota">PerModelQuota</a>
 
 
@@ -2621,6 +2670,11 @@ the ai-gateway, but by the vendor via proper versioning.
   type="string"
   required="false"
   description="Prefix is the prefix for the API.<br />When the name is set to `OpenAI`, `chat completions` API endpoint will be `$\{this_field\}/chat/completions`.<br />When the name is set to `Anthropic`, the `messages` API endpoint will be `$\{this_field\}/messages`.<br />It can be with or without a leading slash (`/`).<br />This field is ignored for AWSAnthropic and GCPAnthropic.<br />This is especially useful when routing to a backend that has an OpenAI or Anthropic compatible API but has a different<br />prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use prefix, so you can leave this field unset.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
+/><ApiField
+  name="capabilities"
+  type="[APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischemacapabilities)"
+  required="false"
+  description="Capabilities configures optional behavior for API schema translations.<br />This field is only supported when name is OpenAI."
 />
 
 
@@ -3097,6 +3151,7 @@ MCPRouteList contains a list of MCPRoute.
 - [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
 - [AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendstatus)
 - [APISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischema)
+- [APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischemacapabilities)
 - [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
@@ -3146,6 +3201,7 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)
+- [OpenAIMessagesTranslation](#github-com-envoyproxy-ai-gateway-api-v1beta1-openaimessagestranslation)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)
 - [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall)
 - [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
@@ -3466,6 +3522,28 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaAWSOpenAI is the OpenAI-compatible API schema provided by AWS.<br />"
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-apischemacapabilities">APISchemaCapabilities</a>
+
+
+
+**Appears in:**
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
+
+APISchemaCapabilities configures optional behavior for API schema translations.
+
+##### Fields
+
+
+
+<ApiField
+  name="messagesTranslation"
+  type="[OpenAIMessagesTranslation](#github-com-envoyproxy-ai-gateway-api-v1beta1-openaimessagestranslation)"
+  required="false"
+  defaultValue="ChatCompletions"
+  description="MessagesTranslation selects the OpenAI API endpoint used when translating<br />Anthropic Messages requests. When omitted, ChatCompletions is used."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile">AWSCredentialsFile</a>
 
 
@@ -4985,6 +5063,31 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-openaimessagestranslation">OpenAIMessagesTranslation</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischemacapabilities)
+
+OpenAIMessagesTranslation selects the OpenAI API endpoint used for translated
+Anthropic Messages requests.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="ChatCompletions"
+  type="enum"
+  required="false"
+  description="OpenAIMessagesTranslationChatCompletions translates Anthropic Messages requests<br />to the OpenAI Chat Completions API.<br />"
+/><ApiField
+  name="Responses"
+  type="enum"
+  required="false"
+  description="OpenAIMessagesTranslationResponses translates Anthropic Messages requests<br />to the OpenAI Responses API.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata">ProtectedResourceMetadata</a>
 
 
@@ -5095,6 +5198,11 @@ the ai-gateway, but by the vendor via proper versioning.
   type="string"
   required="false"
   description="Prefix is the prefix for the API.<br />When the name is set to `OpenAI`, `chat completions` API endpoint will be `$\{this_field\}/chat/completions`.<br />When the name is set to `Anthropic`, the `messages` API endpoint will be `$\{this_field\}/messages`.<br />It can be with or without a leading slash (`/`).<br />This field is ignored for AWSAnthropic and GCPAnthropic.<br />This is especially useful when routing to a backend that has an OpenAI or Anthropic compatible API but has a different<br />prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use prefix, so you can leave this field unset.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
+/><ApiField
+  name="capabilities"
+  type="[APISchemaCapabilities](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischemacapabilities)"
+  required="false"
+  description="Capabilities configures optional behavior for API schema translations.<br />This field is only supported when name is OpenAI."
 />
 
 

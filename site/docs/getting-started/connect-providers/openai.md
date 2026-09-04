@@ -78,6 +78,40 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/chat/completions
 ```
 
+#### Test Anthropic Messages
+
+The OpenAI configuration template sets
+`schema.capabilities.messagesTranslation: Responses`, so requests received on
+the Anthropic Messages endpoint use OpenAI's Responses API upstream:
+
+```shell
+curl -H "Content-Type: application/json" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "max_tokens": 100,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi."
+      }
+    ]
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
+```
+
+Set `messagesTranslation` to `ChatCompletions`, or omit `capabilities`, when
+using an OpenAI-compatible backend that does not implement the Responses API.
+
+Following [OpenAI's stateless reasoning
+guidance](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses),
+Responses translation uses `store: false` and returns encrypted OpenAI
+reasoning items as Anthropic `redacted_thinking` blocks. Preserve those
+assistant content blocks unchanged when constructing the next Anthropic
+Messages request. The gateway then restores the original reasoning items
+before sending the next Responses request, preserving multi-turn reasoning
+state and the cacheable upstream conversation prefix.
+
 #### Test Completions (Legacy)
 
 OpenAI supports the legacy completions endpoint with specific models:

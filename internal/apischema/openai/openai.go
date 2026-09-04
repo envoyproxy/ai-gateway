@@ -7284,6 +7284,10 @@ type ResponseUsageInputTokensDetails struct {
 
 	// The number of tokens that were written to the cache.
 	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+
+	// The number of tokens that were written to the cache. Some OpenAI-compatible
+	// providers use this field name for Responses usage.
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
 }
 
 // A detailed breakdown of the output tokens.
