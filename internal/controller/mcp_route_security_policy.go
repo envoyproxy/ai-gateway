@@ -166,6 +166,10 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 		securityPolicySpec.ExtAuth = extAuth.DeepCopy()
 	}
 
+	// Propagate MergeType so the auto-generated SecurityPolicy can merge with (instead of
+	// overriding) a parent Gateway/Listener-level SecurityPolicy, e.g. an IP allowlist.
+	securityPolicySpec.MergeType = mcpRoute.Spec.SecurityPolicy.MergeType
+
 	// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
 	// However, since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
@@ -253,6 +257,13 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 	}
 
 	ensureCORSHeaders(backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header)
+
+	// Propagate MergeType so the auto-generated OAuth BackendTrafficPolicy can merge with
+	// (instead of overriding) an operator-defined BackendTrafficPolicy targeting the same
+	// route, e.g. one configuring rate limiting.
+	if btp := mcpRoute.Spec.BackendTrafficPolicy; btp != nil {
+		backendTrafficPolicy.Spec.MergeType = btp.MergeType
+	}
 
 	// Target the HTTPRoute MCP proxy rule only.
 	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
