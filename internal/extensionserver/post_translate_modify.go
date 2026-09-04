@@ -96,6 +96,8 @@ func parseAIGatewayClusterName(name string) (aiGatewayClusterName, error) {
 // For InferencePool support, this method creates additional STRICT_DNS clusters that
 // connect to the endpoint picker services specified in InferencePool resources.
 func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
+	s.postTranslateModifyInvoked.Store(true)
+
 	var extProcUDSExist bool
 
 	// Process existing clusters - may add metadata or modify configurations.
