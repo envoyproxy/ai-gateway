@@ -938,8 +938,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 }
 
 func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, dataKey string) (string, error) {
-	secret := &corev1.Secret{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
+	secret, err := c.kube.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
 		return "", fmt.Errorf("failed to get secret %s: %w", name, err)
 	}
 	if secret.Data != nil {
