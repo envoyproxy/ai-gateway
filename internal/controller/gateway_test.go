@@ -3213,6 +3213,37 @@ func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
 	require.Equal(t, []string{"^secret.*"}, ts.ExcludeRegex)
 }
 
+func Test_mcpConfig_PromptSelector(t *testing.T) {
+	mcpRoutes := []aigv1b1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backend"),
+					},
+					PromptSelector: &aigv1b1.MCPPromptFilter{
+						Include:      []string{"greeting"},
+						Exclude:      []string{"farewell"},
+						ExcludeRegex: []string{"^secret.*"},
+					},
+				}},
+			},
+		},
+	}
+
+	mc, effective := mcpConfig(mcpRoutes)
+	require.True(t, effective)
+	require.NotNil(t, mc)
+	require.Len(t, mc.Routes, 1)
+	require.Len(t, mc.Routes[0].Backends, 1)
+	ps := mc.Routes[0].Backends[0].PromptSelector
+	require.NotNil(t, ps)
+	require.Equal(t, []string{"greeting"}, ps.Include)
+	require.Equal(t, []string{"farewell"}, ps.Exclude)
+	require.Equal(t, []string{"^secret.*"}, ps.ExcludeRegex)
+}
+
 func Test_mcpConfig_ForwardHeaders(t *testing.T) {
 	renamed := "X-Backend-Auth"
 	mcpRoutes := []aigv1b1.MCPRoute{

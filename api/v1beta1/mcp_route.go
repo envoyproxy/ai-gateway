@@ -11,6 +11,30 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+// MCPRoutePrefixMode controls how tool and prompt names are prefixed when exposed to clients.
+//
+// PrefixMode can be set at the route level (MCPRouteSpec) and overridden per backend
+// (MCPRouteBackendRef); the per-backend value takes precedence when set. A single route can
+// therefore mix Always and Never backends. This is intentional: it lets an operator keep the
+// route-level default (Always is recommended for most routes, since it guarantees a collision-free
+// catalog without any extra configuration) while opting specific, well-known backends into bare
+// names, e.g. to match tool names an existing client or interactive MCP App already hardcodes.
+// Per-backend override is meant as a targeted escape hatch, not a replacement for choosing one
+// naming policy for the route as a whole.
+//
+// +kubebuilder:validation:Enum=Always;Never
+type MCPRoutePrefixMode string
+
+const (
+	// MCPRoutePrefixModeAlways prefixes tool/prompt names with `<backendName>__`.
+	// This is the default and preserves existing behavior.
+	MCPRoutePrefixModeAlways MCPRoutePrefixMode = "Always"
+
+	// MCPRoutePrefixModeNever exposes tool/prompt names unprefixed.
+	// Tool names must be unique across all Never-mode backends on the route.
+	MCPRoutePrefixModeNever MCPRoutePrefixMode = "Never"
+)
+
 // MCPRoute defines how to route MCP requests to the backend MCP servers.
 //
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
@@ -110,6 +134,12 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:Optional
 	// +optional
 	BackendSelector *MCPBackendSelector `json:"backendSelector,omitempty"`
+
+	// PrefixMode controls how tool and prompt names from all backends on this route are prefixed.
+	//
+	// +kubebuilder:validation:Optional
+	// +optional
+	PrefixMode *MCPRoutePrefixMode `json:"prefixMode,omitempty"`
 }
 
 // MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
@@ -133,7 +163,20 @@ type MCPRouteBackendRef struct {
 	// +optional
 	ToolSelector *MCPToolFilter `json:"toolSelector,omitempty"`
 
-	// TODO: we can add resource and prompt selectors in the future.
+	// PromptSelector filters the prompts exposed by this MCP server, analogous to ToolSelector.
+	// If not specified, all prompts from the MCP server are exposed.
+	//
+	// This is also used to determine which prompt names can be safely exposed unprefixed when
+	// this backend's effective PrefixMode is Never: only prompts named in Include are validated
+	// for cross-backend uniqueness and exposed bare. If unset while PrefixMode is Never, this
+	// backend's prompts are not exposed bare (they keep the `<backendName>__` prefix) because
+	// their names cannot be proven unique at admission time.
+	//
+	// +kubebuilder:validation:Optional
+	// +optional
+	PromptSelector *MCPPromptFilter `json:"promptSelector,omitempty"`
+
+	// TODO: we can add resource selectors in the future.
 
 	// SecurityPolicy is the security policy to apply to this MCP server.
 	//
@@ -151,6 +194,13 @@ type MCPRouteBackendRef struct {
 	// +kubebuilder:validation:MaxItems=32
 	// +optional
 	ForwardHeaders []MCPHeaderForward `json:"forwardHeaders,omitempty"`
+
+	// PrefixMode controls how tool and prompt names from this backend are prefixed.
+	// Takes precedence over the route-level PrefixMode when set.
+	//
+	// +kubebuilder:validation:Optional
+	// +optional
+	PrefixMode *MCPRoutePrefixMode `json:"prefixMode,omitempty"`
 }
 
 // MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
@@ -203,6 +253,46 @@ type MCPToolFilter struct {
 
 	// ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.
 	// Tools matching these patterns will not be available. Exclude rules take precedence over include rules.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	ExcludeRegex []string `json:"excludeRegex,omitempty"`
+}
+
+// MCPPromptFilter filters prompts using include and exclude patterns with exact matches or regular expressions.
+// Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
+// a prompt must match an include rule AND not match any exclude rule to be allowed.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.include) && has(self.includeRegex))", message="include and includeRegex are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!(has(self.exclude) && has(self.excludeRegex))", message="exclude and excludeRegex are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="has(self.include) || has(self.includeRegex) || has(self.exclude) || has(self.excludeRegex)", message="at least one of include, includeRegex, exclude, or excludeRegex must be specified"
+type MCPPromptFilter struct {
+	// Include is a list of prompt names to include. Only the specified prompts will be available.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	Include []string `json:"include,omitempty"`
+
+	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the prompt.
+	// Only prompts matching these patterns will be available.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	IncludeRegex []string `json:"includeRegex,omitempty"`
+
+	// Exclude is a list of prompt names to exclude. The specified prompts will not be available.
+	// Exclude rules take precedence over include rules.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	Exclude []string `json:"exclude,omitempty"`
+
+	// ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the prompt.
+	// Prompts matching these patterns will not be available. Exclude rules take precedence over include rules.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32

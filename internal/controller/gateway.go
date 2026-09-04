@@ -607,12 +607,24 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 					ExcludeRegex: b.ToolSelector.ExcludeRegex,
 				}
 			}
+			if b.PromptSelector != nil {
+				mcpBackend.PromptSelector = &filterapi.MCPPromptSelector{
+					Include:      b.PromptSelector.Include,
+					IncludeRegex: b.PromptSelector.IncludeRegex,
+					Exclude:      b.PromptSelector.Exclude,
+					ExcludeRegex: b.PromptSelector.ExcludeRegex,
+				}
+			}
 			for _, fh := range b.ForwardHeaders {
 				hf := filterapi.MCPHeaderForward{Name: fh.Name}
 				if fh.BackendHeader != nil {
 					hf.BackendHeader = *fh.BackendHeader
 				}
 				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
+			}
+			// Propagate per-backend PrefixMode for all valid enum values.
+			if b.PrefixMode != nil {
+				mcpBackend.PrefixMode = filterapi.PrefixMode(*b.PrefixMode)
 			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
@@ -718,6 +730,10 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 					mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, *h)
 				}
 			}
+		}
+		// Thread PrefixMode from the k8s spec into the filter config.
+		if route.Spec.PrefixMode != nil && *route.Spec.PrefixMode == aigv1b1.MCPRoutePrefixModeNever {
+			mcpRoute.PrefixMode = filterapi.PrefixModeNever
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
