@@ -52,6 +52,13 @@ type Config struct {
 	UnscopedModels []Model `json:"unscopedModels,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
+	// CredentialOverrideStripHeaders are per-request credential input headers that must be
+	// stripped from the request before it reaches any backend, not only the one whose
+	// credentialOverride reads them: the injecting filter runs before routing, and Envoy replays
+	// the original request headers on retries and priority fallback. NewRuntimeConfig merges
+	// these, plus every backend's own InputHeadersToRemove, into each backend's
+	// HeaderMutation.Remove.
+	CredentialOverrideStripHeaders []string `json:"credentialOverrideStripHeaders,omitempty"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs

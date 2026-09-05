@@ -89,10 +89,12 @@ func (c *InferencePoolController) syncInferencePool(ctx context.Context, inferen
 }
 
 // routeReferencesInferencePool checks if an AIGatewayRoute references the given InferencePool.
-func (c *InferencePoolController) routeReferencesInferencePool(route *aigv1b1.AIGatewayRoute, inferencePoolName string) bool {
+func routeReferencesInferencePool(route *aigv1b1.AIGatewayRoute, inferencePoolName, inferencePoolNamespace string) bool {
 	for _, rule := range route.Spec.Rules {
-		for _, backendRef := range rule.BackendRefs {
-			if backendRef.IsInferencePool() && backendRef.Name == inferencePoolName {
+		for i := range rule.BackendRefs {
+			backendRef := &rule.BackendRefs[i]
+			if backendRef.IsInferencePool() && backendRef.Name == inferencePoolName &&
+				backendRef.GetNamespace(route.Namespace) == inferencePoolNamespace {
 				return true
 			}
 		}
@@ -162,7 +164,7 @@ func (c *InferencePoolController) gatewayReferencesInferencePool(ctx context.Con
 		// Check if this route references the Gateway.
 		if c.routeReferencesGateway(route.Spec.ParentRefs, gateway.Name, gateway.Namespace, route.Namespace) {
 			// Check if this route references the InferencePool.
-			if c.routeReferencesInferencePool(route, inferencePoolName) {
+			if routeReferencesInferencePool(route, inferencePoolName, inferencePoolNamespace) {
 				return true
 			}
 		}
@@ -342,15 +344,17 @@ func (c *InferencePoolController) aiGatewayRouteEventHandler(_ context.Context, 
 		return nil
 	}
 
-	// Find all InferencePools referenced by this AIGatewayRoute.
+	// Find all InferencePools referenced by this AIGatewayRoute. A backendRef may name another
+	// namespace, in which case that is the pool to reconcile - not one of the same name here.
 	var requests []reconcile.Request
 	for _, rule := range route.Spec.Rules {
-		for _, backendRef := range rule.BackendRefs {
+		for i := range rule.BackendRefs {
+			backendRef := &rule.BackendRefs[i]
 			if backendRef.IsInferencePool() {
 				requests = append(requests, reconcile.Request{
 					NamespacedName: client.ObjectKey{
 						Name:      backendRef.Name,
-						Namespace: route.Namespace,
+						Namespace: backendRef.GetNamespace(route.Namespace),
 					},
 				})
 			}

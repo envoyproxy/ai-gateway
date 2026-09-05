@@ -1122,3 +1122,101 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
+
+// Test_newHTTPRoute_credentialOverrideMetadataNamespacesAnnotation verifies the annotation that
+// makes Envoy Gateway re-translate when a BackendSecurityPolicy's fromDynamicMetadata source
+// changes. Without it, a policy change never reaches xDS and the upstream ext_proc filter keeps
+// a stale forwarding_namespaces list.
+func Test_newHTTPRoute_credentialOverrideMetadataNamespacesAnnotation(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch, "/")
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}}},
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "banana"}}},
+			},
+		},
+	}
+	for _, name := range []string{"apple", "banana"} {
+		require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns1"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend"},
+			},
+		}))
+	}
+
+	// Without any policy the annotation is absent.
+	httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1"}}
+	require.NoError(t, c.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute))
+	require.NotContains(t, httpRoute.Annotations, httpRouteCredentialOverrideMetadataNamespacesAnnotationKey)
+
+	// Policies attached to this route's backends change the annotation; the value maps each
+	// backend to the sorted namespaces its policy names, matching what the extension server puts
+	// into that backend's cluster.
+	// The last one targets a backend this route doesn't reference and must not appear: a global
+	// union would churn this annotation on every unrelated policy change in the cluster.
+	for i, tc := range []struct{ backend, namespace string }{
+		{"apple", "envoy.filters.http.ext_authz"},
+		{"apple", "zzz.custom"},
+		{"apple", "envoy.filters.http.ext_authz"},
+		{"orange", "unrelated.namespace"},
+	} {
+		require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bsp-%d", i), Namespace: "ns1"},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+					Group: aiServiceBackendGroup,
+					Kind:  aiServiceBackendKind,
+					Name:  gwapiv1.ObjectName(tc.backend),
+				}},
+				CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+					FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{Namespace: tc.namespace},
+				},
+			},
+		}))
+	}
+	require.NoError(t, c.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute))
+	// The value is per backend and readable, so the generated HTTPRoute says who forwards what.
+	require.Equal(t, "0:apple:envoy.filters.http.ext_authz|zzz.custom",
+		httpRoute.Annotations[httpRouteCredentialOverrideMetadataNamespacesAnnotationKey])
+
+	// A second backend of the same route gaining a namespace apple already uses must still change
+	// the annotation. With a flat union it would not, Envoy Gateway would never re-translate, and
+	// banana's cluster would keep forwarding nothing while its policy silently fell back.
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-banana", Namespace: "ns1"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{
+				Group: aiServiceBackendGroup,
+				Kind:  aiServiceBackendKind,
+				Name:  "banana",
+			}},
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{Namespace: "envoy.filters.http.ext_authz"},
+			},
+		},
+	}))
+	require.NoError(t, c.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute))
+	require.Equal(t, "0:apple:envoy.filters.http.ext_authz|zzz.custom,1:banana:envoy.filters.http.ext_authz",
+		httpRoute.Annotations[httpRouteCredentialOverrideMetadataNamespacesAnnotationKey])
+	require.NoError(t, fakeClient.Delete(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-banana", Namespace: "ns1"},
+	}))
+
+	// On updates dst is the live object: deleting the last metadata-sourced policy must remove
+	// the key from it, so the HTTPRoute still changes and Envoy Gateway re-translates to clear
+	// the forwarding list.
+	for i := range 4 {
+		require.NoError(t, fakeClient.Delete(t.Context(), &aigv1b1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bsp-%d", i), Namespace: "ns1"},
+		}))
+	}
+	require.NoError(t, c.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute))
+	require.NotContains(t, httpRoute.Annotations, httpRouteCredentialOverrideMetadataNamespacesAnnotationKey)
+}

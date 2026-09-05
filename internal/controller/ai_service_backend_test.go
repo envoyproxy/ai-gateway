@@ -109,6 +109,23 @@ func TestAIServiceBackendController_Reconcile_error_with_multiple_bsps(t *testin
 
 	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: backendName, Namespace: namespace}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendName}})
-	require.ErrorContains(t, err, `multiple BackendSecurityPolicies found for AIServiceBackend mybackend: [bsp-0 bsp-1 bsp-2 bsp-3 bsp-4]`)
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: namespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{
+			{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: backendName}}},
+		}},
+	}))
+	// The misconfiguration lands on the status condition, without a requeue: retrying with
+	// backoff cannot fix it and would re-run the route fan-out and its API writes every tick.
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendName}})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res)
+	var updated aigv1b1.AIServiceBackend
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: backendName}, &updated))
+	require.NotEmpty(t, updated.Status.Conditions)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updated.Status.Conditions[0].Type)
+	require.Contains(t, updated.Status.Conditions[0].Message, `multiple BackendSecurityPolicies found for AIServiceBackend mybackend: [bsp-0 bsp-1 bsp-2 bsp-3 bsp-4]`)
+	// The routes still get resynced: otherwise a second policy attached at any point would freeze
+	// every route on this backend at whatever config it last had.
+	require.Equal(t, "myroute", eventChan.RequireItemsEventually(t, 1)[0].Name)
 }

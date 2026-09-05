@@ -89,6 +89,16 @@ func AWSCredentialOverrideHeaderNames(prefix string) (accessKeyID, secretAccessK
 	return prefix + "access-key-id", prefix + "secret-access-key", prefix + "session-token"
 }
 
+// IsReservedRequestHeader returns true for headers managed by Envoy or AI Gateway itself:
+// pseudo-headers, x-ai-eg-* and x-envoy-original-path. The extproc's header mutator refuses to
+// mutate these, and the controller rejects them as credentialOverride input headers. Both go
+// through this function so the two checks stay in sync.
+func IsReservedRequestHeader(key string) bool {
+	return strings.HasPrefix(key, ":") ||
+		strings.HasPrefix(key, EnvoyAIGatewayHeaderPrefix) ||
+		strings.EqualFold(key, EnvoyOriginalPathHeader)
+}
+
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
 //
 // Only headers that do not survive to the router belong here. Headers the MCP proxy sets and leaves

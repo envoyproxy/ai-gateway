@@ -1427,80 +1427,26 @@ func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) 
 	require.True(t, auth.CredentialOverride.FallbackToConfigured)
 }
 
-func TestStripCredentialOverrideInputHeaders(t *testing.T) {
-	awsOverride := func() *filterapi.BackendAuth {
-		return &filterapi.BackendAuth{
-			AWSAuth: &filterapi.AWSAuth{Region: "us-east-1"},
-			CredentialOverride: &filterapi.CredentialOverride{
-				HeaderName: "x-aigw-aws-",
-				InputHeadersToRemove: []string{
-					"x-aigw-aws-access-key-id",
-					"x-aigw-aws-secret-access-key",
-					"x-aigw-aws-session-token",
-				},
-			},
-		}
+func TestResolveCredentialOverride_reservedHeaderNames(t *testing.T) {
+	// A reserved name would authenticate fine while the mutator silently refuses the strip.
+	for _, header := range []string{
+		"x-ai-eg-tenant-key",
+		":authority",
+		"x-envoy-original-path",
+		"X-Envoy-Original-Path",
+	} {
+		_, err := resolveCredentialOverride(aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: header},
+			}, true)
+		require.ErrorContains(t, err, "reserved name", "header %q", header)
 	}
-
-	t.Run("AWS strips all three credential headers", func(t *testing.T) {
-		b := &filterapi.Backend{Auth: awsOverride()}
-		stripCredentialOverrideInputHeaders(b)
-		require.NotNil(t, b.HeaderMutation)
-		require.Equal(t, []string{
-			"x-aigw-aws-access-key-id",
-			"x-aigw-aws-secret-access-key",
-			"x-aigw-aws-session-token",
-		}, b.HeaderMutation.Remove)
-	})
-
-	t.Run("appends to an existing remove list rather than replacing it", func(t *testing.T) {
-		b := &filterapi.Backend{
-			Auth:           awsOverride(),
-			HeaderMutation: &filterapi.HTTPHeaderMutation{Remove: []string{"x-user-supplied"}},
-		}
-		stripCredentialOverrideInputHeaders(b)
-		require.Equal(t, []string{
-			"x-user-supplied",
-			"x-aigw-aws-access-key-id",
-			"x-aigw-aws-secret-access-key",
-			"x-aigw-aws-session-token",
-		}, b.HeaderMutation.Remove)
-	})
-
-	t.Run("single-valued for non-AWS types", func(t *testing.T) {
-		b := &filterapi.Backend{Auth: &filterapi.BackendAuth{
-			APIKey: &filterapi.APIKeyAuth{Key: "static"},
-			CredentialOverride: &filterapi.CredentialOverride{
-				HeaderName:           "x-aigw-api-key",
-				InputHeadersToRemove: []string{"x-aigw-api-key"},
-			},
-		}}
-		stripCredentialOverrideInputHeaders(b)
-		require.Equal(t, []string{"x-aigw-api-key"}, b.HeaderMutation.Remove)
-	})
-
-	t.Run("metadata source strips nothing", func(t *testing.T) {
-		// Out-of-band credential: no header to remove, no HeaderMutation to materialize.
-		b := &filterapi.Backend{Auth: &filterapi.BackendAuth{
-			AWSAuth: &filterapi.AWSAuth{Region: "us-east-1"},
-			CredentialOverride: &filterapi.CredentialOverride{
-				DynamicMetadataNamespace: "envoy.filters.http.ext_authz",
-				DynamicMetadataKey:       "x-aigw-aws-credentials",
-			},
-		}}
-		stripCredentialOverrideInputHeaders(b)
-		require.Nil(t, b.HeaderMutation)
-	})
-
-	t.Run("no auth and no override are no-ops", func(t *testing.T) {
-		b := &filterapi.Backend{}
-		stripCredentialOverrideInputHeaders(b)
-		require.Nil(t, b.HeaderMutation)
-
-		b = &filterapi.Backend{Auth: &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: "static"}}}
-		stripCredentialOverrideInputHeaders(b)
-		require.Nil(t, b.HeaderMutation)
-	})
+	// AWS: the derived names inherit the prefix, so a reserved prefix is caught on them too.
+	_, err := resolveCredentialOverride(aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+		&aigv1b1.BackendSecurityPolicyCredentialOverride{
+			FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "x-ai-eg-aws-"},
+		}, true)
+	require.ErrorContains(t, err, "reserved name")
 }
 
 func TestGatewayController_bspToFilterAPIBackendAuth_AWSWithOverride(t *testing.T) {
@@ -3035,9 +2981,14 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
 
-	// Then it should result in the error due to multiple BSPs found.
-	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
-	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
+	// Multiple policies: the oldest stays in effect, per the Gateway API conflict convention.
+	// Rejecting instead would turn the misconfiguration into an outage and let any policy
+	// creator take the backend down; the newer policy is simply ignored. The fake client stamps
+	// identical creation times, so the name tie-breaker picks bsp-bar over bsp-bar-target-refs.
+	_, dupBSP, err := c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.NoError(t, err)
+	require.NotNil(t, dupBSP)
+	require.Equal(t, bspName, dupBSP.Name)
 }
 
 // Ensure MCP-only routes produce a correct MCPConfig in the filter Secret.
@@ -4006,4 +3957,98 @@ func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
 	require.Equal(t, ns, namespace)
 	require.Len(t, pods, 1)
 	require.Len(t, deployments, 1)
+}
+
+// Verifies the spec-to-config wiring for the credential strip list, including that a policy
+// whose unreadable Secret skips its backend still contributes - the degraded path where traffic
+// falls back to the survivors.
+func TestGatewayController_reconcileFilterConfigSecret_credentialOverrideStrip(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					// One rule with the override-owning backend, its fallback sibling, and a
+					// backend whose policy's Secret is missing.
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "with-override"},
+						{Name: "sibling"},
+						{Name: "broken-secret"},
+					}},
+				},
+			},
+		},
+		{
+			// A separate route: the trusted filter injects the header before routing, so this
+			// route's backend must strip it too.
+			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "other-route-backend"}}},
+				},
+			},
+		},
+	}
+	for _, name := range []string{"with-override", "sibling", "broken-secret", "other-route-backend"} {
+		require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		}))
+	}
+	targetRef := func(backend string) []gwapiv1a2.LocalPolicyTargetReference {
+		return []gwapiv1a2.LocalPolicyTargetReference{
+			{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: gwapiv1a2.ObjectName(backend)},
+		}
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "override-bsp", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:       aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey:     &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "override-secret"}},
+			TargetRefs: targetRef("with-override"),
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+			},
+		},
+	}))
+	_, err := kube.CoreV1().Secrets(gwNamespace).Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "override-secret", Namespace: gwNamespace},
+		StringData: map[string]string{apiKeyInSecret: "configured-key"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	// Policy with a fromRequestHeaders override whose Secret does not exist: its backend is
+	// skipped for availability, but x-broken-cred must still land in the union.
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "broken-bsp", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:       aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey:     &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "does-not-exist"}},
+			TargetRefs: targetRef("broken-secret"),
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{Header: "x-broken-cred"},
+			},
+		},
+	}))
+
+	const someNamespace = "some-namespace"
+	effective, err2 := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
+	require.NoError(t, err2)
+	require.True(t, effective)
+
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
+	// broken-secret's backend is skipped, but its policy still contributes to the strip list.
+	// The extproc merges the list into every backend's HeaderMutation.Remove at config load.
+	require.Len(t, fc.Backends, 3)
+	require.Equal(t, []string{"x-aigw-api-key", "x-broken-cred"}, fc.CredentialOverrideStripHeaders)
+	for _, b := range fc.Backends {
+		require.Nil(t, b.HeaderMutation, "backend %s", b.Name)
+	}
 }

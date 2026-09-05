@@ -41,6 +41,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/backendpolicy"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
@@ -178,7 +179,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
 	inferencePoolEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), aiServiceBackendEventChan, inferencePoolEventChan)
+		WithName("backend-security-policy"), aiServiceBackendEventChan, inferencePoolEventChan, aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.BackendSecurityPolicy{}).
 		WatchesRawSource(source.Channel(
 			backendSecurityPolicyEventChan,
@@ -307,8 +308,9 @@ const (
 	// AIGatewayRoute that references it.
 	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
 	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
-	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
-	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
+	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend. The extension server
+	// reads the same index, so the name is defined in the leaf package both sides import.
+	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = backendpolicy.IndexBackendToTargetingPolicy
 	// k8sClientIndexAIServiceBackendToTargetingQuotaPolicy is the index name that maps from an AIServiceBackend
 	// to the QuotaPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingQuotaPolicy = "AIServiceBackendToTargetingQuotaPolicy"

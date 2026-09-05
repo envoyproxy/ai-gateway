@@ -201,6 +201,18 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		// AWSCredentials used to be rejected outright by a CEL rule, because SigV4 needs three
 		// inputs and the override plumbing carried one string.
 		{name: "aws_credential_override.yaml"},
+		{
+			// Separator characters would make the controller's per-backend namespace bookkeeping
+			// ambiguous, so the namespace is limited to the Envoy filter name character set.
+			name:   "credential_override_bad_metadata_namespace.yaml",
+			expErr: "spec.credentialOverride.fromDynamicMetadata.namespace in body should match",
+		},
+		{
+			// Reserved names cannot be stripped by the gateway before the request egresses, so a
+			// policy naming one would silently forward the raw per-request credential upstream.
+			name:   "credential_override_reserved_header.yaml",
+			expErr: "header must not use a reserved name",
+		},
 		{name: "gcp_oidc.yaml"},
 		{name: "anthropic-apikey.yaml"},
 		{name: "targetrefs_basic.yaml"},
