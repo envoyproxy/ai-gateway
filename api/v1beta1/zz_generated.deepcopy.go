@@ -1511,6 +1511,11 @@ func (in *MCPRouteOAuth) DeepCopyInto(out *MCPRouteOAuth) {
 		*out = new(JWKS)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.AuthorizationServerMetadataURL != nil {
+		in, out := &in.AuthorizationServerMetadataURL, &out.AuthorizationServerMetadataURL
+		*out = new(string)
+		**out = **in
+	}
 	in.ProtectedResourceMetadata.DeepCopyInto(&out.ProtectedResourceMetadata)
 	if in.ClaimToHeaders != nil {
 		in, out := &in.ClaimToHeaders, &out.ClaimToHeaders
