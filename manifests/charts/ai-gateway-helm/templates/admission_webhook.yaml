@@ -60,7 +60,7 @@ metadata:
 spec:
   selfSigned: {}
 ---
-{{- else }}
+{{- else if .Values.controller.mutatingWebhook.createSecret }}
 {{- $caCrt := "" }}
 {{- $tlsCrt := "" }}
 {{- $tlsKey := "" }}
