@@ -537,6 +537,11 @@ func TestParseURL(t *testing.T) {
 			baseURL:       "ftp://example.com",
 			expectedError: fmt.Errorf("invalid base URL: unsupported scheme \"ftp\""),
 		},
+		{
+			name:          "unsupported scheme with explicit port",
+			baseURL:       "ftp://example.com:21",
+			expectedError: fmt.Errorf("invalid base URL: unsupported scheme \"ftp\""),
+		},
 	}
 
 	for _, tt := range tests {
