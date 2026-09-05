@@ -89,6 +89,11 @@ const LLMProvidersList: LLMProvider[] = [
     name: 'Anthropic',
     logoUrl: '/img/providers/anthropic.svg',
     status: 'supported',
+  },
+  {
+    name: 'The Grid',
+    logoUrl: '/img/providers/thegrid.svg',
+    status: 'supported',
   }
 ].sort((a, b) => a.name.localeCompare(b.name)) as LLMProvider[];
 
