@@ -591,7 +591,7 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 		span.RecordClientSession(string(s.clientGatewaySessionID()))
 	}
 
-	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
+	result := mcp.InitializeResult{ProtocolVersion: s.mergedProtocolVersion(p.ProtocolVersion), ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
 	result.ServerInfo.Version = version.Parse()
 	result.Capabilities = s.mergedCapabilities()
@@ -621,6 +621,50 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(data)
 	return err
+}
+
+// mergedProtocolVersion returns the minimum protocol version across all backends,
+// capped by the client's requested version. MCP protocol versions are ISO date
+// strings (YYYY-MM-DD), so lexicographic comparison gives chronological ordering.
+//
+// IMPORTANT: MCP protocol versions are NOT backward compatible. In particular, the
+// transport layer changed incompatibly between 2024-11-05 and 2025-03-26+, breaking
+// message framing. When backends have different versions, we must downgrade to the
+// minimum version to maintain connectivity, but this may cause feature degradation.
+func (s *session) mergedProtocolVersion(clientVersion string) string {
+	var minVersion string
+	for _, entry := range s.perBackendSessions {
+		v := entry.protocolVersion
+		if v == "" {
+			continue
+		}
+		if minVersion == "" || v < minVersion {
+			minVersion = v
+		}
+	}
+	if minVersion == "" {
+		minVersion = protocolVersion20250618
+	}
+	if clientVersion != "" && clientVersion < minVersion {
+		minVersion = clientVersion
+	}
+
+	// Warn if any backend will be downgraded (single warning, not per-backend spam)
+	var downgradedBackends []string
+	for name, entry := range s.perBackendSessions {
+		v := entry.protocolVersion
+		if v != "" && v > minVersion {
+			downgradedBackends = append(downgradedBackends, fmt.Sprintf("%s(%s)", name, v))
+		}
+	}
+	if len(downgradedBackends) > 0 {
+		s.reqCtx.l.Warn("MCP version mismatch: downgrading backends due to backward-incompatibility",
+			slog.String("merged_version", minVersion),
+			slog.String("downgraded_backends", strings.Join(downgradedBackends, ", ")),
+			slog.String("note", "2024-11-05 and 2025-03-26+ have incompatible transports"))
+	}
+
+	return minVersion
 }
 
 // handleClientToServerResponse handles the response from client to server.
