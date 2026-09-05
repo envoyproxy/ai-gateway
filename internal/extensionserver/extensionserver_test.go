@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"testing"
 	"time"
 
@@ -145,6 +146,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.Len(t, res.Clusters, 2)
 		require.Equal(t, "foo", res.Clusters[0].Name)
 		require.Equal(t, extProcUDSClusterName, res.Clusters[1].Name)
+		requireMaxExtProcCircuitBreakers(t, res.Clusters[1])
 	})
 }
 
@@ -2182,6 +2184,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 		require.Equal(t, clusterv3.Cluster_LEAST_REQUEST, cluster.LbPolicy)
 		require.NotNil(t, cluster.LoadAssignment)
 		require.Len(t, cluster.LoadAssignment.Endpoints, 1)
+		requireMaxExtProcCircuitBreakers(t, cluster)
 	})
 
 	t.Run("nil pool panics", func(t *testing.T) {
@@ -2496,6 +2499,18 @@ func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
 		}
 		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
 	})
+}
+
+func requireMaxExtProcCircuitBreakers(t *testing.T, cluster *clusterv3.Cluster) {
+	t.Helper()
+	require.NotNil(t, cluster.CircuitBreakers)
+	require.Len(t, cluster.CircuitBreakers.Thresholds, 1)
+	th := cluster.CircuitBreakers.Thresholds[0]
+	maxInt32 := uint32(math.MaxInt32)
+	require.Equal(t, maxInt32, th.GetMaxConnections().GetValue())
+	require.Equal(t, maxInt32, th.GetMaxPendingRequests().GetValue())
+	require.Equal(t, maxInt32, th.GetMaxRequests().GetValue())
+	require.Equal(t, maxInt32, th.GetMaxRetries().GetValue())
 }
 
 func TestEndpointUpstreamHost(t *testing.T) {
