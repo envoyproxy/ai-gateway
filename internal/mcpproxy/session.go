@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -40,6 +41,16 @@ const (
 
 	lastEventIDHeader = "Last-Event-Id"
 )
+
+// isJSONContentType reports whether the Content-Type header names the
+// application/json media type, ignoring parameters such as charset.
+func isJSONContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/json"
+}
 
 // backendEvent wraps an sseEvent with request timing context for metrics.
 type backendEvent struct {
@@ -447,7 +458,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		return fmt.Errorf("MCP GET request failed with status code %d, body=%s", httpResp.StatusCode, string(body))
 	}
 
-	if httpResp.Header.Get("Content-Type") == "application/json" {
+	if isJSONContentType(httpResp.Header.Get("Content-Type")) {
 		// Try to decode as a single JSON-RPC message first.
 		var respBody []byte
 		respBody, err = io.ReadAll(bodyReader)
