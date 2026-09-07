@@ -427,7 +427,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					}
 					model := filterapi.Model{
 						Name:      h.Value,
-						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
+						CreatedAt: ptr.Deref(rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
 					}
 					ec.Models = append(ec.Models, model)
@@ -1307,7 +1307,7 @@ func workloadTemplateAnnotationPatch(uuid, desiredHash string, includeUUID, incl
 	if includeHash {
 		annotations = append(annotations, fmt.Sprintf(`"%s":"%s"`, extProcConfigHashAnnotationKey, desiredHash))
 	}
-	return []byte(fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{%s}}}}}`, strings.Join(annotations, ",")))
+	return fmt.Appendf(nil, `{"spec":{"template":{"metadata":{"annotations":{%s}}}}}`, strings.Join(annotations, ","))
 }
 
 // getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.

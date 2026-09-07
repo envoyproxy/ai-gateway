@@ -168,6 +168,8 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
+		// TODO: remvoe this after upstream issue fixed.
+		"registry.k8s.io/gateway-api-inference-extension/lwepp:v1.6.0",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
@@ -383,17 +385,6 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 		fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/%s/manifests.yaml", infExtVersion),
 	); err != nil {
 		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
-	}
-	baseURL := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/%s/config/manifests", infExtVersion)
-	for _, manifest := range []string{
-		"vllm/sim-deployment.yaml",
-		"inferencepool-resources.yaml",
-		"inferenceobjective.yaml",
-	} {
-		initLog(fmt.Sprintf("\tApplying InferencePool manifest: %s", manifest))
-		if err = KubectlApplyManifest(ctx, fmt.Sprintf("%s/%s", baseURL, manifest)); err != nil {
-			return fmt.Errorf("failed to apply InferencePool manifest %s: %w", manifest, err)
-		}
 	}
 	return nil
 }
