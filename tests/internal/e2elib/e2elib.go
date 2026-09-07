@@ -169,6 +169,7 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
 		// TODO: remvoe this after upstream issue fixed.
+		// see https://github.com/kubernetes-sigs/gateway-api-inference-extension/issues/3035
 		"registry.k8s.io/gateway-api-inference-extension/lwepp:v1.6.0",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
