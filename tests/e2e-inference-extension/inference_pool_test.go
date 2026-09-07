@@ -25,6 +25,8 @@ import (
 
 // TestInferencePoolIntegration tests the InferencePool integration with AI Gateway.
 func TestInferencePoolIntegration(t *testing.T) {
+	t.Skip("Skipping InferencePool integration, this's covered by the conformance test, probably we can remove this test in the future.")
+
 	// Apply the base test manifest.
 	const baseManifest = "../../examples/inference-pool/base.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
