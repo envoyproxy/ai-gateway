@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -41,16 +40,6 @@ const (
 
 	lastEventIDHeader = "Last-Event-Id"
 )
-
-// isJSONContentType reports whether the Content-Type header names the
-// application/json media type, ignoring parameters such as charset.
-func isJSONContentType(contentType string) bool {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
-	}
-	return mediaType == "application/json"
-}
 
 // backendEvent wraps an sseEvent with request timing context for metrics.
 type backendEvent struct {
