@@ -173,7 +173,7 @@ data:
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pod-read
+  name: mistral-epp-pod-read
   namespace: default
 rules:
   - apiGroups: ["inference.networking.k8s.io"]
@@ -186,7 +186,7 @@ rules:
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pod-read-binding
+  name: mistral-epp-pod-read-binding
   namespace: default
 subjects:
   - kind: ServiceAccount
@@ -195,12 +195,12 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: pod-read
+  name: mistral-epp-pod-read
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: auth-reviewer
+  name: mistral-epp-auth-reviewer
 rules:
   - apiGroups:
       - authentication.k8s.io
@@ -218,7 +218,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: auth-reviewer-binding
+  name: mistral-epp-auth-reviewer-binding
 subjects:
   - kind: ServiceAccount
     name: mistral-epp
@@ -226,7 +226,7 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: auth-reviewer
+  name: mistral-epp-auth-reviewer
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
@@ -421,7 +421,7 @@ data:
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pod-read
+  name: vllm-llama3-8b-instruct-epp-pod-read
   namespace: default
 rules:
   - apiGroups: ["inference.networking.k8s.io"]
@@ -434,7 +434,7 @@ rules:
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pod-read-binding
+  name: vllm-llama3-8b-instruct-epp-pod-read-binding
   namespace: default
 subjects:
   - kind: ServiceAccount
@@ -443,12 +443,12 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: pod-read
+  name: vllm-llama3-8b-instruct-epp-pod-read
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: auth-reviewer
+  name: vllm-llama3-8b-instruct-epp-auth-reviewer
 rules:
   - apiGroups:
       - authentication.k8s.io
@@ -466,7 +466,7 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: auth-reviewer-binding
+  name: vllm-llama3-8b-instruct-epp-auth-reviewer-binding
 subjects:
   - kind: ServiceAccount
     name: vllm-llama3-8b-instruct-epp
@@ -474,7 +474,7 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: auth-reviewer
+  name: vllm-llama3-8b-instruct-epp-auth-reviewer
 ---
 apiVersion: apps/v1
 kind: Deployment
