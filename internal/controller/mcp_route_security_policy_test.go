@@ -610,10 +610,13 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_ClaimToHeaders(t *testing
 	require.Len(t, sp.Spec.JWT.Providers, 1)
 
 	provider := sp.Spec.JWT.Providers[0]
-	require.Len(t, provider.ClaimToHeaders, 3)
-	require.Equal(t, egv1a1.ClaimToHeader{Claim: "sub", Header: "X-User-Id"}, provider.ClaimToHeaders[0])
-	require.Equal(t, egv1a1.ClaimToHeader{Claim: "email", Header: "X-User-Email"}, provider.ClaimToHeaders[1])
-	require.Equal(t, egv1a1.ClaimToHeader{Claim: "realm_access.roles", Header: "X-User-Roles"}, provider.ClaimToHeaders[2])
+	require.Len(t, provider.ClaimToHeaders, 4)
+	// The gateway always projects the verified "sub" claim into the trusted subject header first,
+	// so the MCP proxy can read the subject without re-parsing the client-controlled token.
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "sub", Header: internalapi.MCPSubjectHeader}, provider.ClaimToHeaders[0])
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "sub", Header: "X-User-Id"}, provider.ClaimToHeaders[1])
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "email", Header: "X-User-Email"}, provider.ClaimToHeaders[2])
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "realm_access.roles", Header: "X-User-Roles"}, provider.ClaimToHeaders[3])
 }
 
 func Test_buildOAuthProtectedResourceMetadataJSON(t *testing.T) {
