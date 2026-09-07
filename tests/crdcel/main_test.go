@@ -97,6 +97,7 @@ func TestAIServiceBackends(t *testing.T) {
 		{name: "basic.yaml"},
 		{name: "anthropic-schema.yaml"},
 		{name: "basic-eg-backend-aws.yaml"},
+		{name: "aws-openai-schema.yaml"},
 		{name: "basic-eg-backend-azure.yaml"},
 		{name: "openai-responses.yaml", expectedTranslation: aigv1b1.OpenAIMessagesTranslationResponses},
 		{name: "openai-capabilities-default.yaml", expectedTranslation: aigv1b1.OpenAIMessagesTranslationChatCompletions},
@@ -113,6 +114,12 @@ func TestAIServiceBackends(t *testing.T) {
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"Cohere\", \"AWSBedrock\", \"AzureOpenAI\", \"GCPVertexAI\", \"GCPAnthropic\", \"Anthropic\"",
 		},
 		{name: "k8s-svc.yaml", expErr: "BackendRef must be a Backend resource of Envoy Gateway"},
+		{name: "header-value-filters-gcpanthropic.yaml"},
+		{name: "header-value-filters-awsanthropic.yaml"},
+		{
+			name:   "header-value-filters-unsupported-schema.yaml",
+			expErr: "headerValueFilters is only honored by GCPAnthropic and AWSAnthropic backends",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))

@@ -722,6 +722,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		headerSetter.SetRequestHeaders(u.requestHeaders)
 	}
 
+	if filters := backend.Backend.HeaderValueFilters; len(filters) > 0 {
+		if filterSetter, ok := u.translator.(translator.HeaderValueFilterSetter); ok {
+			for _, f := range filters {
+				filterSetter.SetHeaderValueFilter(f.Name, f.Mode, f.Values)
+			}
+		}
+	}
+
 	switch redactor := u.translator.(type) {
 	case translator.ResponseRedactor:
 		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)

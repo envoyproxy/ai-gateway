@@ -37,8 +37,10 @@ func NewAnthropicToAWSAnthropicTranslator(apiVersion string, modelNameOverride i
 
 type anthropicToAWSAnthropicTranslator struct {
 	anthropicToAnthropicTranslator
-	apiVersion     string
-	anthropicBetas []string
+	apiVersion       string
+	anthropicBetas   []string
+	betaFilterMode   string
+	betaFilterValues []string
 }
 
 // awsBedrockSupportedAnthropicBetas is the allowlist of anthropic-beta flags that AWS Bedrock
@@ -91,27 +93,40 @@ var anthropicAPIToBedrockBetaAliases = map[string]string{
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
 	var anthropicBetas []string
 	seen := map[string]struct{}{}
-	if betaHeader := headers["anthropic-beta"]; betaHeader != "" {
-		for _, beta := range strings.Split(betaHeader, ",") {
-			beta = strings.TrimSpace(beta)
-			// Translate Anthropic-API-only flag names to their Bedrock equivalents
-			// before the allowlist check.
-			if alias, ok := anthropicAPIToBedrockBetaAliases[beta]; ok {
-				beta = alias
+	for _, beta := range parseCommaSeparatedHeader(headers, anthropicBetaHeaderName) {
+		// Translate Anthropic-API-only flag names to their Bedrock equivalents
+		// before the allowlist check.
+		if alias, ok := anthropicAPIToBedrockBetaAliases[beta]; ok {
+			beta = alias
+		}
+		if _, ok := awsBedrockSupportedAnthropicBetas[beta]; ok {
+			// An alias can collide with an explicitly sent flag (e.g. both
+			// advanced-tool-use-2025-11-20 and tool-search-tool-2025-10-19);
+			// forward each Bedrock flag only once.
+			if _, dup := seen[beta]; dup {
+				continue
 			}
-			if _, ok := awsBedrockSupportedAnthropicBetas[beta]; ok {
-				// An alias can collide with an explicitly sent flag (e.g. both
-				// advanced-tool-use-2025-11-20 and tool-search-tool-2025-10-19);
-				// forward each Bedrock flag only once.
-				if _, dup := seen[beta]; dup {
-					continue
-				}
-				seen[beta] = struct{}{}
-				anthropicBetas = append(anthropicBetas, beta)
-			}
+			seen[beta] = struct{}{}
+			anthropicBetas = append(anthropicBetas, beta)
 		}
 	}
 	a.anthropicBetas = anthropicBetas
+}
+
+// SetHeaderValueFilter implements [HeaderValueFilterSetter]. Only anthropic-beta is handled here:
+// Bedrock reads these values from the request body rather than the header, so the filtered set has
+// to be mirrored into the body's anthropic_beta field by RequestBody below. Filters on any other
+// header are applied by Envoy's header mutation instead.
+//
+// This filter runs on top of the awsBedrockSupportedAnthropicBetas allowlist applied in
+// SetRequestHeaders: that allowlist is the static, code-level set of flags Bedrock is known to
+// accept, while this is the operator's per-backend policy over what remains.
+func (a *anthropicToAWSAnthropicTranslator) SetHeaderValueFilter(name, mode string, values []string) {
+	if !strings.EqualFold(name, anthropicBetaHeaderName) {
+		return
+	}
+	a.betaFilterMode = mode
+	a.betaFilterValues = values
 }
 
 // ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
@@ -148,8 +163,9 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
 
-	if len(a.anthropicBetas) > 0 {
-		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", a.anthropicBetas, sjsonOptionsInPlace)
+	betas, betasChanged := filterHeaderValues(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues)
+	if len(betas) > 0 {
+		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", betas, sjsonOptionsInPlace)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set anthropic_beta field: %w", err)
 		}
@@ -170,6 +186,11 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	path := fmt.Sprintf(pathTemplate, encodedModelID)
 
 	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	// When the beta filter dropped a value, overwrite the forwarded anthropic-beta header to match the
+	// filtered set (Bedrock reads the body anthropic_beta field, but keep the header consistent).
+	if betasChanged {
+		newHeaders = append(newHeaders, internalapi.Header{anthropicBetaHeaderName, strings.Join(betas, ",")})
+	}
 	return
 }
 
