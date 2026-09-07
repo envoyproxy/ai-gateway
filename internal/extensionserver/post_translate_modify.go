@@ -53,10 +53,8 @@ func maxExtProcCircuitBreakers() *clusterv3.CircuitBreakers {
 	maxInt32 := wrapperspb.UInt32(uint32(math.MaxInt32))
 	return &clusterv3.CircuitBreakers{
 		Thresholds: []*clusterv3.CircuitBreakers_Thresholds{{
-			MaxConnections:     maxInt32,
-			MaxPendingRequests: maxInt32,
-			MaxRequests:        maxInt32,
-			MaxRetries:         maxInt32,
+			MaxConnections: maxInt32,
+			MaxRequests:    maxInt32,
 		}},
 	}
 }
@@ -171,8 +169,9 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 			//
 			// So, we set it to 50MBi.
 			PerConnectionBufferLimitBytes: wrapperspb.UInt32(52428800),
-			// Default max_requests of 1024 causes gRPC overflow under concurrency.
-			// Use MaxInt32 so limits are applied on downstream/upstream config instead.
+			// Default max_connections and max_requests of 1024 can cause gRPC overflow
+			// under concurrency. Use MaxInt32 so limits are applied on downstream/upstream
+			// config instead.
 			CircuitBreakers: maxExtProcCircuitBreakers(),
 			LoadAssignment: &endpointv3.ClusterLoadAssignment{
 				ClusterName: extProcUDSClusterName,

@@ -2508,9 +2508,9 @@ func requireMaxExtProcCircuitBreakers(t *testing.T, cluster *clusterv3.Cluster) 
 	th := cluster.CircuitBreakers.Thresholds[0]
 	maxInt32 := uint32(math.MaxInt32)
 	require.Equal(t, maxInt32, th.GetMaxConnections().GetValue())
-	require.Equal(t, maxInt32, th.GetMaxPendingRequests().GetValue())
+	require.Nil(t, th.MaxPendingRequests)
 	require.Equal(t, maxInt32, th.GetMaxRequests().GetValue())
-	require.Equal(t, maxInt32, th.GetMaxRetries().GetValue())
+	require.Nil(t, th.MaxRetries)
 }
 
 func TestEndpointUpstreamHost(t *testing.T) {
