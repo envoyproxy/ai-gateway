@@ -243,7 +243,7 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e-inference-extension
-test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.
+test-e2e-inference-extension: # build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.
 	@echo "Run E2E tests for inference extension"
 	# TODO: remvoe this after upstream issue fixed.
 	# see https://github.com/kubernetes-sigs/gateway-api-inference-extension/issues/3035

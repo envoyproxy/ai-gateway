@@ -612,8 +612,12 @@ func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset stri
 
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
-	requireWaitForGatewayPod(t, selector)
-	RequireWaitForPodReady(t, EnvoyGatewayNamespace, selector)
+	RequireWaitForGatewayPodReadyWithNamespace(t, EnvoyGatewayNamespace, selector)
+}
+
+func RequireWaitForGatewayPodReadyWithNamespace(t *testing.T, namespace, selector string) {
+	requireWaitForGatewayPod(t, namespace, selector)
+	RequireWaitForPodReady(t, namespace, selector)
 }
 
 // RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
@@ -630,13 +634,13 @@ func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name strin
 
 // requireWaitForGatewayPod waits for the Envoy Gateway pod containing the
 // extproc container.
-func requireWaitForGatewayPod(t *testing.T, selector string) {
+func requireWaitForGatewayPod(t *testing.T, namespace, selector string) {
 	waitUntilKubectl(t, 2*time.Minute, 1*time.Second, func(output string) error {
 		if !strings.Contains(output, "ai-gateway-extproc") {
 			return fmt.Errorf("container not found, output: %s", output)
 		}
 		return nil
-	}, "get", "pod", "-n", EnvoyGatewayNamespace,
+	}, "get", "pod", "-n", namespace,
 		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
