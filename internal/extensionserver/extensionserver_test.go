@@ -1174,7 +1174,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 			},
 			Spec: gwaiev1.InferencePoolSpec{
 				TargetPorts: []gwaiev1.Port{{Number: 8080}},
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 					Name: "test-epp",
 				},
 			},
@@ -1371,7 +1371,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 			},
 			Spec: gwaiev1.InferencePoolSpec{
 				TargetPorts: []gwaiev1.Port{{Number: 8080}},
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 					Name: "test-epp",
 				},
 			},
@@ -1943,7 +1943,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "test-epp",
 			},
 		},
@@ -2215,7 +2215,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				Namespace: "test-ns",
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2238,7 +2238,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2261,7 +2261,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2285,7 +2285,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2308,7 +2308,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			TargetPorts:       []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 		},
 	}
 

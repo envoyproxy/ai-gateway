@@ -15,6 +15,7 @@ import (
 	gie "sigs.k8s.io/gateway-api-inference-extension/conformance"
 	v1 "sigs.k8s.io/gateway-api/conformance/apis/v1"
 	"sigs.k8s.io/gateway-api/conformance/utils/config"
+	"sigs.k8s.io/gateway-api/conformance/utils/suite"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
@@ -34,7 +35,7 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 		Contact:      []string{"@envoy-ai-gateway/maintainers"},
 		Version:      "latest",
 	}
-	options.ConformanceProfiles.Insert(gie.GatewayLayerProfileName)
+	options.ConformanceProfiles = []suite.ConformanceProfileName{gie.GatewayLayerProfileName}
 	options.AllowCRDsMismatch = true
 	defaultTimeoutConfig := config.DefaultTimeoutConfig()
 	defaultTimeoutConfig.HTTPRouteMustHaveCondition = 10 * time.Second
