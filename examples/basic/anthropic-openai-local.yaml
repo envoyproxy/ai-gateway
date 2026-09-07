@@ -5,8 +5,9 @@
 
 # This example routes /v1/messages (Anthropic Messages API) requests to a
 # local vLLM backend.
-# The AIServiceBackend schema is set to OpenAI so the gateway passes through
-# the Anthropic request format with translation.
+# The AIServiceBackend schema is set to OpenAI so the gateway translates the
+# Anthropic request format. By default, Messages requests use Chat Completions,
+# which is supported by vLLM.
 
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute

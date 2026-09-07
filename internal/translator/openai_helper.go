@@ -591,6 +591,17 @@ type sseThinkingInit struct {
 	Thinking string `json:"thinking"`
 }
 
+type sseContentBlockStartRedactedThinking struct {
+	Type         string                   `json:"type"`
+	Index        int                      `json:"index"`
+	ContentBlock sseRedactedThinkingBlock `json:"content_block"`
+}
+
+type sseRedactedThinkingBlock struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
 type sseContentBlockDeltaThinking struct {
 	Type  string           `json:"type"`
 	Index int              `json:"index"`
@@ -776,6 +787,12 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 		// Signatures ride on thinking_blocks (reasoning_content is a plain string).
 		for i := range delta.ThinkingBlocks {
 			tb := &delta.ThinkingBlocks[i]
+			if tb.Type == "redacted_thinking" {
+				if err := s.handleRedactedThinking(tb.Data, out); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := s.handleReasoningDelta(&openai.StreamReasoningContent{
 				Text: tb.Thinking, Signature: tb.Signature,
 			}, out); err != nil {
@@ -815,6 +832,37 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 		s.stopReason = string(openAIFinishReasonToAnthropic(choice.FinishReason))
 	}
 
+	return nil
+}
+
+// handleRedactedThinking emits a complete Anthropic redacted_thinking block.
+// Redacted thinking has no delta events: its opaque data is carried on the
+// content_block_start event and the block is stopped immediately.
+func (s *openAIStreamToAnthropicState) handleRedactedThinking(data string, out *[]byte) error {
+	if data == "" {
+		return nil
+	}
+	if s.hasOpenBlock {
+		if err := s.emitContentBlockStop(out); err != nil {
+			return err
+		}
+		s.hasOpenBlock = false
+		s.hasThinkingBlock = false
+		s.blockIndex++
+	}
+	payload := sseContentBlockStartRedactedThinking{
+		Type: "content_block_start", Index: s.blockIndex,
+		ContentBlock: sseRedactedThinkingBlock{Type: "redacted_thinking", Data: data},
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal redacted_thinking content_block_start: %w", err)
+	}
+	appendAnthropicSSEEvent(out, "content_block_start", encoded)
+	if err = s.emitContentBlockStop(out); err != nil {
+		return err
+	}
+	s.blockIndex++
 	return nil
 }
 

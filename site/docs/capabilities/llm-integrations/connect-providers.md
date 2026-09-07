@@ -66,6 +66,21 @@ Different providers require different schema configurations:
 Many providers offer OpenAI-compatible APIs, which allows them to use the OpenAI schema configuration with provider-specific version paths.
 :::
 
+For OpenAI-schema backends, Anthropic Messages requests are translated to Chat
+Completions by default. Backends that support the Responses API can select it
+explicitly:
+
+```yaml
+schema:
+  name: OpenAI
+  capabilities:
+    messagesTranslation: Responses
+```
+
+`messagesTranslation` accepts `ChatCompletions` or `Responses`. This setting
+only affects requests received on the Anthropic Messages endpoint; native
+OpenAI Chat Completions and Responses requests retain their original endpoint.
+
 ### BackendSecurityPolicy
 
 The `BackendSecurityPolicy` resource configures authentication credentials needed to access upstream AI services securely.

@@ -137,6 +137,33 @@ type VersionedAPISchema struct {
 	Version string `json:"version,omitempty"`
 	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
+	// Capabilities configures optional behavior for API schema translations.
+	Capabilities *APISchemaCapabilities `json:"capabilities,omitempty"`
+}
+
+// APISchemaCapabilities configures optional behavior for API schema translations.
+type APISchemaCapabilities struct {
+	// MessagesTranslation selects the OpenAI endpoint used for translated Anthropic Messages requests.
+	MessagesTranslation OpenAIMessagesTranslation `json:"messagesTranslation,omitempty"`
+}
+
+// OpenAIMessagesTranslation selects the OpenAI endpoint used for translated Anthropic Messages requests.
+type OpenAIMessagesTranslation string
+
+const (
+	// OpenAIMessagesTranslationChatCompletions uses the Chat Completions API.
+	OpenAIMessagesTranslationChatCompletions OpenAIMessagesTranslation = "ChatCompletions"
+	// OpenAIMessagesTranslationResponses uses the Responses API.
+	OpenAIMessagesTranslationResponses OpenAIMessagesTranslation = "Responses"
+)
+
+// OpenAIMessagesTranslation returns the configured endpoint for translated
+// Anthropic Messages requests, defaulting to Chat Completions.
+func (v VersionedAPISchema) OpenAIMessagesTranslation() OpenAIMessagesTranslation {
+	if v.Capabilities == nil || v.Capabilities.MessagesTranslation == "" {
+		return OpenAIMessagesTranslationChatCompletions
+	}
+	return v.Capabilities.MessagesTranslation
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.

@@ -2874,6 +2874,20 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo"},
 		},
 		{
+			in: aigv1b1.VersionedAPISchema{
+				Name: aigv1b1.APISchemaOpenAI,
+				Capabilities: &aigv1b1.APISchemaCapabilities{
+					MessagesTranslation: aigv1b1.OpenAIMessagesTranslationResponses,
+				},
+			},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaOpenAI, Prefix: "v1",
+				Capabilities: &filterapi.APISchemaCapabilities{
+					MessagesTranslation: filterapi.OpenAIMessagesTranslationResponses,
+				},
+			},
+		},
+		{
 			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},

@@ -546,6 +546,7 @@ func TestAnthropicToOpenAITranslator_RedactAnthropicBody(t *testing.T) {
 			Model: "gpt-4o",
 			Content: []anthropic.MessagesContentBlock{
 				{Text: &anthropic.TextBlock{Type: "text", Text: "some sensitive text"}},
+				{RedactedThinking: &anthropic.RedactedThinkingBlock{Type: "redacted_thinking", Data: "opaque reasoning envelope"}},
 			},
 		}
 		redacted := tr.RedactAnthropicBody(resp)
@@ -553,13 +554,16 @@ func TestAnthropicToOpenAITranslator_RedactAnthropicBody(t *testing.T) {
 
 		// The original response must not be modified.
 		assert.Equal(t, "some sensitive text", resp.Content[0].Text.Text)
+		assert.Equal(t, "opaque reasoning envelope", resp.Content[1].RedactedThinking.Data)
 
 		// Top-level non-content fields are preserved.
 		assert.Equal(t, "msg-123", redacted.ID)
 		assert.Equal(t, "gpt-4o", redacted.Model)
 
 		// Content blocks are present (redaction creates a new slice).
-		require.Len(t, redacted.Content, 1)
+		require.Len(t, redacted.Content, 2)
+		assert.NotEqual(t, "some sensitive text", redacted.Content[0].Text.Text)
+		assert.NotEqual(t, "opaque reasoning envelope", redacted.Content[1].RedactedThinking.Data)
 	})
 
 	t.Run("empty content response is safe", func(t *testing.T) {

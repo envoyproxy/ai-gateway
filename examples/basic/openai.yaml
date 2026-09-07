@@ -30,6 +30,9 @@ metadata:
 spec:
   schema:
     name: OpenAI
+    capabilities:
+      # Translate Anthropic Messages requests to the OpenAI Responses API.
+      messagesTranslation: Responses
   backendRef:
     name: envoy-ai-gateway-basic-openai
     kind: Backend

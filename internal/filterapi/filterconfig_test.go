@@ -63,6 +63,17 @@ func TestVersionedAPISchemaAnthropicPrefix(t *testing.T) {
 	}.AnthropicPrefix())
 }
 
+func TestVersionedAPISchemaOpenAIMessagesTranslation(t *testing.T) {
+	require.Equal(t, filterapi.OpenAIMessagesTranslationChatCompletions,
+		filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}.OpenAIMessagesTranslation())
+	require.Equal(t, filterapi.OpenAIMessagesTranslationResponses, filterapi.VersionedAPISchema{
+		Name: filterapi.APISchemaOpenAI,
+		Capabilities: &filterapi.APISchemaCapabilities{
+			MessagesTranslation: filterapi.OpenAIMessagesTranslationResponses,
+		},
+	}.OpenAIMessagesTranslation())
+}
+
 // logAttrs extracts the key→value map from a slog.KindGroup Value.
 func logAttrs(v slog.Value) map[string]string {
 	result := make(map[string]string)

@@ -79,10 +79,17 @@ curl -H "Content-Type: application/json" \
 
 **Supported Providers:**
 
+- OpenAI (translated to Chat Completions by default, or Responses when configured)
 - Anthropic
 - GCP Anthropic
 - AWS Anthropic
 - AWS Bedrock
+
+For an OpenAI backend, set
+`schema.capabilities.messagesTranslation: Responses` on the
+`AIServiceBackend` to translate every Anthropic Messages request to the OpenAI
+Responses API. When omitted, the gateway uses Chat Completions for compatibility
+with OpenAI-compatible backends that do not implement Responses.
 
 **Example:**
 
