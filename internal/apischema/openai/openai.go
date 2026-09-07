@@ -1312,6 +1312,12 @@ type FunctionDefinition struct {
 	// Description is a description of what the function does, used by the model to choose when and how to call the function.
 	Description string `json:"description,omitempty"`
 	Strict      bool   `json:"strict,omitempty"`
+	// EagerInputStreaming streams this tool's input as the model generates it, instead of
+	// buffering and validating each parameter value before sending it. A pointer because
+	// Anthropic reads three states: true enables it, null defaults to buffering, and false
+	// keeps buffering even when the legacy fine-grained-tool-streaming beta is active, which
+	// otherwise turns unset tools on.
+	EagerInputStreaming *bool `json:"eager_input_streaming,omitempty"` //nolint:tagliatelle //follow anthropic api
 	// Parameters is an object describing the function.
 	// You can pass json.RawMessage to describe the schema,
 	// or you can pass in a struct which serializes to the proper JSON schema.

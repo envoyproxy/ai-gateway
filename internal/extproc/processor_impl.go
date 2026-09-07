@@ -572,6 +572,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
 		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+		// Remove content-encoding header if original body encoded but was mutated in the processor.
+		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 		if u.parent.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
@@ -687,6 +689,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)
+	// Some semantic conventions record the provider, which is only known now
+	// that routing has resolved a backend.
+	if bs, ok := rp.span.(tracingapi.BackendSpan); ok {
+		bs.RecordBackend(tracingapi.Backend{
+			Schema: string(backend.Backend.Schema.Name),
+			Name:   backend.Backend.Name,
+		})
+	}
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
 	u.routeName = routeName
@@ -710,6 +720,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 
 	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
 		headerSetter.SetRequestHeaders(u.requestHeaders)
+	}
+
+	if filters := backend.Backend.HeaderValueFilters; len(filters) > 0 {
+		if filterSetter, ok := u.translator.(translator.HeaderValueFilterSetter); ok {
+			for _, f := range filters {
+				filterSetter.SetHeaderValueFilter(f.Name, f.Mode, f.Values)
+			}
+		}
 	}
 
 	switch redactor := u.translator.(type) {

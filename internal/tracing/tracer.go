@@ -16,6 +16,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -43,6 +44,7 @@ var (
 	_ tracingapi.RerankTracer               = (*rerankTracer)(nil)
 	_ tracingapi.ResponsesInputTokensTracer = (*responsesInputTokensTracer)(nil)
 	_ tracingapi.CountTokensTracer          = (*countTokensTracer)(nil)
+	_ tracingapi.TokenizeTracer             = (*tokenizeTracer)(nil)
 )
 
 type (
@@ -57,6 +59,7 @@ type (
 	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 	countTokensTracer          = requestTracerImpl[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
+	tokenizeTracer             = requestTracerImpl[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
