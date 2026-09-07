@@ -341,6 +341,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 						Type:  ptr.To(gwapiv1.PathMatchExact),
 						Value: ptr.To(protectedResourceSuffixPath),
 					},
+					Headers: mcpRoute.Spec.Headers,
 				},
 			},
 			Filters: []gwapiv1.HTTPRouteFilter{
@@ -371,6 +372,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 						Type:  ptr.To(gwapiv1.PathMatchExact),
 						Value: ptr.To(authServerSuffixPath),
 					},
+					Headers: mcpRoute.Spec.Headers,
 				},
 			},
 			Filters: []gwapiv1.HTTPRouteFilter{
@@ -394,6 +396,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 						Type:  ptr.To(gwapiv1.PathMatchExact),
 						Value: ptr.To(authServerSuffixPathOIDC),
 					},
+					Headers: mcpRoute.Spec.Headers,
 				},
 			},
 			Filters: []gwapiv1.HTTPRouteFilter{
