@@ -724,7 +724,7 @@ func createInferencePoolExtensionResource(name, namespace string) *egextension.E
 				"selector": map[string]any{
 					"app": "test-inference",
 				},
-				"extensionRef": map[string]any{
+				"endpointPickerRef": map[string]any{
 					"name": "test-epp",
 				},
 			},

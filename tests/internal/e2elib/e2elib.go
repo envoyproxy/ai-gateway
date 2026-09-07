@@ -105,7 +105,7 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
 	// failures.
-	if err := initKindCluster(ctx, clusterName); err != nil {
+	if err := initKindCluster(ctx, clusterName, inferenceExtension); err != nil {
 		return fmt.Errorf("failed to initialize kind cluster: %w", err)
 	}
 	if err := initMetalLB(ctx); err != nil {
@@ -132,7 +132,7 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 	return nil
 }
 
-func initKindCluster(ctx context.Context, clusterName string) (err error) {
+func initKindCluster(ctx context.Context, clusterName string, inferenceExtension bool) (err error) {
 	initLog("Setting up the kind cluster")
 	start := time.Now()
 	defer func() {
@@ -162,16 +162,20 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 	}
 
 	initLog("\tLoading Docker images into kind cluster")
-	for _, image := range []string{
+	loadImages := []string{
 		"docker.io/envoyproxy/ai-gateway-controller:latest",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
-		// TODO: remvoe this after upstream issue fixed.
-		// see https://github.com/kubernetes-sigs/gateway-api-inference-extension/issues/3035
-		"registry.k8s.io/gateway-api-inference-extension/lwepp:v1.6.0",
-	} {
+	}
+	if inferenceExtension {
+		loadImages = append(loadImages,
+			// TODO: remvoe this after upstream issue fixed.
+			// see https://github.com/kubernetes-sigs/gateway-api-inference-extension/issues/3035
+			"registry.k8s.io/gateway-api-inference-extension/lwepp:v1.6.0")
+	}
+	for _, image := range loadImages {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

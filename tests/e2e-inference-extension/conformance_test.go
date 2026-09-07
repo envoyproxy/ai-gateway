@@ -6,7 +6,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"sigs.k8s.io/gateway-api/conformance/utils/suite"
 	"sigs.k8s.io/gateway-api/conformance/utils/tlog"
 
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
@@ -31,7 +31,7 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 
 	options := gie.DefaultOptions(t)
 	flags.ApplyAll(&options.ConfigurableOptions)
-	data, _ := json.MarshalIndent(options, "", "  ")
+	data, _ := json.Marshal(options)
 	tlog.Logf(t, "Running Conformance tests with options: %s\n", string(data))
 	options.ReportOutputPath = "./inference-extension-conformance-test-report.yaml"
 	options.Debug = false
