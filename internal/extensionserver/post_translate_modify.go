@@ -378,6 +378,26 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				// httpRouteRule.BackendRefs comes from a fresh
+				// s.k8sClient.Get(&aigwRoute); cluster.LoadAssignment is
+				// whatever Envoy Gateway translated for this cluster. The two
+				// can be a revision apart, so the rule can carry more
+				// non-zero-weight BackendRefs than the cluster has endpoint
+				// groups (e.g. an AIGatewayRoute gained a BackendRef whose
+				// AIServiceBackend does not resolve yet, so the generated
+				// HTTPRoute - and the cluster - stay a revision behind).
+				// lbEndpointIndex only increases, so once it is out of range
+				// every remaining backendRef is too; stop rather than index out
+				// of bounds. The rule and backendRef indices are already
+				// guarded the same way earlier in this function. The unmatched
+				// backend(s) get their endpoint metadata stamped on a later
+				// reconcile once the counts agree.
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					s.log.Info("cluster LoadAssignment has fewer endpoint groups than non-zero-weight backendRefs",
+						"cluster_name", cluster.Name, "backend_index", i,
+						"load_assignment_endpoints", len(cluster.LoadAssignment.Endpoints))
+					break
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name
