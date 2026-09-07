@@ -229,6 +229,7 @@ func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Reque
 		// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
 		if s == nil {
 			errType = metrics.MCPErrorInvalidSessionID
+			err = errors.New("missing session ID")
 			onErrorResponse(w, http.StatusBadRequest, "missing session ID")
 			return
 		}
@@ -251,6 +252,7 @@ func (m *mcpRequestContext) serveLegacyPOST(w http.ResponseWriter, r *http.Reque
 		// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
 		if s == nil && msg.Method != "initialize" {
 			errType = metrics.MCPErrorInvalidSessionID
+			err = errors.New("missing session ID")
 			onErrorResponse(w, http.StatusBadRequest, "missing session ID")
 			return
 		}
