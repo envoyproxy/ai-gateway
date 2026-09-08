@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -726,7 +725,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 	// Try to decode as a single JSON-RPC message first; if that fails, fall through to the
 	// SSE parser using the already-read bytes.
 	var sseReader io.Reader = resp.Body
-	if resp.Header.Get("Content-Type") == "application/json" {
+	if isJSONContentType(resp.Header.Get("Content-Type")) {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			m.l.Error("failed to read response body", slog.String("error", err.Error()))
@@ -1314,7 +1313,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 }
 
 func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
-	isJSONResponse := resp.Header.Get("Content-Type") == "application/json"
+	isJSONResponse := isJSONContentType(resp.Header.Get("Content-Type"))
 	for k, v := range resp.Header {
 		// Skip content-length header for non JSON response since we might modify the response.
 		if !isJSONResponse && strings.EqualFold(k, "content-length") {
@@ -1514,25 +1513,19 @@ func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *sessio
 	})
 }
 
-// extractSubject extracts the "sub" claim from the JWT in the Authorization header.
-// This method will not validate the token as it assumes if the token is present it has already been
-// validated and authenticated.
+// extractSubject returns the authenticated subject (the JWT "sub" claim).
+//
+// The subject is read from the trusted internalapi.MCPSubjectHeader, which Envoy's JWT filter
+// populates from the verified token via a claimToHeaders mapping (see the MCPRoute SecurityPolicy).
+// We deliberately do NOT parse the client-controlled Authorization bearer token here: that token is
+// user-controlled and parsing it unverified would trust attacker-supplied claims. Any client-supplied
+// copy of this header is overwritten by Envoy from the verified token, so its value can only
+// originate from a verified JWT.
+//
+// When OAuth is not configured on the route the header is absent and this returns "", which is fine:
+// the subject is only used as an anti-hijacking discriminator in the session ID, not for authorization.
 func extractSubject(r *http.Request) string {
-	authzHeader := r.Header.Get("Authorization")
-	if authzHeader == "" {
-		return ""
-	}
-	parts := strings.SplitN(authzHeader, " ", 2)
-	if !strings.EqualFold(parts[0], "bearer") {
-		return ""
-	}
-	if len(parts) < 2 {
-		return ""
-	}
-
-	var claims jwt.RegisteredClaims
-	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)
-	return claims.Subject
+	return strings.TrimSpace(r.Header.Get(internalapi.MCPSubjectHeader))
 }
 
 // parseParamsAndMaybeStartSpan parses the params from the JSON-RPC request and starts a tracing span if params is non-nil.

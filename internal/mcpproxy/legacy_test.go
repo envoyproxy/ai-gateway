@@ -879,7 +879,7 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	httpResp := &http.Response{
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
 		Body:       io.NopCloser(bytes.NewReader(body)),
 		StatusCode: http.StatusOK,
 	}
@@ -1206,25 +1206,27 @@ func Test_maybeResponseModify(t *testing.T) {
 }
 
 func TestExtractSubject(t *testing.T) {
+	// extractSubject reads the subject from the trusted, gateway-set header that Envoy's JWT filter
+	// populates from the verified token. It must NOT parse the client-controlled Authorization header.
 	tests := []struct {
-		name  string
-		token string
-		want  string
+		name    string
+		subject string
+		want    string
 	}{
 		{
-			name:  "unsigned token with principal",
-			token: "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJtY3AifQ.",
-			want:  "mcp",
+			name:    "subject header set",
+			subject: "mcp",
+			want:    "mcp",
 		},
 		{
-			name:  "signed token with principal",
-			token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtY3AifQ.3FpuVHQFtGubZnErnKK6RULYffuZmtgmS3g8D8z8ykM",
-			want:  "mcp",
+			name:    "subject with surrounding whitespace is trimmed",
+			subject: "  mcp-user  ",
+			want:    "mcp-user",
 		},
 		{
-			name:  "invalid token",
-			token: "invalid-token",
-			want:  "",
+			name:    "empty subject header",
+			subject: "",
+			want:    "",
 		},
 	}
 
@@ -1232,29 +1234,25 @@ func TestExtractSubject(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := http.NewRequest("GET", "/mcp", nil)
 			require.NoError(t, err)
-			req.Header.Set("Authorization", "Bearer "+tt.token)
+			if tt.subject != "" {
+				req.Header.Set(internalapi.MCPSubjectHeader, tt.subject)
+			}
 
 			require.Equal(t, tt.want, extractSubject(req))
 		})
 	}
 
-	t.Run("no auth header", func(t *testing.T) {
+	t.Run("no subject header", func(t *testing.T) {
 		req, err := http.NewRequest("GET", "/mcp", nil)
 		require.NoError(t, err)
 		require.Empty(t, extractSubject(req))
 	})
 
-	t.Run("invalid auth header", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/mcp", nil)
-		req.Header.Set("Authorization", "basic foobar")
-		require.NoError(t, err)
-		require.Empty(t, extractSubject(req))
-	})
-
-	t.Run("bearer with no token", func(t *testing.T) {
+	t.Run("authorization header is ignored", func(t *testing.T) {
+		// A client-controlled bearer token must never be trusted as the subject.
 		req, err := http.NewRequest("GET", "/mcp", nil)
 		require.NoError(t, err)
-		req.Header.Set("Authorization", "bearer")
+		req.Header.Set("Authorization", "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJtY3AifQ.")
 		require.Empty(t, extractSubject(req))
 	})
 }
