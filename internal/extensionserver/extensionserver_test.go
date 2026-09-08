@@ -760,6 +760,35 @@ func createInferencePoolExtensionResourceNoEPPRef(name, namespace string) *egext
 			},
 		},
 	}
+	jsonBytes, _ := unstructuredObj.MarshalJSON()
+	return &egextension.ExtensionResource{
+		UnstructuredBytes: jsonBytes,
+	}
+}
+
+// createInferencePoolExtensionResourceWithAppProtocol is like createInferencePoolExtensionResource but
+// sets an explicit spec.appProtocol, so tests can exercise the pool's appProtocol-dependent behavior.
+func createInferencePoolExtensionResourceWithAppProtocol(name, namespace, appProtocol string) *egextension.ExtensionResource {
+	unstructuredObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "inference.networking.k8s.io/v1",
+			"kind":       "InferencePool",
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+			},
+			"spec": map[string]any{
+				"targetPortNumber": int32(8080),
+				"selector": map[string]any{
+					"app": "test-inference",
+				},
+				"appProtocol": appProtocol,
+				"endpointPickerRef": map[string]any{
+					"name": "test-epp",
+				},
+			},
+		},
+	}
 
 	jsonBytes, _ := unstructuredObj.MarshalJSON()
 	return &egextension.ExtensionResource{
@@ -1678,6 +1707,61 @@ func TestPostClusterModify(t *testing.T) {
 		require.Nil(t, cluster.LoadBalancingPolicy)
 		require.Nil(t, cluster.EdsClusterConfig)
 		require.NotNil(t, getInferencePoolByMetadata(cluster.Metadata))
+
+		// Default (unset) appProtocol must result in explicit HTTP/1.1 upstream protocol options.
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
+	})
+
+	t.Run("with InferencePool backend and appProtocol kubernetes.io/h2c", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "test-cluster"}
+		inferencePool := createInferencePoolExtensionResourceWithAppProtocol("test-pool", "default", "kubernetes.io/h2c")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
+	})
+
+	t.Run("with InferencePool backend and appProtocol http", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "test-cluster"}
+		inferencePool := createInferencePoolExtensionResourceWithAppProtocol("test-pool", "default", "http")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
 	})
 
 	t.Run("with InferencePool backend and no endpointPickerRef", func(t *testing.T) {
