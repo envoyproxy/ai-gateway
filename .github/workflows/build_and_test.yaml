@@ -469,7 +469,6 @@ jobs:
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
-      - test_data_plane
       - test_data_plane_mcp
       - test_e2e_aigw
       - compute_version
