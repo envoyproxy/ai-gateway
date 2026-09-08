@@ -53,7 +53,7 @@ func TestInferencePoolController_ExtensionReferenceValidation(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "non-existent-service",
 			},
 		},
@@ -114,7 +114,7 @@ func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "existing-service",
 			},
 		},
@@ -213,7 +213,7 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "test-epp",
 			},
 		},
@@ -302,7 +302,7 @@ func TestInferencePoolController_NoReferencingGateways(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "test-epp",
 			},
 		},
@@ -696,7 +696,7 @@ func TestInferencePoolController_EdgeCases(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "", // Empty name.
 			},
 		},
@@ -785,7 +785,7 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "test-epp",
 			},
 		},
@@ -1059,7 +1059,7 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "service-other-ns", // Refers to service in other-namespace.
 			},
 		},
@@ -1085,7 +1085,7 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "", // Empty name.
 			},
 		},
@@ -1114,7 +1114,7 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 				"app": "test-app",
 			}},
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "non-existent-service",
 			},
 		},
@@ -1167,7 +1167,7 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), service))
-	inferencePoolNoGateways.Spec.EndpointPickerRef = gwaiev1.EndpointPickerRef{
+	inferencePoolNoGateways.Spec.EndpointPickerRef = &gwaiev1.EndpointPickerRef{
 		Name: "test-epp-no-gateways",
 	}
 	require.NoError(t, fakeClient.Update(context.Background(), inferencePoolNoGateways))

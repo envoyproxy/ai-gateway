@@ -96,6 +96,7 @@ func TestAIServiceBackends(t *testing.T) {
 		{name: "basic.yaml"},
 		{name: "anthropic-schema.yaml"},
 		{name: "basic-eg-backend-aws.yaml"},
+		{name: "aws-openai-schema.yaml"},
 		{name: "basic-eg-backend-azure.yaml"},
 		{
 			name:   "unknown_schema.yaml",
@@ -122,6 +123,38 @@ func TestAIServiceBackends(t *testing.T) {
 			} else {
 				require.NoError(t, c.Create(ctx, aiBackend))
 				require.NoError(t, c.Delete(ctx, aiBackend))
+			}
+		})
+	}
+}
+
+func TestGatewayConfigs(t *testing.T) {
+	c, _, _ := testsinternal.NewEnvTest(t)
+	ctx := t.Context()
+
+	for _, tc := range []struct {
+		name   string
+		expErr string
+	}{
+		{name: "metadata_forwarding_namespaces.yaml"},
+		{
+			name:   "bad_metadata_forwarding_namespace.yaml",
+			expErr: "metadata namespaces may only contain letters, digits, '.', '_', '/' and '-'",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := testdata.ReadFile(path.Join("testdata/gatewayconfigs", tc.name))
+			require.NoError(t, err)
+
+			gatewayConfig := &aigv1b1.GatewayConfig{}
+			err = yaml.UnmarshalStrict(data, gatewayConfig)
+			require.NoError(t, err)
+
+			if tc.expErr != "" {
+				require.ErrorContains(t, c.Create(ctx, gatewayConfig), tc.expErr)
+			} else {
+				require.NoError(t, c.Create(ctx, gatewayConfig))
+				require.NoError(t, c.Delete(ctx, gatewayConfig))
 			}
 		})
 	}
