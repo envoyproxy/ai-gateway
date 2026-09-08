@@ -63,5 +63,5 @@ through the Kubernetes path:
 
 If you run into any issues:
 
-- Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
+- Join our [Community Discord](https://discord.gg/xuxtPq43gZ)
 - File an issue on [GitHub](https://github.com/theagentrouter/agent-router/issues)

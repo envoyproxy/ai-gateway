@@ -159,8 +159,7 @@ export const community = {
     to: 'https://github.com/theagentrouter/agent-router/edit/main/site/src/data/adopters/adopters.json',
   },
   pills: [
-    // TODO(launch): replace with the real AAIF Discord invite.
-    { icon: 'chat', label: 'Join the Discord', to: 'https://discord.gg/TODO-agent-router' },
+    { icon: 'chat', label: 'Join the Discord', to: 'https://discord.gg/xuxtPq43gZ' },
     {
       icon: 'calendar',
       label: 'Weekly meeting — Mondays',

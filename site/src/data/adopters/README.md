@@ -83,6 +83,6 @@ Adopters are displayed alphabetically by organization name, so your position wil
 If you have questions about adding your organization:
 
 - Ask in [GitHub Discussions](https://github.com/theagentrouter/agent-router/discussions)
-- Join our [Slack community](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
+- Join our [Discord community](https://discord.gg/xuxtPq43gZ)
 
 Thank you for supporting Agent Router!

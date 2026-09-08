@@ -87,7 +87,7 @@ We welcome community contributions! Here's how you can participate:
 
 - Attend the [weekly community meetings][meeting-notes] to stay updated and share ideas.
 - Submit feature requests and pull requests via the GitHub repository.
-- Join the conversation on the [community Discord][discord] (moving from Slack with the AAIF transition).
+- Join the conversation on the [community Discord][discord].
 
 Refer to [this contributing guide][contributing.md] for detailed instructions on setting up your
 environment and contributing.
@@ -99,5 +99,5 @@ traffic management. Your contributions and feedback are key to its success and t
 future of AI service integration.
 
 [meeting-notes]: https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w
-[discord]: https://discord.gg/TODO-agent-router
+[discord]: https://discord.gg/xuxtPq43gZ
 [contributing.md]: https://github.com/theagentrouter/agent-router/blob/main/CONTRIBUTING.md

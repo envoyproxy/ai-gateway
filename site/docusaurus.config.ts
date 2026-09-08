@@ -239,9 +239,8 @@ const config: Config = {
           position: 'right',
           items: [
             {
-              // TODO(launch): replace with the real AAIF Discord invite.
               label: 'Join us on Discord',
-              href: 'https://discord.gg/TODO-agent-router',
+              href: 'https://discord.gg/xuxtPq43gZ',
             },
             {
               label: 'Weekly Meeting Notes (Mondays)',
@@ -299,9 +298,8 @@ const config: Config = {
           title: 'Community',
           items: [
             {
-              // TODO(launch): replace with the real AAIF Discord invite.
               label: 'Discord',
-              href: 'https://discord.gg/TODO-agent-router',
+              href: 'https://discord.gg/xuxtPq43gZ',
             },
             {
               label: 'Weekly Meeting (Mondays)',

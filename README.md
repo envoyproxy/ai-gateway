@@ -149,7 +149,7 @@ Agent Router supports a wide range of AI providers, making it easy to integrate 
 
 ## Contact
 
-- Chat: the community is moving from Slack to Discord as part of the Agentic AI Foundation transition. Until the Discord invite is published, join the [Envoy Slack workspace][] and use the [Envoy AI Gateway channel][].
+- Chat: join the [Agent Router Discord][Discord] to ask questions and collaborate with the community.
 - Weekly meeting: the maintainers and community meet every Monday. Register, add agenda points, and get involved via the [public meeting document][meeting].
 
 ## Get Involved
@@ -167,7 +167,6 @@ The proposal of using Envoy Gateway as a [Cloud Native LLM Gateway][Cloud Native
 Agent Router is an Agentic AI Foundation project, powered by Envoy. Copyright © Agent Router a Series of LF Projects, LLC. For web site terms of use, [trademark policy](https://theagentrouter.ai/trademark-policy) and other project policies please see <https://lfprojects.org>.
 
 [meeting]: https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0
-[Envoy Slack workspace]: https://communityinviter.com/apps/envoyproxy/envoy
-[Envoy AI Gateway channel]: https://envoyproxy.slack.com/archives/C07Q4N24VAA
+[Discord]: https://discord.gg/xuxtPq43gZ
 [Code of conduct]: CODE_OF_CONDUCT.md
 [Cloud Native LLM Gateway]: https://docs.google.com/document/d/1FQN_hGhTNeoTgV5Jj16ialzaSiAxC0ozxH1D9ngCVew/edit?tab=t.0#heading=h.uuu99yemq4eo
