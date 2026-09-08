@@ -145,6 +145,15 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 			}
 		}
 
+		// Project the verified "sub" claim into a trusted, gateway-set header so the MCP proxy can
+		// read the authenticated subject without re-parsing the client-controlled bearer token.
+		// Envoy's JWT filter overwrites this header from the verified token, so any client-supplied
+		// value is discarded here.
+		jwtProvider.ClaimToHeaders = append(jwtProvider.ClaimToHeaders, egv1a1.ClaimToHeader{
+			Claim:  "sub",
+			Header: internalapi.MCPSubjectHeader,
+		})
+
 		// Add ClaimToHeaders to extract JWT claims and set them as HTTP headers.
 		// Envoy's JWT filter will extract these claims and add them to the request headers,
 		// which can then be forwarded to backend MCP servers.
