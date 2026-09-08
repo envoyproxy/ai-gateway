@@ -303,7 +303,7 @@ func TestMergedProtocolVersion(t *testing.T) {
 		want          string
 	}{
 		{
-			name:          "no backends returns default",
+			name:          "no backends returns floor",
 			backends:      map[filterapi.MCPBackendName]*compositeSessionEntry{},
 			clientVersion: "2026-07-28",
 			want:          protocolVersion20250618,
@@ -335,7 +335,7 @@ func TestMergedProtocolVersion(t *testing.T) {
 			want:          "2025-11-05",
 		},
 		{
-			name: "all empty returns default",
+			name: "all empty returns floor",
 			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
 				"b1": {protocolVersion: ""},
 				"b2": {protocolVersion: ""},
@@ -359,6 +359,53 @@ func TestMergedProtocolVersion(t *testing.T) {
 			clientVersion: "",
 			want:          "2026-07-28",
 		},
+		{
+			// Case 3 from issuecomment-5574252019: client below floor,
+			// backends above floor. Floor wins; client is lifted.
+			name: "client below floor lifted to floor when backends above",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-06-18"},
+				"b2": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "2024-11-05",
+			want:          protocolVersion20250618,
+		},
+		{
+			name: "client below floor lifted to floor with single backend at floor",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-06-18"},
+			},
+			clientVersion: "2024-11-05",
+			want:          protocolVersion20250618,
+		},
+		{
+			name: "client below floor lifted to floor with backend above",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "2024-11-05",
+			want:          protocolVersion20250618,
+		},
+		{
+			// Case 2 from issuecomment-5574252019: matches pre-PR behavior
+			// (min(client, min(backends)) == 2024-11-05) except the floor
+			// now lifts the result to 2025-06-18.
+			name: "backend below floor lifted to floor",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2024-11-05"},
+				"b2": {protocolVersion: "2025-11-25"},
+			},
+			clientVersion: "2025-06-18",
+			want:          protocolVersion20250618,
+		},
+		{
+			name: "all above floor keeps floor inert",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "2026-07-28",
+			want:          "2026-07-28",
+		},
 	}
 
 	for _, tc := range tests {
@@ -371,8 +418,73 @@ func TestMergedProtocolVersion(t *testing.T) {
 	}
 }
 
+// TestMergedProtocolVersion_FloorEngagedWarning asserts the floor-engaged
+// warning fires when the floor lifts the negotiated version above what
+// the client or a backend advertised, and includes the requested/floor
+// fields operators need to diagnose the mismatch.
+func TestMergedProtocolVersion_FloorEngagedWarning(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		backends      map[filterapi.MCPBackendName]*compositeSessionEntry
+		clientVersion string
+		wantMerged    string
+		wantLogSubstr []string
+	}{
+		{
+			name: "client below floor logs client_requested and floor",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2025-06-18"},
+				"b2": {protocolVersion: "2026-07-28"},
+			},
+			clientVersion: "2024-11-05",
+			wantMerged:    protocolVersion20250618,
+			wantLogSubstr: []string{
+				"MCP version below floor",
+				"client_requested=2024-11-05",
+				"floor=" + protocolVersion20250618,
+			},
+		},
+		{
+			name: "backend below floor logs floored_backends",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {protocolVersion: "2024-11-05"},
+				"b2": {protocolVersion: "2025-11-25"},
+			},
+			clientVersion: "2025-06-18",
+			wantMerged:    protocolVersion20250618,
+			wantLogSubstr: []string{
+				"MCP version below floor",
+				"floored_backends=b1(2024-11-05)",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			s := &session{
+				perBackendSessions: tc.backends,
+				reqCtx: &mcpRequestContext{
+					ProxyConfig: &ProxyConfig{
+						l: slog.New(slog.NewTextHandler(&buf, nil)),
+					},
+				},
+			}
+			got := s.mergedProtocolVersion(tc.clientVersion)
+			require.Equal(t, tc.wantMerged, got)
+			logs := buf.String()
+			for _, sub := range tc.wantLogSubstr {
+				require.Contains(t, logs, sub, "expected log to contain %q; got:\n%s", sub, logs)
+			}
+		})
+	}
+}
+
 // TestServePOST_InitializeRequest_NegotiatesProtocolVersion verifies that the gateway
-// returns the minimum protocol version across backends, capped by the client's version.
+// returns max(protocolVersion20250618, min(clientVersion, min(backends))) end-to-end.
 func TestServePOST_InitializeRequest_NegotiatesProtocolVersion(t *testing.T) {
 	tests := []struct {
 		name           string

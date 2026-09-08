@@ -622,48 +622,104 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	return err
 }
 
-// mergedProtocolVersion returns the minimum protocol version across all backends,
-// capped by the client's requested version. MCP protocol versions are ISO date
-// strings (YYYY-MM-DD), so lexicographic comparison gives chronological ordering.
+// mergedProtocolVersion returns the negotiated MCP protocol version as
+// max(protocolVersion20250618, min(clientVersion, min(backends))). MCP
+// protocol versions are ISO date strings (YYYY-MM-DD), so lexicographic
+// comparison gives chronological ordering.
 //
-// IMPORTANT: MCP protocol versions are NOT backward compatible. In particular, the
-// transport layer changed incompatibly between 2024-11-05 and 2025-03-26+, breaking
-// message framing. When backends have different versions, we must downgrade to the
-// minimum version to maintain connectivity, but this may cause feature degradation.
+// The floor protocolVersion20250618 is the version the gateway was tested
+// against and is a strict lower bound on what the gateway will negotiate.
+// A client requesting a pre-floor version receives protocolVersion20250618
+// in its InitializeResult; per the MCP spec, the client MUST disconnect
+// if it cannot support the returned version. This matches the existing
+// gateway-to-backend pin at session.go where the outbound
+// MCP-Protocol-Version header is unconditionally set to
+// protocolVersion20250618.
+//
+// IMPORTANT: MCP protocol versions are NOT backward compatible. The
+// transport layer changed incompatibly between 2024-11-05 and 2025-03-26+,
+// breaking message framing. When backends have different versions we
+// downgrade to the minimum to maintain connectivity, then lift to the
+// floor; this may cause feature degradation on the newest backends and
+// forces pre-floor clients to upgrade or disconnect.
 func (s *session) mergedProtocolVersion(clientVersion string) string {
-	var minVersion string
+	// Minimum non-empty backend version. Empty means "no backend has
+	// reported a version yet."
+	var backendMin string
 	for _, entry := range s.perBackendSessions {
 		v := entry.protocolVersion
 		if v == "" {
 			continue
 		}
-		if minVersion == "" || v < minVersion {
-			minVersion = v
+		if backendMin == "" || v < backendMin {
+			backendMin = v
 		}
 	}
-	if minVersion == "" {
-		minVersion = protocolVersion20250618
-	}
-	if clientVersion != "" && clientVersion < minVersion {
-		minVersion = clientVersion
+
+	// No backend has reported a version: return the floor unconditionally.
+	// Preserves the pre-floor default behavior and matches the outbound
+	// header pin in session.go.
+	if backendMin == "" {
+		return protocolVersion20250618
 	}
 
-	// Warn if any backend will be downgraded (single warning, not per-backend spam)
+	// candidate = min(clientVersion, backendMin). Empty clientVersion
+	// means "no constraint."
+	candidate := backendMin
+	if clientVersion != "" && clientVersion < candidate {
+		candidate = clientVersion
+	}
+
+	// Apply the floor.
+	merged := candidate
+	if merged < protocolVersion20250618 {
+		merged = protocolVersion20250618
+	}
+
+	// Warning path 1: any backend advertising newer than merged will be
+	// downgraded (existing behavior).
 	var downgradedBackends []string
 	for name, entry := range s.perBackendSessions {
 		v := entry.protocolVersion
-		if v != "" && v > minVersion {
+		if v != "" && v > merged {
 			downgradedBackends = append(downgradedBackends, fmt.Sprintf("%s(%s)", name, v))
 		}
 	}
-	if len(downgradedBackends) > 0 {
+	if len(downgradedBackends) > 0 && s.reqCtx != nil && s.reqCtx.l != nil {
 		s.reqCtx.l.Warn("MCP version mismatch: downgrading backends due to backward-incompatibility",
-			slog.String("merged_version", minVersion),
+			slog.String("merged_version", merged),
 			slog.String("downgraded_backends", strings.Join(downgradedBackends, ", ")),
 			slog.String("note", "2024-11-05 and 2025-03-26+ have incompatible transports"))
 	}
 
-	return minVersion
+	// Warning path 2: the floor lifted the negotiated version above what
+	// the client requested or a backend advertised. Different failure
+	// class from the downgrade warning above (client sees a newer version
+	// than it asked for, or a backend receives requests it can't parse)
+	// so it gets its own log path with different operator remediation.
+	var flooredBackends []string
+	for name, entry := range s.perBackendSessions {
+		v := entry.protocolVersion
+		if v != "" && v < protocolVersion20250618 {
+			flooredBackends = append(flooredBackends, fmt.Sprintf("%s(%s)", name, v))
+		}
+	}
+	clientFloored := clientVersion != "" && clientVersion < protocolVersion20250618
+	if (clientFloored || len(flooredBackends) > 0) && s.reqCtx != nil && s.reqCtx.l != nil {
+		attrs := []any{
+			slog.String("merged_version", merged),
+			slog.String("floor", protocolVersion20250618),
+		}
+		if clientFloored {
+			attrs = append(attrs, slog.String("client_requested", clientVersion))
+		}
+		if len(flooredBackends) > 0 {
+			attrs = append(attrs, slog.String("floored_backends", strings.Join(flooredBackends, ", ")))
+		}
+		s.reqCtx.l.Warn("MCP version below floor: lifting to gateway-tested minimum", attrs...)
+	}
+
+	return merged
 }
 
 // handleClientToServerResponse handles the response from client to server.
