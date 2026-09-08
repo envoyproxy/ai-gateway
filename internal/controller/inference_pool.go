@@ -124,6 +124,10 @@ func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inf
 
 // validateExtensionReference checks if the ExtensionReference service exists.
 func (c *InferencePoolController) validateExtensionReference(ctx context.Context, inferencePool *gwaiev1.InferencePool) error {
+	if inferencePool.Spec.EndpointPickerRef == nil {
+		return fmt.Errorf("endpointPickerRef is not set")
+	}
+
 	// Get the service name from ExtensionReference.
 	serviceName := inferencePool.Spec.EndpointPickerRef.Name
 	if serviceName == "" {

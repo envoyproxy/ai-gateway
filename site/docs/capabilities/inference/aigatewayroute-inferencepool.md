@@ -23,13 +23,13 @@ Before starting, ensure you have:
 Install the Gateway API Inference Extension CRDs and controller:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${vars.gaieVersion}/manifests.yaml
 ```
 
 After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 <CodeBlock language="shell">
-{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/config.yaml
+{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-config.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 
@@ -45,266 +45,12 @@ See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#ad
 Deploy sample inference backends and related resources:
 
 ```bash
-# Deploy vLLM simulation backend
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/vllm/sim-deployment.yaml
-
-# Deploy InferenceObjective
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml
-
-# Deploy InferencePool resources
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/base.yaml
 ```
 
 > **Note**: These deployments create the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the AIGatewayRoute configuration below.
 
-## Step 4: Create Custom InferencePool Resources
-
-Create additional inference backends with custom EndpointPicker configuration:
-
-```yaml
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: mistral-upstream
-  namespace: default
-spec:
-  selector:
-    app: mistral-upstream
-  ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
-  # The headless service allows the IP addresses of the pods to be resolved via the Service DNS.
-  clusterIP: None
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mistral-upstream
-  namespace: default
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: mistral-upstream
-  template:
-    metadata:
-      labels:
-        app: mistral-upstream
-    spec:
-      containers:
-        - name: testupstream
-          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
-          env:
-            - name: TESTUPSTREAM_ID
-              value: test
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 1
-            periodSeconds: 1
----
-apiVersion: inference.networking.k8s.io/v1
-kind: InferencePool
-metadata:
-  name: mistral
-  namespace: default
-spec:
-  targetPorts:
-    - number: 8080
-  selector:
-    matchLabels:
-      app: mistral-upstream
-  endpointPickerRef:
-    name: mistral-epp
-    port:
-      number: 9002
----
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceObjective
-metadata:
-  name: mistral
-  namespace: default
-spec:
-  priority: 10
-  poolRef:
-    # Bind the InferenceObjective to the InferencePool.
-    name: mistral
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mistral-epp
-  namespace: default
-spec:
-  selector:
-    app: mistral-epp
-  ports:
-    - protocol: TCP
-      port: 9002
-      targetPort: 9002
-      appProtocol: http2
-  type: ClusterIP
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: mistral-epp
-  namespace: default
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mistral-epp
-  namespace: default
-  labels:
-    app: mistral-epp
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: mistral-epp
-  template:
-    metadata:
-      labels:
-        app: mistral-epp
-    spec:
-      serviceAccountName: mistral-epp
-      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
-      terminationGracePeriodSeconds: 130
-      containers:
-        - name: epp
-          image: registry.k8s.io/gateway-api-inference-extension/epp:v1.0.1
-          imagePullPolicy: IfNotPresent
-          args:
-            - --pool-name
-            - "mistral"
-            - "--pool-namespace"
-            - "default"
-            - --v
-            - "4"
-            - --zap-encoder
-            - "json"
-            - --grpc-port
-            - "9002"
-            - --grpc-health-port
-            - "9003"
-            - "--config-file"
-            - "/config/default-plugins.yaml"
-          ports:
-            - containerPort: 9002
-            - containerPort: 9003
-            - name: metrics
-              containerPort: 9090
-          livenessProbe:
-            grpc:
-              port: 9003
-              service: inference-extension
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          readinessProbe:
-            grpc:
-              port: 9003
-              service: inference-extension
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          volumeMounts:
-            - name: plugins-config-volume
-              mountPath: "/config"
-      volumes:
-        - name: plugins-config-volume
-          configMap:
-            name: plugins-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: plugins-config
-  namespace: default
-data:
-  default-plugins.yaml: |
-    apiVersion: inference.networking.x-k8s.io/v1alpha1
-    kind: EndpointPickerConfig
-    plugins:
-    - type: queue-scorer
-    - type: kv-cache-utilization-scorer
-    - type: prefix-cache-scorer
-    schedulingProfiles:
-    - name: default
-      plugins:
-      - pluginRef: queue-scorer
-      - pluginRef: kv-cache-utilization-scorer
-      - pluginRef: prefix-cache-scorer
----
-kind: Role
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: pod-read
-  namespace: default
-rules:
-  - apiGroups: ["inference.networking.x-k8s.io"]
-    resources: ["inferenceobjectives", "inferencepools"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups: ["inference.networking.k8s.io"]
-    resources: ["inferencepools"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "watch", "list"]
----
-kind: RoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: pod-read-binding
-  namespace: default
-subjects:
-  - kind: ServiceAccount
-    name: mistral-epp
-    namespace: default
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: pod-read
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: auth-reviewer
-rules:
-  - apiGroups:
-      - authentication.k8s.io
-    resources:
-      - tokenreviews
-    verbs:
-      - create
-  - apiGroups:
-      - authorization.k8s.io
-    resources:
-      - subjectaccessreviews
-    verbs:
-      - create
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: auth-reviewer-binding
-subjects:
-  - kind: ServiceAccount
-    name: mistral-epp
-    namespace: default
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: auth-reviewer
-EOF
-```
-
-## Step 5: Create AIServiceBackend for Mixed Routing
+## Step 4: Create AIServiceBackend for Mixed Routing
 
 Create an AIServiceBackend for traditional backend routing alongside InferencePool:
 
@@ -381,7 +127,7 @@ spec:
 EOF
 ```
 
-## Step 6: Configure Gateway and AIGatewayRoute
+## Step 5: Configure Gateway and AIGatewayRoute
 
 Create a Gateway and AIGatewayRoute with multiple InferencePool backends:
 
@@ -448,7 +194,7 @@ spec:
 EOF
 ```
 
-## Step 7: Test the Configuration
+## Step 6: Test the Configuration
 
 Test different model routing scenarios:
 

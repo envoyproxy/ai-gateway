@@ -325,6 +325,19 @@ func (m *mockChatCompletionSpan) EndSpan() { m.endedCount++ }
 
 var _ tracingapi.ChatCompletionSpan = &mockChatCompletionSpan{}
 
+// mockBackendChatCompletionSpan additionally implements [tracingapi.BackendSpan],
+// which only spans whose semantic convention records the resolved backend do.
+type mockBackendChatCompletionSpan struct {
+	mockChatCompletionSpan
+	backends []tracingapi.Backend
+}
+
+func (m *mockBackendChatCompletionSpan) RecordBackend(backend tracingapi.Backend) {
+	m.backends = append(m.backends, backend)
+}
+
+var _ tracingapi.BackendSpan = &mockBackendChatCompletionSpan{}
+
 // mockBackendAuthHandler implements [filterapi.BackendAuthHandler] for testing.
 type mockBackendAuthHandler struct{}
 

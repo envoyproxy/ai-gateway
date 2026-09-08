@@ -95,6 +95,16 @@ type RequestHeadersSetter interface {
 	SetRequestHeaders(headers map[string]string)
 }
 
+// HeaderValueFilterSetter is an optional interface for translators that can filter individual
+// values out of a multi-valued request header before forwarding upstream.
+//
+// It is called once per configured filter, so implementations must ignore headers they do not
+// handle. mode is either "Denylist" (drop the listed values) or "Allowlist" (keep only the listed
+// values); an unrecognized mode or an empty value list disables the filter.
+type HeaderValueFilterSetter interface {
+	SetHeaderValueFilter(name, mode string, values []string)
+}
+
 // ResponseRedactor is an optional interface that translators can implement
 // to support response body redaction for debug logging.
 type ResponseRedactor interface {

@@ -128,6 +128,61 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			},
 		},
 		{
+			name: "eager_input_streaming true is forwarded",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:                "get_weather",
+							EagerInputStreaming: ptr.To(true),
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:                "get_weather",
+						Description:         anthropic.String(""),
+						EagerInputStreaming: anthropic.Bool(true),
+					},
+				},
+			},
+		},
+		{
+			// An explicit false must survive as false rather than collapse into unset, since
+			// Anthropic reads it as "keep buffering" even when the legacy beta header is on.
+			name: "eager_input_streaming false is forwarded, not dropped",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:                "get_weather",
+							EagerInputStreaming: ptr.To(false),
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:                "get_weather",
+						Description:         anthropic.String(""),
+						EagerInputStreaming: anthropic.Bool(false),
+					},
+				},
+			},
+		},
+		{
+			name: "eager_input_streaming omitted stays unset",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: openaiTestTool,
+			},
+			expectedTools: anthropicTestTool,
+		},
+		{
 			name: "tool_definition_with_required_field",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{

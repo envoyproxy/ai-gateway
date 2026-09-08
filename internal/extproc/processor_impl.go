@@ -572,6 +572,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
 		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+		// Remove content-encoding header if original body encoded but was mutated in the processor.
+		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 		if u.parent.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
@@ -633,7 +635,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
-	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
+	// Build dynamic metadata as soon as the accumulated usage changes (i.e. the chunk that carries
+	// the usage payload), not only at end-of-stream. This ensures the access log still captures usage
+	// even if the downstream client disconnects right after the terminal chunk, before EndOfStream
+	// is observed by the extproc. The EndOfStream write below remains as the final refresh.
+	if (body.EndOfStream || !tokenUsage.IsZero()) && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
 		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
@@ -687,6 +693,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)
+	// Some semantic conventions record the provider, which is only known now
+	// that routing has resolved a backend.
+	if bs, ok := rp.span.(tracingapi.BackendSpan); ok {
+		bs.RecordBackend(tracingapi.Backend{
+			Schema: string(backend.Backend.Schema.Name),
+			Name:   backend.Backend.Name,
+		})
+	}
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
 	u.routeName = routeName
@@ -710,6 +724,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 
 	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
 		headerSetter.SetRequestHeaders(u.requestHeaders)
+	}
+
+	if filters := backend.Backend.HeaderValueFilters; len(filters) > 0 {
+		if filterSetter, ok := u.translator.(translator.HeaderValueFilterSetter); ok {
+			for _, f := range filters {
+				filterSetter.SetHeaderValueFilter(f.Name, f.Mode, f.Values)
+			}
+		}
 	}
 
 	switch redactor := u.translator.(type) {
@@ -899,8 +921,9 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
-// This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
-// when the response is successfully completed. It is not called for failed requests or partial responses.
+// This function is called by the upstream filter at the end of the stream (body.EndOfStream=true), and,
+// for streaming responses, also as soon as a chunk carries new usage so the access log still captures it
+// if the downstream client disconnects before EndOfStream is observed. It is not called for failed requests.
 // The metadata includes token usage costs and model information for downstream processing.
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
