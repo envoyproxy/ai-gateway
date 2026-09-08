@@ -1638,7 +1638,7 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		testServer, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -1656,7 +1656,7 @@ func TestPostClusterModify(t *testing.T) {
 				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
 			},
 		}
-		resp, err := s.PostClusterModify(context.Background(), req)
+		resp, err := testServer.PostClusterModify(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, cluster, resp.Cluster)

@@ -52,19 +52,6 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 			// EPP config that would panic on the nil reference.
 			return &egextension.PostRouteModifyResponse{Route: req.Route}, nil
 		}
-		if routeAction := req.Route.GetRoute(); routeAction != nil {
-			// Disable auto host rewrite to prevent Envoy from overriding the host header
-			// set by the endpoint picker. The endpoint picker sets the destination via
-			// x-gateway-destination-endpoint header and we need to preserve the original
-			// host for proper routing to the selected endpoint.
-			routeAction.HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
-				AutoHostRewrite: wrapperspb.Bool(false),
-			}
-			if req.Route.TypedPerFilterConfig == nil {
-				req.Route.TypedPerFilterConfig = make(map[string]*anypb.Any)
-			}
-			buildEPPMetadataForRoute(req.Route, inferencePool)
-		}
 
 		// Disable auto host rewrite to prevent Envoy from overriding the host header
 		// set by the endpoint picker. The endpoint picker sets the destination via
