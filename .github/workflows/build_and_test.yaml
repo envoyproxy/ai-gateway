@@ -159,7 +159,7 @@ jobs:
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
-          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+          # TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
           TEST_COHERE_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_COHERE_API_KEY }}
           TEST_GROQ_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROQ_API_KEY }}
@@ -469,6 +469,7 @@ jobs:
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
+      - test_data_plane
       - test_data_plane_mcp
       - test_e2e_aigw
       - compute_version
