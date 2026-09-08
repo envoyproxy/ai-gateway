@@ -63,6 +63,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		wantExtAuth    *egv1a1.ExtAuth
 		wantBTP        bool
 		wantFilter     bool
+		wantIssuer     string
 		wantJWKS       *egv1a1.RemoteJWKS
 		wantErr        bool
 	}{
@@ -110,6 +111,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			wantJWT:    true,
 			wantBTP:    true,
 			wantFilter: true,
+			wantIssuer: server.URL,
 			// For HTTP JWKS we don't need a cluster with TLS config.
 			wantJWKS: &egv1a1.RemoteJWKS{URI: server.URL + "/.well-known/jwks.json"},
 			wantErr:  false,
@@ -167,6 +169,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			wantJWT:    true,
 			wantBTP:    true,
 			wantFilter: true,
+			wantIssuer: server.URL,
 			// For HTTPS JWKS we need a cluster with TLS config.
 			wantJWKS: &egv1a1.RemoteJWKS{
 				URI: fmt.Sprintf("https://%s/.well-known/jwks.json", serverURL.Host),
@@ -361,6 +364,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 				if tt.wantJWT {
 					require.NotNil(t, securityPolicy.Spec.JWT)
 					require.NotEmpty(t, securityPolicy.Spec.JWT.Providers)
+					require.Equal(t, tt.wantIssuer, securityPolicy.Spec.JWT.Providers[0].Issuer)
 					if tt.wantJWKS != nil {
 						require.Equal(t, tt.wantJWKS, securityPolicy.Spec.JWT.Providers[0].RemoteJWKS)
 					}
