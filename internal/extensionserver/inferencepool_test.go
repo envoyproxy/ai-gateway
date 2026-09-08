@@ -60,8 +60,9 @@ func TestBuildAndParseMetadata_RoundTrip(t *testing.T) {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			EndpointPickerRef: gwaiev1.EndpointPickerRef{
-				Name: "test-picker",
-				Port: ptr.To(gwaiev1.Port{Number: 9090}),
+				Name:        "test-picker",
+				Port:        ptr.To(gwaiev1.Port{Number: 9090}),
+				FailureMode: gwaiev1.EndpointPickerFailOpen,
 			},
 		},
 	}
@@ -79,8 +80,8 @@ func TestBuildAndParseMetadata_RoundTrip(t *testing.T) {
 	assert.True(t, ok)
 	encodedStr := val.GetStringValue()
 
-	// Check encoded format: ns/name/svc/port/mode/override
-	assert.Equal(t, "test-ns/test-pool/test-picker/9090/buffered/true", encodedStr)
+	// Check encoded format: ns/name/svc/port/mode/override/failureMode
+	assert.Equal(t, "test-ns/test-pool/test-picker/9090/buffered/true/FailOpen", encodedStr)
 
 	// 2. Parse Metadata back to Pool
 	parsedPool := getInferencePoolByMetadata(metadata)
@@ -91,6 +92,7 @@ func TestBuildAndParseMetadata_RoundTrip(t *testing.T) {
 	assert.Equal(t, "test-ns", parsedPool.Namespace)
 	assert.Equal(t, "test-picker", string(parsedPool.Spec.EndpointPickerRef.Name))
 	assert.Equal(t, gwaiev1.PortNumber(9090), parsedPool.Spec.EndpointPickerRef.Port.Number)
+	assert.Equal(t, gwaiev1.EndpointPickerFailOpen, parsedPool.Spec.EndpointPickerRef.FailureMode)
 
 	// Verify restored annotations
 	extractedMode := parsedPool.Annotations[processingBodyModeAnnotation]
@@ -125,7 +127,7 @@ func TestGetInferencePoolByMetadata_Malformed(t *testing.T) {
 		FilterMetadata: map[string]*structpb.Struct{
 			internalapi.InternalEndpointMetadataNamespace: {
 				Fields: map[string]*structpb.Value{
-					internalMetadataInferencePoolKey: structpb.NewStringValue("ns/name/svc/not-a-port/duplex/false"),
+					internalMetadataInferencePoolKey: structpb.NewStringValue("ns/name/svc/not-a-port/duplex/false/FailClose"),
 				},
 			},
 		},
@@ -151,4 +153,37 @@ func TestBuildHTTPFilterForInferencePool_Defaults(t *testing.T) {
 	assert.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
 	assert.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
 	assert.False(t, filter.AllowModeOverride)
+	// Unset failureMode defaults to FailClose, so the injected filter must not fail open.
+	assert.False(t, filter.FailureModeAllow)
+}
+
+// TestBuildHTTPFilterForInferencePool_FailureMode verifies that the injected ext_proc filter's
+// FailureModeAllow mirrors the InferencePool's endpointPickerRef.failureMode, so that a pool
+// configured with FailOpen actually degrades to normal load balancing when the EPP is unreachable
+// instead of dropping traffic like FailClose.
+func TestBuildHTTPFilterForInferencePool_FailureMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		failureMode gwaiev1.EndpointPickerFailureMode
+		want        bool
+	}{
+		{name: "FailOpen", failureMode: gwaiev1.EndpointPickerFailOpen, want: true},
+		{name: "FailClose", failureMode: gwaiev1.EndpointPickerFailClose, want: false},
+		{name: "unset", failureMode: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := &gwaiev1.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{Name: "pool", Namespace: "ns"},
+				Spec: gwaiev1.InferencePoolSpec{
+					EndpointPickerRef: gwaiev1.EndpointPickerRef{
+						Name:        "picker",
+						FailureMode: tt.failureMode,
+					},
+				},
+			}
+			filter := buildHTTPFilterForInferencePool(pool)
+			assert.Equal(t, tt.want, filter.FailureModeAllow)
+		})
+	}
 }

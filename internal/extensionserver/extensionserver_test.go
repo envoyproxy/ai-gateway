@@ -783,7 +783,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				FilterMetadata: map[string]*structpb.Struct{
 					internalapi.InternalEndpointMetadataNamespace: {
 						Fields: map[string]*structpb.Value{
-							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
+							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false/FailClose"),
 						},
 					},
 				},
@@ -1000,7 +1000,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				FilterMetadata: map[string]*structpb.Struct{
 					internalapi.InternalEndpointMetadataNamespace: {
 						Fields: map[string]*structpb.Value{
-							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
+							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false/FailClose"),
 						},
 					},
 				},
@@ -1388,7 +1388,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 				internalapi.InternalEndpointMetadataNamespace: {
 					Fields: map[string]*structpb.Value{
 						"per_route_rule_inference_pool": structpb.NewStringValue(
-							fmt.Sprintf("%s/%s/test-epp/9002/duplex/false", pool.Namespace, pool.Name),
+							fmt.Sprintf("%s/%s/test-epp/9002/duplex/false/FailClose", pool.Namespace, pool.Name),
 						),
 					},
 				},
@@ -2337,7 +2337,7 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 			FilterMetadata: map[string]*structpb.Struct{
 				internalapi.InternalEndpointMetadataNamespace: {
 					Fields: map[string]*structpb.Value{
-						"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
+						"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false/FailClose"),
 					},
 				},
 			},

@@ -99,7 +99,7 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 	}
 
 	result := strings.Split(metadata, "/")
-	if len(result) != 6 {
+	if len(result) != 7 {
 		return nil
 	}
 	ns := result[0]
@@ -111,6 +111,7 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 	}
 	processingBodyMode := result[4]
 	allowModeOverride := result[5]
+	failureMode := result[6]
 	return &gwaiev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -122,15 +123,16 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			EndpointPickerRef: gwaiev1.EndpointPickerRef{
-				Name: gwaiev1.ObjectName(serviceName),
-				Port: ptr.To(gwaiev1.Port{Number: gwaiev1.PortNumber(port)}),
+				Name:        gwaiev1.ObjectName(serviceName),
+				Port:        ptr.To(gwaiev1.Port{Number: gwaiev1.PortNumber(port)}),
+				FailureMode: gwaiev1.EndpointPickerFailureMode(failureMode),
 			},
 		},
 	}
 }
 
 // buildMetadataForInferencePool adds InferencePool metadata to the cluster for reference by other components.
-// encoded as a string in the format: "namespace/name/serviceName/port/bodyMode/allowModeOverride".
+// encoded as a string in the format: "namespace/name/serviceName/port/bodyMode/allowModeOverride/failureMode".
 func buildEPPMetadataForCluster(cluster *clusterv3.Cluster, inferencePool *gwaiev1.InferencePool) {
 	// Initialize cluster metadata structure if not present.
 	if cluster.Metadata == nil {
@@ -179,6 +181,7 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1.Inferenc
 			portForInferencePool(inferencePool),
 			processingBodyMode,
 			allowModeOverride,
+			string(inferencePool.Spec.EndpointPickerRef.FailureMode),
 		),
 	)
 }
@@ -311,7 +314,11 @@ func buildHTTPFilterForInferencePool(pool *gwaiev1.InferencePool) *extprocv3.Ext
 		},
 		AllowModeOverride: allowModeOverride,
 		MessageTimeout:    durationpb.New(300 * time.Second),
-		FailureModeAllow:  false,
+		// FailureModeAllow controls what Envoy does when the EPP is unreachable: true lets the
+		// request continue (fail open), false drops it (fail close). This must mirror the
+		// InferencePool's own failureMode since nothing downstream of this injected filter can
+		// influence it.
+		FailureModeAllow: pool.Spec.EndpointPickerRef.FailureMode == gwaiev1.EndpointPickerFailOpen,
 	}
 }
 
