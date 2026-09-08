@@ -41,6 +41,9 @@ const (
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
 	MCPRouteHeader = EnvoyAIGatewayHeaderPrefix + "mcp-route"
+	// MCPSubjectHeader carries the authenticated subject (the JWT "sub" claim) as extracted
+	// and verified by Envoy's JWT filter via a claimToHeaders mapping.
+	MCPSubjectHeader = EnvoyAIGatewayHeaderPrefix + "mcp-subject"
 	// MCPBackendSubsetHeader is the trusted, shim-supplied comma-separated backend subset a request may fan out to.
 	MCPBackendSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend-subset"
 	// MCPBackendSubsetMetadataKey is the dynamic metadata key the shim sets; Envoy renders it into MCPBackendSubsetHeader.

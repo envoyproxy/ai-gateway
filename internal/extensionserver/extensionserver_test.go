@@ -30,7 +30,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -189,7 +191,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			var buf bytes.Buffer
 			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(t.Context(), tc.c)
+			err = s.maybeModifyCluster(t.Context(), tc.c, nil)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -455,6 +457,145 @@ func Test_maybeModifyCluster(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Regression test: httpRouteRule.BackendRefs (read fresh from
+			// the AIGatewayRoute) and cluster.LoadAssignment (translated by
+			// Envoy Gateway) can be a revision apart, so LoadAssignment.
+			// Endpoints can be shorter than the rule's non-zero-weight
+			// BackendRefs. maybeModifyCluster must log and stop, not index
+			// out of range - this reproduces the "index out of range"
+			// panic the guard prevents.
+			name: "fewer LoadAssignment endpoints than non-zero-weight backendRefs logs and stops",
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
+									Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+										SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+									}},
+								}}},
+							},
+						},
+						// Only one LocalityLbEndpoints entry, even though the rule
+						// has two non-zero-weight backendRefs ("aaa", "bbb") -
+						// "bbb" has no entry here, as when the cluster was
+						// translated from an earlier revision of the rule that
+						// had one backendRef.
+					},
+				},
+			},
+			expectedLog: "msg=\"cluster LoadAssignment has fewer endpoint groups than non-zero-weight backendRefs\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_index=2 load_assignment_endpoints=1\n",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							// "aaa" still gets its metadata stamped - only the
+							// backend(s) past the LoadAssignment's length are
+							// skipped, not the whole cluster.
+							Priority: 0,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
+										Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+											SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+										}},
+									}},
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+													),
+													internalapi.InternalMetadataUpstreamHostKey: structpb.NewStringValue(
+														"aaa.bedrock-runtime.us-east-1.amazonaws.com",
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
+											internalapi.XDSRouteMetadataRouteNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
@@ -468,7 +609,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			})
 			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(t.Context(), tc.cluster)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster, nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -554,7 +695,7 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 				LbEndpoints: []*endpointv3.LbEndpoint{{}},
 			}}},
 		}
-		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil))
 		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[0].Priority)
 		assertBackendName(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata,
 			internalapi.PerRouteRuleRefBackendName("ns", "fallback", "myroute", 0, 1))
@@ -563,7 +704,7 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 
 	t.Run("sets cluster metadata for EDS-managed endpoints", func(t *testing.T) {
 		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0/backend/0"}
-		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster, nil))
 		assertBackendName(t, cluster.Metadata,
 			internalapi.PerRouteRuleRefBackendName("ns", "primary", "myroute", 0, 0))
 		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
@@ -626,7 +767,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
@@ -649,7 +790,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -692,7 +833,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -741,18 +882,19 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.NoError(t, err)
 
-		// Verify no additional filters were added since ext_proc already exists.
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
 		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
-		// Should still have only the existing filter.
-		require.Len(t, updatedPO.HttpFilters, 1)
+		// Our own filters are dropped and rebuilt, so the chain reflects the current config.
+		require.Len(t, updatedPO.HttpFilters, 3)
 		require.Equal(t, "envoy.filters.http.ext_proc/aigateway", updatedPO.HttpFilters[0].Name)
+		require.Equal(t, "envoy.filters.http.header_mutation", updatedPO.HttpFilters[1].Name)
+		require.Equal(t, "envoy.filters.http.upstream_codec", updatedPO.HttpFilters[2].Name)
 	})
 
 	t.Run("cluster with no existing HttpFilters", func(t *testing.T) {
@@ -770,7 +912,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -813,7 +955,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(t.Context(), cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster, nil)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
@@ -1578,7 +1720,8 @@ func TestPostRouteModify(t *testing.T) {
 
 	t.Run("with InferencePool extension and DirectResponse route action", func(t *testing.T) {
 		// When a route has a DirectResponse action (not Route_Route), GetRoute() returns nil.
-		// This should not cause a panic. Regression test for https://github.com/envoyproxy/ai-gateway/issues/1889.
+		// Reject it so Envoy Gateway retains the last good configuration instead of
+		// publishing an unresolved InferencePool as a direct response.
 		route := &routev3.Route{
 			Name: "test-route-direct-response",
 			Action: &routev3.Route_DirectResponse{
@@ -1595,15 +1738,9 @@ func TestPostRouteModify(t *testing.T) {
 			},
 		}
 		resp, err := s.PostRouteModify(context.Background(), req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, route, resp.Route)
-
-		// Verify that GetRoute() is still nil (DirectResponse, not Route_Route).
-		require.Nil(t, route.GetRoute())
-		// Verify that no InferencePool configuration was applied to the non-forwarding route.
-		require.Nil(t, route.TypedPerFilterConfig)
-		require.Nil(t, route.Metadata)
+		require.Equal(t, codes.FailedPrecondition, status.Code(err))
+		require.ErrorContains(t, err, "cannot configure InferencePool default/test-pool")
+		require.Nil(t, resp)
 	})
 }
 
