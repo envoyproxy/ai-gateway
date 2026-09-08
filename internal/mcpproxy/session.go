@@ -547,10 +547,11 @@ type (
 
 	// compositeSessionEntry is used to track the session and last event ID for each backend in a composite session.
 	compositeSessionEntry struct {
-		backendName  string
-		sessionID    gatewayToMCPServerSessionID
-		lastEventID  string
-		capabilities *mcpsdk.ServerCapabilities
+		backendName     string
+		sessionID       gatewayToMCPServerSessionID
+		lastEventID     string
+		capabilities    *mcpsdk.ServerCapabilities
+		protocolVersion string
 	}
 )
 
