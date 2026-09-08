@@ -49,7 +49,15 @@ func (s *Server) PostClusterModify(_ context.Context, req *egextension.PostClust
 		if len(inferencePools) != 1 {
 			return nil, fmt.Errorf("BUG: at most one inferencepool can be referenced per route rule")
 		}
-		s.handleInferencePoolCluster(req.Cluster, inferencePools[0])
+		pool := inferencePools[0]
+		if pool.Spec.EndpointPickerRef == nil {
+			// No endpoint picker configured for this InferencePool (spec.endpointPickerRef is
+			// optional as of Gateway API Inference Extension v1.5.0). We don't yet support
+			// routing traffic without one, so leave the cluster as Envoy Gateway generated it
+			// rather than wiring up EPP config that would panic on the nil reference.
+			return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
+		}
+		s.handleInferencePoolCluster(req.Cluster, pool)
 	}
 
 	return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
