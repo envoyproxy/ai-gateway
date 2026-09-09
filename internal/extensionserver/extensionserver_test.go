@@ -740,6 +740,33 @@ func createInferencePoolExtensionResource(name, namespace string) *egextension.E
 	}
 }
 
+// createInferencePoolExtensionResourceNoEPPRef is like createInferencePoolExtensionResource but
+// omits spec.endpointPickerRef, mirroring an InferencePool created without one -- a legal,
+// schema-valid state as of Gateway API Inference Extension v1.5.0 (the field is optional).
+func createInferencePoolExtensionResourceNoEPPRef(name, namespace string) *egextension.ExtensionResource {
+	unstructuredObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "inference.networking.k8s.io/v1",
+			"kind":       "InferencePool",
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+			},
+			"spec": map[string]any{
+				"targetPortNumber": int32(8080),
+				"selector": map[string]any{
+					"app": "test-inference",
+				},
+			},
+		},
+	}
+
+	jsonBytes, _ := unstructuredObj.MarshalJSON()
+	return &egextension.ExtensionResource{
+		UnstructuredBytes: jsonBytes,
+	}
+}
+
 // TestMaybeModifyClusterExtended tests additional scenarios for maybeModifyCluster function.
 func TestMaybeModifyClusterExtended(t *testing.T) {
 	c := newFakeClient()
@@ -1611,7 +1638,7 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		testServer, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -1629,7 +1656,7 @@ func TestPostClusterModify(t *testing.T) {
 				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
 			},
 		}
-		resp, err := s.PostClusterModify(context.Background(), req)
+		resp, err := testServer.PostClusterModify(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, cluster, resp.Cluster)
@@ -1651,6 +1678,33 @@ func TestPostClusterModify(t *testing.T) {
 		require.Nil(t, cluster.LoadBalancingPolicy)
 		require.Nil(t, cluster.EdsClusterConfig)
 		require.NotNil(t, getInferencePoolByMetadata(cluster.Metadata))
+	})
+
+	t.Run("with InferencePool backend and no endpointPickerRef", func(t *testing.T) {
+		// Regression test: an InferencePool with endpointPickerRef unset must not panic,
+		// and the cluster should be left as Envoy Gateway generated it since we don't yet
+		// support routing traffic without an endpoint picker.
+		cluster := &clusterv3.Cluster{
+			Name:     "test-cluster",
+			LbPolicy: clusterv3.Cluster_ROUND_ROBIN,
+		}
+		inferencePool := createInferencePoolExtensionResourceNoEPPRef("test-pool-no-epp-ref", "default")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, cluster, resp.Cluster)
+
+		// The cluster must be left unmodified: no ORIGINAL_DST rewrite, no EPP metadata.
+		require.Nil(t, cluster.ClusterDiscoveryType)
+		require.Equal(t, clusterv3.Cluster_ROUND_ROBIN, cluster.LbPolicy)
+		require.Nil(t, cluster.Metadata)
 	})
 }
 
@@ -1741,6 +1795,34 @@ func TestPostRouteModify(t *testing.T) {
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 		require.ErrorContains(t, err, "cannot configure InferencePool default/test-pool")
 		require.Nil(t, resp)
+	})
+
+	t.Run("with InferencePool extension and no endpointPickerRef", func(t *testing.T) {
+		// Regression test: an InferencePool with endpointPickerRef unset must not panic,
+		// and the route should be left as Envoy Gateway generated it since we don't yet
+		// support routing traffic without an endpoint picker.
+		route := &routev3.Route{
+			Name: "test-route",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{},
+			},
+		}
+		inferencePool := createInferencePoolExtensionResourceNoEPPRef("test-pool-no-epp-ref", "default")
+		req := &egextension.PostRouteModifyRequest{
+			Route: route,
+			PostRouteContext: &egextension.PostRouteExtensionContext{
+				ExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostRouteModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, route, resp.Route)
+
+		// Verify the route was left unmodified.
+		require.Nil(t, route.GetRoute().GetAutoHostRewrite())
+		require.Nil(t, route.TypedPerFilterConfig)
+		require.Nil(t, route.Metadata)
 	})
 }
 

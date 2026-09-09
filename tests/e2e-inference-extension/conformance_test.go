@@ -54,7 +54,6 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	options.SkipTests = []string{
 		"GatewayWeightedAcrossTwoInferencePools", // TODO: fix me
 		"InferencePoolAppProtocol",               // TODO: fix me
-		"InferencePoolMissingEPPRef",             // TODO: fix me
 	}
 
 	// Setup cleanup to print report even if test fails
