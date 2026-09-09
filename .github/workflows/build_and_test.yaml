@@ -212,7 +212,7 @@ jobs:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
           - name: v1.9.1
-            envoy_gateway_version: v1.9.4
+            envoy_gateway_version: v1.9.1
           - name: v1.8.4
             envoy_gateway_version: v1.8.4
     steps:
