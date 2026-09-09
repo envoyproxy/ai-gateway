@@ -1133,6 +1133,96 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 	require.Equal(t, ctrl.Result{}, result)
 }
 
+func TestInferencePoolController_Reconcile_EndpointPickerRefMissing(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
+
+	// Create a Gateway and an AIGatewayRoute referencing the InferencePool so that a parent
+	// status entry is produced.
+	gateway := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gateway-no-epp-ref",
+			Namespace: "default",
+		},
+		Spec: gwapiv1.GatewaySpec{
+			GatewayClassName: "test-class",
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), gateway))
+
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "route-no-epp-ref",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: "test-gateway-no-epp-ref"},
+			},
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:  "test-inference-pool-no-epp-ref",
+							Group: ptr.To("inference.networking.k8s.io"),
+							Kind:  ptr.To("InferencePool"),
+						},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), aiGatewayRoute))
+
+	// Create an InferencePool with EndpointPickerRef unset. This is a legal, schema-valid state
+	// as of Gateway API Inference Extension v1.5.0 (the field is optional).
+	inferencePool := &gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-inference-pool-no-epp-ref",
+			Namespace: "default",
+		},
+		Spec: gwaiev1.InferencePoolSpec{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+				"app": "test-app",
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
+
+	result, err := c.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: client.ObjectKey{
+			Name:      "test-inference-pool-no-epp-ref",
+			Namespace: "default",
+		},
+	})
+	require.Error(t, err, "Should error when endpointPickerRef is unset")
+	require.Contains(t, err.Error(), "endpointPickerRef is not set")
+	require.Equal(t, ctrl.Result{}, result)
+
+	// The Accepted condition must use the upstream-defined EndpointPickerRefMissing reason
+	// (per gwaiev1.InferencePoolReasonEndpointPickerRefMissing), not a generic "NotAccepted",
+	// so that conformance tooling recognizes this as a legal (if unaccepted) state.
+	var updatedInferencePool gwaiev1.InferencePool
+	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{
+		Name:      "test-inference-pool-no-epp-ref",
+		Namespace: "default",
+	}, &updatedInferencePool))
+
+	require.Len(t, updatedInferencePool.Status.Parents, 1)
+	parent := updatedInferencePool.Status.Parents[0]
+
+	var acceptedCondition *metav1.Condition
+	for i := range parent.Conditions {
+		if parent.Conditions[i].Type == string(gwaiev1.InferencePoolConditionAccepted) {
+			acceptedCondition = &parent.Conditions[i]
+		}
+	}
+	require.NotNil(t, acceptedCondition, "Should have Accepted condition")
+	require.Equal(t, metav1.ConditionFalse, acceptedCondition.Status)
+	require.Equal(t, string(gwaiev1.InferencePoolReasonEndpointPickerRefMissing), acceptedCondition.Reason)
+}
+
 func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
