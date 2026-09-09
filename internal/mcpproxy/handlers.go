@@ -387,9 +387,6 @@ type (
 )
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
-//
-// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
-// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
 	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
 	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
@@ -447,9 +444,6 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 }
 
 // mergeResourceList merges the list of resources from all backends and prepare the response message to be sent back to the client.
-//
-// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
-// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeResourceList(_ *session, responses []broadCastResponse[mcp.ListResourcesResult]) mcp.ListResourcesResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	// TODO: do we need a more sophisticated merging logic here?
@@ -466,9 +460,6 @@ func (m *mcpRequestContext) mergeResourceList(_ *session, responses []broadCastR
 }
 
 // mergeResourcesTemplateList merges the list of resource templates from all backends and prepare the response message to be sent back to the client.
-//
-// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
-// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []broadCastResponse[mcp.ListResourceTemplatesResult]) mcp.ListResourceTemplatesResult {
 	resp := mcp.ListResourceTemplatesResult{ResourceTemplates: make([]*mcp.ResourceTemplate, 0)}
 	for _, r := range responses {
@@ -482,9 +473,6 @@ func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []b
 }
 
 // mergePromptsList merges the list of prompts from all backends and prepare the response message to be sent back to the client.
-//
-// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
-// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergePromptsList(s *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	aggregatedResponse := mcp.ListPromptsResult{Prompts: make([]*mcp.Prompt, 0)}
