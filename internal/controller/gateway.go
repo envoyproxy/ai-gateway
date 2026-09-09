@@ -1323,7 +1323,7 @@ func workloadTemplateAnnotationPatch(uuid, desiredHash string, includeUUID, incl
 	if includeHash {
 		annotations = append(annotations, fmt.Sprintf(`"%s":"%s"`, extProcConfigHashAnnotationKey, desiredHash))
 	}
-	return []byte(fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{%s}}}}}`, strings.Join(annotations, ",")))
+	return fmt.Appendf(nil, `{"spec":{"template":{"metadata":{"annotations":{%s}}}}}`, strings.Join(annotations, ","))
 }
 
 // getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.

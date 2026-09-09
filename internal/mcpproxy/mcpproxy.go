@@ -235,9 +235,10 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				span.RecordRouteToBackend(backend.Name, string(initResult.sessionID), true)
 			}
 			entries[entryIndex] = compositeSessionEntry{
-				sessionID:    initResult.sessionID,
-				backendName:  backend.Name,
-				capabilities: initResult.result.Capabilities,
+				sessionID:       initResult.sessionID,
+				backendName:     backend.Name,
+				capabilities:    initResult.result.Capabilities,
+				protocolVersion: initResult.result.ProtocolVersion,
 			}
 		})
 	}
@@ -320,6 +321,139 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 	}
 
 	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders, perBackendExtraHeaders: perBackendHeaders}, nil
+}
+
+// backendReportedVersions is one backend's advertised protocol version(s).
+// Legacy initialize contributes a single version; modern server/discover may
+// contribute a SupportedVersions list. Name is used only in warning logs.
+type backendReportedVersions struct {
+	name     string
+	versions []string
+}
+
+// mergedProtocolVersion negotiates the single MCP protocol version the gateway
+// advertises to a client, given what each backend supports and (optionally) the
+// version the client asked for. It is shared by the stateful legacy initialize
+// path (handleInitializeRequest) and the stateless modern server/discover path
+// (mergeDiscoverResults) so both negotiate identically.
+//
+// The negotiated version is:
+//
+//	max(protocolVersion20250618, min(clientVersion, min(perBackendMax)))
+//
+// where perBackendMax is the highest version each backend advertises, and the
+// min against clientVersion is skipped when clientVersion is empty.
+// The floor is applied last so a client (or backend) below 2025-06-18 is
+// lifted to the gateway-tested minimum rather than pulling the result down.
+//
+// Rationale for each clamp:
+//   - min across backends: the gateway aggregates several backends behind one
+//     endpoint, so it can only honestly guarantee features every backend
+//     supports. Advertising a newer version than the weakest backend would let a
+//     client rely on capabilities that backend cannot deliver.
+//   - min with client: prefer not to advertise newer than the client asked for;
+//     the client keys its own behavior off the negotiated version.
+//   - max(floor): 2025-06-18 is the version the gateway itself was built and
+//     tested against. Applied last so pre-floor clients/backends are lifted
+//     rather than dragging the advertised version below what the gateway has
+//     ever spoken. A pre-floor client SHOULD disconnect per the MCP spec if it
+//     cannot support the returned version; a pre-floor backend may receive
+//     requests it cannot parse — both cases are logged as warnings.
+//
+// NOTE: MCP protocol versions are NOT guaranteed to be backward compatible
+// across the transport boundary (e.g. 2024-11-05 used HTTP+SSE while 2025-03-26+
+// use Streamable HTTP). Versions are ISO date strings (YYYY-MM-DD), so
+// lexicographic comparison yields chronological ordering. Negotiating the
+// minimum is a best-effort "honest floor" rather than a correctness guarantee;
+// mismatches across a breaking boundary are surfaced via the warnings below.
+func mergedProtocolVersion(l *slog.Logger, clientVersion string, backends []backendReportedVersions) string {
+	const floor = protocolVersion20250618
+
+	// Compute the minimum, across backends, of each backend's best (highest)
+	// supported version. Backends that reported nothing are ignored: every
+	// spec-compliant server MUST return a protocolVersion in its initialize
+	// response, so an empty entry means we failed to learn it, not that the
+	// backend supports "no version".
+	var backendMin string
+	var downgradedBackends []string // backends advertising newer than the merged min.
+	var flooredBackends []string    // backends whose best version is below the floor.
+	type namedMax struct {
+		name string
+		max  string
+	}
+	backendMaxes := make([]namedMax, 0, len(backends))
+	for _, b := range backends {
+		var backendMax string
+		for _, v := range b.versions {
+			if v == "" {
+				continue
+			}
+			if v > backendMax {
+				backendMax = v
+			}
+		}
+		if backendMax == "" {
+			continue
+		}
+		name := b.name
+		if name == "" {
+			name = fmt.Sprintf("backend[%d]", len(backendMaxes))
+		}
+		backendMaxes = append(backendMaxes, namedMax{name: name, max: backendMax})
+		if backendMin == "" || backendMax < backendMin {
+			backendMin = backendMax
+		}
+	}
+
+	// If we learned nothing from any backend, fall back to the floor.
+	if backendMin == "" {
+		return floor
+	}
+
+	// candidate = min(clientVersion, backendMin). Empty clientVersion means no constraint.
+	merged := backendMin
+	if clientVersion != "" && clientVersion < merged {
+		merged = clientVersion
+	}
+
+	// Apply the tested-version floor last so pre-floor clients/backends cannot
+	// pull the advertised version below what the gateway has been tested on.
+	if merged < floor {
+		merged = floor
+	}
+
+	// Classify backends for warnings.
+	for _, bm := range backendMaxes {
+		if bm.max > merged {
+			downgradedBackends = append(downgradedBackends, fmt.Sprintf("%s(%s)", bm.name, bm.max))
+		}
+		if bm.max < floor {
+			flooredBackends = append(flooredBackends, fmt.Sprintf("%s(%s)", bm.name, bm.max))
+		}
+	}
+
+	if l != nil && len(downgradedBackends) > 0 {
+		l.Warn("MCP protocol version downgraded below some backends: clients may attempt unsupported features",
+			slog.String("merged_version", merged),
+			slog.String("downgraded_backends", strings.Join(downgradedBackends, ", ")),
+			slog.String("note", "MCP versions are not backward compatible across the 2024-11-05 vs 2025-03-26+ transport boundary"),
+		)
+	}
+	if l != nil && (len(flooredBackends) > 0 || (clientVersion != "" && clientVersion < floor)) {
+		attrs := []any{
+			slog.String("merged_version", merged),
+			slog.String("floor", floor),
+		}
+		if clientVersion != "" && clientVersion < floor {
+			attrs = append(attrs, slog.String("client_requested", clientVersion))
+		}
+		if len(flooredBackends) > 0 {
+			attrs = append(attrs, slog.String("floored_backends", strings.Join(flooredBackends, ", ")))
+		}
+		l.Warn("MCP protocol version below floor: lifting to gateway-tested minimum; affected backends may receive unparsable requests", attrs...)
+	}
+
+	return merged
 }
 
 type initializeResult struct {

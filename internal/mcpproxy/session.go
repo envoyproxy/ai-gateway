@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -551,6 +552,12 @@ type (
 		sessionID    gatewayToMCPServerSessionID
 		lastEventID  string
 		capabilities *mcpsdk.ServerCapabilities
+		// protocolVersion is the protocolVersion this backend reported in its
+		// initialize response. It is only populated on freshly created sessions
+		// (newSession) and is NOT encoded in the session ID, so it is empty on
+		// entries reconstructed from a session ID via backendSessionIDs. That is
+		// fine because it is only consumed during initialize (handleInitializeRequest).
+		protocolVersion string
 	}
 )
 
@@ -653,6 +660,29 @@ func (s *session) mergedCapabilities() *mcpsdk.ServerCapabilities {
 		caps = append(caps, entry.capabilities)
 	}
 	return unionServerCapabilities(caps)
+}
+
+// mergedProtocolVersion negotiates the protocol version to advertise to the
+// client for this stateful (legacy) session, capped at the client's requested
+// version. It reuses the shared mergedProtocolVersion negotiation so the legacy
+// initialize path and the modern server/discover path stay in lockstep.
+func (s *session) mergedProtocolVersion(clientVersion string) string {
+	backends := make([]backendReportedVersions, 0, len(s.perBackendSessions))
+	for name, entry := range s.perBackendSessions {
+		backends = append(backends, backendReportedVersions{
+			name:     name,
+			versions: []string{entry.protocolVersion},
+		})
+	}
+	// Stable order so warning log fields are deterministic across runs.
+	slices.SortFunc(backends, func(a, b backendReportedVersions) int {
+		return strings.Compare(a.name, b.name)
+	})
+	var l *slog.Logger
+	if s.reqCtx != nil {
+		l = s.reqCtx.l
+	}
+	return mergedProtocolVersion(l, clientVersion, backends)
 }
 
 // unionServerCapabilities computes the union of the given backend capabilities.
