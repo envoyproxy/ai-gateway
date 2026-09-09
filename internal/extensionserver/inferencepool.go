@@ -121,7 +121,7 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 			},
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: gwaiev1.ObjectName(serviceName),
 				Port: ptr.To(gwaiev1.Port{Number: gwaiev1.PortNumber(port)}),
 			},
