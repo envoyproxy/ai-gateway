@@ -726,7 +726,7 @@ func createInferencePoolExtensionResource(name, namespace string) *egextension.E
 				"selector": map[string]any{
 					"app": "test-inference",
 				},
-				"extensionRef": map[string]any{
+				"endpointPickerRef": map[string]any{
 					"name": "test-epp",
 				},
 			},
@@ -734,6 +734,62 @@ func createInferencePoolExtensionResource(name, namespace string) *egextension.E
 	}
 
 	// Marshal to JSON bytes.
+	jsonBytes, _ := unstructuredObj.MarshalJSON()
+	return &egextension.ExtensionResource{
+		UnstructuredBytes: jsonBytes,
+	}
+}
+
+// createInferencePoolExtensionResourceNoEPPRef is like createInferencePoolExtensionResource but
+// omits spec.endpointPickerRef, mirroring an InferencePool created without one -- a legal,
+// schema-valid state as of Gateway API Inference Extension v1.5.0 (the field is optional).
+func createInferencePoolExtensionResourceNoEPPRef(name, namespace string) *egextension.ExtensionResource {
+	unstructuredObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "inference.networking.k8s.io/v1",
+			"kind":       "InferencePool",
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+			},
+			"spec": map[string]any{
+				"targetPortNumber": int32(8080),
+				"selector": map[string]any{
+					"app": "test-inference",
+				},
+			},
+		},
+	}
+	jsonBytes, _ := unstructuredObj.MarshalJSON()
+	return &egextension.ExtensionResource{
+		UnstructuredBytes: jsonBytes,
+	}
+}
+
+// createInferencePoolExtensionResourceWithAppProtocol is like createInferencePoolExtensionResource but
+// sets an explicit spec.appProtocol, so tests can exercise the pool's appProtocol-dependent behavior.
+func createInferencePoolExtensionResourceWithAppProtocol(name, namespace, appProtocol string) *egextension.ExtensionResource {
+	unstructuredObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "inference.networking.k8s.io/v1",
+			"kind":       "InferencePool",
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+			},
+			"spec": map[string]any{
+				"targetPortNumber": int32(8080),
+				"selector": map[string]any{
+					"app": "test-inference",
+				},
+				"appProtocol": appProtocol,
+				"endpointPickerRef": map[string]any{
+					"name": "test-epp",
+				},
+			},
+		},
+	}
+
 	jsonBytes, _ := unstructuredObj.MarshalJSON()
 	return &egextension.ExtensionResource{
 		UnstructuredBytes: jsonBytes,
@@ -1177,7 +1233,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 			},
 			Spec: gwaiev1.InferencePoolSpec{
 				TargetPorts: []gwaiev1.Port{{Number: 8080}},
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 					Name: "test-epp",
 				},
 			},
@@ -1374,7 +1430,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 			},
 			Spec: gwaiev1.InferencePoolSpec{
 				TargetPorts: []gwaiev1.Port{{Number: 8080}},
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 					Name: "test-epp",
 				},
 			},
@@ -1611,7 +1667,7 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		anotherServer, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -1629,7 +1685,7 @@ func TestPostClusterModify(t *testing.T) {
 				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
 			},
 		}
-		resp, err := s.PostClusterModify(context.Background(), req)
+		resp, err := anotherServer.PostClusterModify(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, cluster, resp.Cluster)
@@ -1651,6 +1707,88 @@ func TestPostClusterModify(t *testing.T) {
 		require.Nil(t, cluster.LoadBalancingPolicy)
 		require.Nil(t, cluster.EdsClusterConfig)
 		require.NotNil(t, getInferencePoolByMetadata(cluster.Metadata))
+
+		// Default (unset) appProtocol must result in explicit HTTP/1.1 upstream protocol options.
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
+	})
+
+	t.Run("with InferencePool backend and appProtocol kubernetes.io/h2c", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "test-cluster"}
+		inferencePool := createInferencePoolExtensionResourceWithAppProtocol("test-pool", "default", "kubernetes.io/h2c")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
+	})
+
+	t.Run("with InferencePool backend and appProtocol http", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "test-cluster"}
+		inferencePool := createInferencePoolExtensionResourceWithAppProtocol("test-pool", "default", "http")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		poAny, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+		require.True(t, ok)
+		po := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, poAny.UnmarshalTo(po))
+		explicitConfig, ok := po.UpstreamProtocolOptions.(*httpv3.HttpProtocolOptions_ExplicitHttpConfig_)
+		require.True(t, ok)
+		require.IsType(t, &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{}, explicitConfig.ExplicitHttpConfig.ProtocolConfig)
+	})
+
+	t.Run("with InferencePool backend and no endpointPickerRef", func(t *testing.T) {
+		// Regression test: an InferencePool with endpointPickerRef unset must not panic,
+		// and the cluster should be left as Envoy Gateway generated it since we don't yet
+		// support routing traffic without an endpoint picker.
+		cluster := &clusterv3.Cluster{
+			Name:     "test-cluster",
+			LbPolicy: clusterv3.Cluster_ROUND_ROBIN,
+		}
+		inferencePool := createInferencePoolExtensionResourceNoEPPRef("test-pool-no-epp-ref", "default")
+
+		req := &egextension.PostClusterModifyRequest{
+			Cluster: cluster,
+			PostClusterContext: &egextension.PostClusterExtensionContext{
+				BackendExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostClusterModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, cluster, resp.Cluster)
+
+		// The cluster must be left unmodified: no ORIGINAL_DST rewrite, no EPP metadata.
+		require.Nil(t, cluster.ClusterDiscoveryType)
+		require.Equal(t, clusterv3.Cluster_ROUND_ROBIN, cluster.LbPolicy)
+		require.Nil(t, cluster.Metadata)
 	})
 }
 
@@ -1741,6 +1879,34 @@ func TestPostRouteModify(t *testing.T) {
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 		require.ErrorContains(t, err, "cannot configure InferencePool default/test-pool")
 		require.Nil(t, resp)
+	})
+
+	t.Run("with InferencePool extension and no endpointPickerRef", func(t *testing.T) {
+		// Regression test: an InferencePool with endpointPickerRef unset must not panic,
+		// and the route should be left as Envoy Gateway generated it since we don't yet
+		// support routing traffic without an endpoint picker.
+		route := &routev3.Route{
+			Name: "test-route",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{},
+			},
+		}
+		inferencePool := createInferencePoolExtensionResourceNoEPPRef("test-pool-no-epp-ref", "default")
+		req := &egextension.PostRouteModifyRequest{
+			Route: route,
+			PostRouteContext: &egextension.PostRouteExtensionContext{
+				ExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostRouteModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, route, resp.Route)
+
+		// Verify the route was left unmodified.
+		require.Nil(t, route.GetRoute().GetAutoHostRewrite())
+		require.Nil(t, route.TypedPerFilterConfig)
+		require.Nil(t, route.Metadata)
 	})
 }
 
@@ -1941,7 +2107,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{
 				Name: "test-epp",
 			},
 		},
@@ -2213,7 +2379,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				Namespace: "test-ns",
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2236,7 +2402,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2259,7 +2425,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2283,7 +2449,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 				},
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+				EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -2306,7 +2472,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 		},
 		Spec: gwaiev1.InferencePoolSpec{
 			TargetPorts:       []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
+			EndpointPickerRef: &gwaiev1.EndpointPickerRef{Name: "test-epp"},
 		},
 	}
 
