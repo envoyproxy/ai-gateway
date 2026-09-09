@@ -94,7 +94,7 @@ static_resources:
                             headers:
                               - name: x-ai-eg-model
                                 string_match:
-                                  exact: gpt-4o-mini
+                                  exact: gpt-5-nano
                           route:
                             auto_host_rewrite: true
                             cluster: openai
@@ -781,6 +781,7 @@ static_resources:
       connect_timeout: 30s
       per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
@@ -862,6 +863,7 @@ static_resources:
       connect_timeout: 30s
       per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
@@ -1117,6 +1119,7 @@ static_resources:
       connect_timeout: 30s
       per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
@@ -1195,6 +1198,7 @@ static_resources:
       connect_timeout: 30s
       per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
@@ -1261,6 +1265,7 @@ static_resources:
       connect_timeout: 30s
       per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
