@@ -8,7 +8,7 @@ export default function Community(): React.ReactElement {
     <section id="community" className={styles.section}>
       <div className="container">
         <SectionHeader label="Community" accent="verdigris" title="Built in the open">
-          Weekly meetings, public design discussions, and maintainers from four companies.
+          Weekly meetings, public design proposals, and maintainers from four companies. Showing up with a production problem is a valuable contribution.
         </SectionHeader>
         <CommunityPills />
       </div>

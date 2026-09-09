@@ -91,55 +91,6 @@
   flex-wrap: wrap;
 }
 
-/* try-it-now chip — the product is one command away */
-.command {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 26px;
-  padding: 11px 16px 11px 18px;
-  font: 500 var(--ar-text-sm) / 1 var(--ar-font-mono);
-  color: var(--ar-fg);
-  background: var(--ar-paper);
-  border: 1px solid var(--ar-border);
-  border-radius: 999px;
-  box-shadow: var(--ar-shadow-sm);
-  cursor: pointer;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-.command:hover {
-  box-shadow: var(--ar-shadow-md);
-  border-color: var(--ar-ink-400);
-}
-.command code {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  white-space: nowrap;
-}
-.commandPrompt {
-  color: var(--ar-on-cream-marquee);
-  font-weight: 700;
-}
-.commandCopy {
-  font: 600 var(--ar-text-xs) / 1 var(--ar-font-ui);
-  letter-spacing: var(--ar-tracking-label);
-  text-transform: uppercase;
-  color: var(--ar-fg-subtle);
-  border-left: 1px solid var(--ar-border);
-  padding-left: 12px;
-}
-.command:hover .commandCopy { color: var(--ar-brand-text); }
-:global([data-theme='dark']) .command { background: var(--ar-ink-800); }
-:global([data-theme='dark']) .command:hover { border-color: var(--ar-ink-400); }
-:global([data-theme='dark']) .commandPrompt { color: var(--ar-marquee-400); }
-
-@media (max-width: 520px) {
-  .command { font-size: 0.78rem; }
-}
-
 .sub {
   margin: 36px 0 0;
   font: 500 var(--ar-text-sm) / 1 var(--ar-font-ui);

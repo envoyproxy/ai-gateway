@@ -7,39 +7,38 @@ export type Cta = { label: string; to: string };
 
 export const hero = {
   headline: 'Models. Tools. Agents.',
-  headlineAccent: 'One point of control.',
+  headlineAccent: 'One router.',
   lead:
-    'Application teams get one consistent, OpenAI-compatible API for every model and tool, from hosted providers to self-hosted inference. Platform teams keep credentials, quotas, routing, failover, and usage — managed centrally, enforced by Envoy.',
+    'Your agent gets one OpenAI-compatible API for every model and one router for every MCP tool. Platform teams set up providers, credentials, limits, and failover. Envoy handles the traffic.',
   leadStrong:
-    'A stable contract between application and platform teams.',
+    'Integrate once. Switch models without rewriting.',
   ctas: [
     { label: 'Get Started', to: '/docs/getting-started/' },
     { label: 'View on GitHub', to: 'https://github.com/theagentrouter/agent-router' },
   ] satisfies Cta[],
-  command: 'OPENAI_API_KEY=sk-... aigw run',
-  sub: 'An Agentic AI Foundation project · Built on Envoy',
+  sub: 'An Agentic AI Foundation project · Powered by Envoy',
 };
 
 export const howItFits = {
   label: 'How it fits together',
-  title: 'A control plane for AI traffic',
+  title: 'Powerful traffic handling, made usable',
   standfirst:
-    'Applications speak one API. Agent Router decides where each request goes — which provider, which model, which credentials, at what rate — and Envoy carries it with production-proxy reliability.',
+    'Your agent speaks one API. You describe providers, credentials, tools, and limits once; Agent Router turns that into Envoy configuration, and Envoy handles every request with the reliability it has proven in production for a decade.',
   planes: [
     {
       name: 'Agent Router',
-      role: 'Control plane — routing, policy, credentials, quotas, observability',
+      role: 'Configures — providers, credentials, routing, tools, and limits',
       image: { light: '/img/brand/ar-mark-marquee.svg', dark: '/img/brand/ar-mark-marquee.svg' },
     },
     {
       name: 'Envoy',
-      role: 'Data plane — the proxy that carries every request',
+      role: 'Handles the traffic — the proxy that already carries much of the world\'s production traffic',
       // official CNCF icon-only cuts (cncf/artwork) — never recoloured
       image: { light: '/img/brand/envoy-icon-color.svg', dark: '/img/brand/envoy-icon-white.svg' },
     },
   ],
-  refrainStrong: 'Agent Router controls.',
-  refrain: 'Envoy carries.',
+  refrainStrong: 'Agent Router configures.',
+  refrain: 'Envoy handles the traffic.',
 };
 
 export type CapabilityIcon =
@@ -59,32 +58,32 @@ export type Capability = {
 
 export const capabilities = {
   label: 'Capabilities',
-  title: 'One router, one agent integration point',
+  title: 'One integration point for your agent',
   standfirst:
-    'One place to govern how applications and agents reach models and MCP tools — independent of any one agent framework or model provider.',
+    'Provider APIs, credentials, failover, tool wiring, and token limits move out of your agent and into configuration — on the traffic handling Envoy has proven in production for a decade, without requiring Envoy expertise.',
   items: [
     {
       icon: 'hexagon',
       title: 'One API, every provider',
-      body: 'Route OpenAI-compatible requests to Anthropic, Bedrock, Vertex, Azure, or self-hosted vLLM — no application changes.',
+      body: 'Route OpenAI-compatible requests to Anthropic, Bedrock, Vertex, Azure, or self-hosted vLLM. Switching models is changing the model name.',
       to: '/docs/capabilities/llm-integrations/',
     },
     {
       icon: 'lanes',
       title: 'Traffic management',
-      body: 'Model virtualization, provider fallback, and token-aware rate limiting that understands LLM usage, not just requests.',
+      body: 'Provider fallback, model name virtualization, and token limits per team, app, or model. Your agent never counts a token.',
       to: '/docs/capabilities/traffic/',
     },
     {
       icon: 'lock',
-      title: 'Security & upstream auth',
-      body: 'Credentials live in the gateway, not in every app — API keys, AWS, GCP, and Azure identities, rotated centrally.',
+      title: 'Credentials stay out of your code',
+      body: 'Your agent authenticates to the router and nothing else. Provider API keys and AWS, GCP, and Azure credentials stay with Agent Router, rotated in one place.',
       to: '/docs/capabilities/security/',
     },
     {
       icon: 'hub',
-      title: 'MCP Gateway',
-      body: 'Aggregate MCP servers, filter tools, and enforce authorization — agents reach tools through one governed front door.',
+      title: 'One router for every MCP tool',
+      body: 'One tool catalog from many MCP servers, filtered by who is asking — sized for each agent, so context stays small and wrong-tool calls stay rare.',
       to: '/docs/capabilities/mcp/',
     },
     {
@@ -96,7 +95,7 @@ export const capabilities = {
     {
       icon: 'clock',
       title: 'Observability',
-      body: 'Token-level metrics, traces, and access logs — see cost, latency, and usage per model, per team.',
+      body: 'See what your agent actually did — which model answered, how many tokens, time to first token, where a fallback kicked in — with no instrumentation in your agent. OpenTelemetry GenAI conventions.',
       to: '/docs/capabilities/observability/',
     },
   ] satisfies Capability[],
@@ -115,7 +114,7 @@ export const quickstart = {
   label: 'Get running',
   title: 'From laptop to production',
   body:
-    'Try it with one command on your laptop. Ship the same configuration on Kubernetes — no rewrite in between.',
+    'One command on your laptop. The same configuration ships to a dedicated gateway or a Kubernetes cluster — only the packaging changes.',
   tabs: [
     {
       id: 'local',
@@ -125,9 +124,11 @@ export const quickstart = {
         { kind: 'comment', text: '# 1 — start the router locally' },
         { kind: 'command', text: 'OPENAI_API_KEY=sk-... aigw run' },
         { kind: 'blank' },
-        { kind: 'comment', text: '# 2 — point anything OpenAI-compatible at it' },
-        { kind: 'command', text: 'curl localhost:1975/v1/chat/completions \\' },
-        { kind: 'command', text: `  -d '{"model": "gpt-5", "messages": [...]}'` },
+        { kind: 'comment', text: '# 2 — the only change your agent needs' },
+        { kind: 'command', text: 'export OPENAI_BASE_URL=http://localhost:1975/v1' },
+        { kind: 'blank' },
+        { kind: 'comment', text: '# 3 — add MCP tools (same mcpServers file as Cursor / Claude Desktop)' },
+        { kind: 'command', text: 'aigw run --mcp-config mcp-servers.json' },
       ],
     },
     {

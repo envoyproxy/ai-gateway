@@ -1,19 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Link from '@docusaurus/Link';
 import { hero } from '@site/src/data/home';
 import styles from './styles.module.css';
 
 export default function Hero(): React.ReactElement {
-  const [copied, setCopied] = useState(false);
-  const copyCommand = () => {
-    navigator.clipboard
-      ?.writeText(hero.command)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {});
-  };
   return (
     <header className={styles.hero}>
       <img className={styles.mark} src="/img/brand/ar-mark-marquee.svg" alt="" />
@@ -32,22 +22,6 @@ export default function Hero(): React.ReactElement {
         <Link className="button button--secondary button--lg" to={hero.ctas[1].to}>
           {hero.ctas[1].label}
         </Link>
-      </div>
-      <div>
-        <button
-          type="button"
-          className={styles.command}
-          onClick={copyCommand}
-          title="Copy to clipboard"
-        >
-          <span className={styles.commandPrompt} aria-hidden="true">
-            $
-          </span>
-          <code>{hero.command}</code>
-          <span className={styles.commandCopy} aria-live="polite">
-            {copied ? 'Copied' : 'Copy'}
-          </span>
-        </button>
       </div>
       <p className={styles.sub}>{hero.sub}</p>
     </header>

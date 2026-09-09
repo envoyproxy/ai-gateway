@@ -115,3 +115,11 @@ mohitgurnani:
   socials:
     github: mohitgurnani
     linkedin: https://www.linkedin.com/in/mohitgurnani94/
+maintainers:
+  name: Agent Router Maintainers
+  title: The Agent Router maintainer team
+  url: https://github.com/theagentrouter/agent-router/blob/main/CODEOWNERS
+  image_url: /img/brand/ar-mark-marquee.svg
+  page: false
+  socials:
+    github: theagentrouter
