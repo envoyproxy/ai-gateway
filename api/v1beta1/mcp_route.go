@@ -342,6 +342,7 @@ type MCPBackendSecurityPolicy struct {
 //
 // +kubebuilder:validation:XValidation:rule="(has(self.secretRef) && !has(self.inline)) || (!has(self.secretRef) && has(self.inline))", message="exactly one of secretRef or inline must be set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.header) && has(self.queryParam))", message="only one of header or queryParam can be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.queryParam) && has(self.overwrite) && self.overwrite == false)", message="overwrite cannot be false when queryParam is set"
 type MCPBackendAPIKey struct {
 	// secretRef is the Kubernetes secret which contains the API keys.
 	// The key of the secret should be "apiKey".
@@ -378,6 +379,19 @@ type MCPBackendAPIKey struct {
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	QueryParam *string `json:"queryParam,omitempty"`
+
+	// Overwrite controls whether the injected API key replaces an existing value on the
+	// target header. When true (the default), the configured credential always overwrites a
+	// header already set on the request, including values populated by forwardHeaders.
+	// When false, the API key is injected only if the target header is absent, so a
+	// caller-supplied token forwarded onto the same header is preserved.
+	//
+	// Overwrite applies only to header injection. It must not be set to false when queryParam
+	// is used, because query-parameter injection always rewrites the backend URL.
+	//
+	// +kubebuilder:default=true
+	// +optional
+	Overwrite *bool `json:"overwrite,omitempty"`
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.

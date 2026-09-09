@@ -185,6 +185,18 @@ spec:
                               description: Inline contains the API key as an inline
                                 string.
                               type: string
+                            overwrite:
+                              default: true
+                              description: |-
+                                Overwrite controls whether the injected API key replaces an existing value on the
+                                target header. When true (the default), the configured credential always overwrites a
+                                header already set on the request, including values populated by forwardHeaders.
+                                When false, the API key is injected only if the target header is absent, so a
+                                caller-supplied token forwarded onto the same header is preserved.
+
+                                Overwrite applies only to header injection. It must not be set to false when queryParam
+                                is used, because query-parameter injection always rewrites the backend URL.
+                              type: boolean
                             queryParam:
                               description: |-
                                 QueryParam is the HTTP query parameter to inject the API key into.
@@ -245,6 +257,10 @@ spec:
                               && has(self.inline))
                           - message: only one of header or queryParam can be set
                             rule: '!(has(self.header) && has(self.queryParam))'
+                          - message: overwrite cannot be false when queryParam is
+                              set
+                            rule: '!(has(self.queryParam) && has(self.overwrite) &&
+                              self.overwrite == false)'
                       type: object
                     toolSelector:
                       description: |-
@@ -6414,6 +6430,18 @@ spec:
                               description: Inline contains the API key as an inline
                                 string.
                               type: string
+                            overwrite:
+                              default: true
+                              description: |-
+                                Overwrite controls whether the injected API key replaces an existing value on the
+                                target header. When true (the default), the configured credential always overwrites a
+                                header already set on the request, including values populated by forwardHeaders.
+                                When false, the API key is injected only if the target header is absent, so a
+                                caller-supplied token forwarded onto the same header is preserved.
+
+                                Overwrite applies only to header injection. It must not be set to false when queryParam
+                                is used, because query-parameter injection always rewrites the backend URL.
+                              type: boolean
                             queryParam:
                               description: |-
                                 QueryParam is the HTTP query parameter to inject the API key into.
@@ -6477,6 +6505,10 @@ spec:
                               && has(self.inline))
                           - message: only one of header or queryParam can be set
                             rule: '!(has(self.header) && has(self.queryParam))'
+                          - message: overwrite cannot be false when queryParam is
+                              set
+                            rule: '!(has(self.queryParam) && has(self.overwrite) &&
+                              self.overwrite == false)'
                       type: object
                     toolSelector:
                       description: |-

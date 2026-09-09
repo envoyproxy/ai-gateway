@@ -310,6 +310,11 @@ func TestMCPRoutes(t *testing.T) {
 			name:   "backend_api_key_both_header_and_query.yaml",
 			expErr: "only one of header or queryParam can be set",
 		},
+		{name: "backend_api_key_overwrite_false.yaml"},
+		{
+			name:   "backend_api_key_overwrite_false_query.yaml",
+			expErr: "overwrite cannot be false when queryParam is set",
+		},
 		{
 			name:   "jwks_missing.yaml",
 			expErr: "spec.securityPolicy.oauth.jwks: Invalid value: \"object\": either remoteJWKS or localJWKS must be specified.",

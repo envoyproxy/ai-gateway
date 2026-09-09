@@ -508,10 +508,14 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 		name string
 		key  *aigv1b1.MCPBackendAPIKey
 		// expCredentialValue is the expected value stored in the credential secret's InjectedCredentialKey key.
-		// When set, the HTTPRouteFilter is expected to have credentialInjection configured (secretRef path).
+		// When set, the HTTPRouteFilter is expected to have credentialInjection configured
+		// (secretRef, or inline with overwrite:false).
 		expCredentialValue string
 		// expCredentialHeader is the expected header for the credential injection filter (secretRef path).
 		expCredentialHeader *string
+		// expOverwrite is the expected HTTPCredentialInjectionFilter.overwrite value.
+		// When nil and expCredentialValue is set, overwrite is expected to be true.
+		expOverwrite *bool
 		// expInlineHeader is the expected RequestHeaderModifier header/value (inline path).
 		expInlineHeader *internalapi.Header
 		// expFilterCount is the expected number of filters on the HTTPRouteRule.
@@ -534,6 +538,30 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			expPath:         "/mcp",
 		},
 		{
+			name:            "inline API key overwrite true keeps RequestHeaderModifier",
+			key:             &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Overwrite: ptr.To(true)},
+			expInlineHeader: &internalapi.Header{"Authorization", "Bearer inline-key"},
+			expFilterCount:  3,
+			expPath:         "/mcp",
+		},
+		{
+			name:               "inline API key overwrite false uses credentialInjection",
+			key:                &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Overwrite: ptr.To(false)},
+			expCredentialValue: "Bearer inline-key",
+			expOverwrite:       ptr.To(false),
+			expFilterCount:     2,
+			expPath:            "/mcp",
+		},
+		{
+			name:                "inline API key overwrite false custom header",
+			key:                 &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Header: ptr.To("X-API-KEY"), Overwrite: ptr.To(false)},
+			expCredentialValue:  "inline-key",
+			expCredentialHeader: ptr.To("X-API-KEY"),
+			expOverwrite:        ptr.To(false),
+			expFilterCount:      2,
+			expPath:             "/mcp",
+		},
+		{
 			name:               "secret ref API key default header",
 			key:                &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}},
 			expCredentialValue: "Bearer secretvalue",
@@ -542,8 +570,31 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			expPath:            "/some/path",
 		},
 		{
+			name:               "secret ref API key overwrite false",
+			key:                &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}, Overwrite: ptr.To(false)},
+			expCredentialValue: "Bearer secretvalue",
+			expOverwrite:       ptr.To(false),
+			expFilterCount:     2,
+			expPath:            "/mcp",
+		},
+		{
+			name:                "secret ref API key overwrite false custom header",
+			key:                 &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}, Header: ptr.To("X-API-KEY"), Overwrite: ptr.To(false)},
+			expCredentialValue:  "secretvalue",
+			expCredentialHeader: ptr.To("X-API-KEY"),
+			expOverwrite:        ptr.To(false),
+			expFilterCount:      2,
+			expPath:             "/mcp",
+		},
+		{
 			name:           "query param API key",
 			key:            &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), QueryParam: ptr.To("api_key")},
+			expFilterCount: 2,
+			expPath:        "/mcp?api_key=inline-key",
+		},
+		{
+			name:           "query param API key ignores overwrite true",
+			key:            &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), QueryParam: ptr.To("api_key"), Overwrite: ptr.To(true)},
 			expFilterCount: 2,
 			expPath:        "/mcp?api_key=inline-key",
 		},
@@ -596,7 +647,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 				credSecretName := string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
 				require.Equal(t, mcpCredentialSecretName(mcpRoute, "svc-a"), credSecretName)
 				require.Equal(t, tt.expCredentialHeader, httpFilter.Spec.CredentialInjection.Header)
-				require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
+				require.Equal(t, ptr.Deref(tt.expOverwrite, true), *httpFilter.Spec.CredentialInjection.Overwrite)
 
 				credSecret, getSecretErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
 				require.NoError(t, getSecretErr)
@@ -604,11 +655,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 
 				// No plaintext should appear in any RequestHeaderModifier filter.
 				for _, f := range httpRule.Filters {
-					if f.RequestHeaderModifier != nil {
-						for _, h := range f.RequestHeaderModifier.Set {
-							require.NotContains(t, h.Value, "secretvalue", "plaintext API key must not appear in HTTPRoute")
-						}
-					}
+					require.Nil(t, f.RequestHeaderModifier, "credentialInjection path must not use RequestHeaderModifier")
 				}
 			case tt.expInlineHeader != nil:
 				// Inline path: RequestHeaderModifier, no credentialInjection, no credential Secret.
@@ -692,6 +739,55 @@ func TestMCPRouteController_staleCredentialSecretCleanup(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMCPRouteController_inlineAPIKeyOverwriteFalseTransition(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	kubeClient := fakekube.NewClientset()
+	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-inline-overwrite", Namespace: "default"}}
+	backendRef := &aigv1b1.MCPRouteBackendRef{
+		BackendObjectReference: gwapiv1.BackendObjectReference{
+			Name:      "svc-c",
+			Namespace: ptr.To(gwapiv1.Namespace("default")),
+		},
+		SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+			APIKey: &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Overwrite: ptr.To(false)},
+		},
+	}
+
+	httpRule, err := ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(), mcpRoute, backendRef)
+	require.NoError(t, err)
+
+	credSecretName := mcpCredentialSecretName(mcpRoute, "svc-c")
+	credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "Bearer inline-key", string(credSecret.Data[egv1a1.InjectedCredentialKey]))
+	for _, f := range httpRule.Filters {
+		require.Nil(t, f.RequestHeaderModifier, "overwrite:false inline keys must not use RequestHeaderModifier")
+	}
+
+	backendRef.SecurityPolicy.APIKey.Overwrite = ptr.To(true)
+	httpRule, err = ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(), mcpRoute, backendRef)
+	require.NoError(t, err)
+
+	_, err = kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "expected credential secret to be deleted after switching to overwrite:true")
+
+	found := false
+	for _, f := range httpRule.Filters {
+		if f.RequestHeaderModifier == nil {
+			continue
+		}
+		for _, h := range f.RequestHeaderModifier.Set {
+			if h.Name == "Authorization" && h.Value == "Bearer inline-key" {
+				found = true
+			}
+		}
+	}
+	require.True(t, found, "overwrite:true inline keys should use RequestHeaderModifier")
+}
+
 func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
@@ -712,7 +808,7 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	filterName := mcpBackendRefFilterName(mcpRoute, "some-name")
 
 	t.Run("without credential injection", func(t *testing.T) {
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil, true)
 		require.NoError(t, err)
 
 		var httpFilter egv1a1.HTTPRouteFilter
@@ -724,7 +820,7 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 
 	t.Run("with credential injection", func(t *testing.T) {
 		customHeader := "X-Custom-Key"
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "managed-ref-primary", &customHeader)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "managed-ref-primary", &customHeader, true)
 		require.NoError(t, err)
 
 		var httpFilter egv1a1.HTTPRouteFilter
@@ -737,6 +833,20 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 		require.Equal(t, gwapiv1.ObjectName("managed-ref-primary"), httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
 	})
 
+	t.Run("with credential injection overwrite false", func(t *testing.T) {
+		customHeader := "Authorization"
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "managed-ref-no-overwrite", &customHeader, false)
+		require.NoError(t, err)
+
+		var httpFilter egv1a1.HTTPRouteFilter
+		err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
+		require.NoError(t, err)
+		require.NotNil(t, httpFilter.Spec.CredentialInjection)
+		require.Equal(t, &customHeader, httpFilter.Spec.CredentialInjection.Header)
+		require.False(t, *httpFilter.Spec.CredentialInjection.Overwrite)
+		require.Equal(t, gwapiv1.ObjectName("managed-ref-no-overwrite"), httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+	})
+
 	t.Run("deletes stale secret when transitioning away from credential injection", func(t *testing.T) {
 		staleRefName := "stale-managed-ref"
 		_, createErr := kubeClient.CoreV1().Secrets("default").Create(t.Context(), &corev1.Secret{
@@ -746,10 +856,10 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 		require.NoError(t, createErr)
 
 		authorizationHeader := "Authorization"
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, staleRefName, &authorizationHeader)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, staleRefName, &authorizationHeader, true)
 		require.NoError(t, err)
 
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil, true)
 		require.NoError(t, err)
 
 		_, getErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), staleRefName, metav1.GetOptions{})
@@ -766,10 +876,10 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 		require.NoError(t, createErr)
 
 		customHeader := "X-Custom-Key"
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, oldRefName, &customHeader)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, oldRefName, &customHeader, true)
 		require.NoError(t, err)
 
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, newRefName, &customHeader)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, newRefName, &customHeader, true)
 		require.NoError(t, err)
 
 		_, getErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), oldRefName, metav1.GetOptions{})
