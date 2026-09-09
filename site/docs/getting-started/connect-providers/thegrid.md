@@ -9,7 +9,7 @@ import vars from '../../\_vars.json';
 
 # Connect The Grid
 
-This guide will help you configure Envoy AI Gateway to work with [The Grid](https://thegrid.ai)'s instruments.
+This guide will help you configure Agent Router to work with [The Grid](https://thegrid.ai)'s instruments.
 
 The Grid is an OpenAI-compatible inference API whose model ids are **market instruments** rather than fixed
 models. You request a quality tier — `text-standard`, `code-prime`, `agent-max` — and The Grid acquires
@@ -36,7 +36,7 @@ Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 ### 1. Download configuration template
 
 <CodeBlock language="shell">
-{`curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/thegrid.yaml`}
+{`curl -O https://raw.githubusercontent.com/theagentrouter/agent-router/${vars.aigwGitRef}/examples/basic/thegrid.yaml`}
 </CodeBlock>
 
 ### 2. Configure The Grid Credentials
