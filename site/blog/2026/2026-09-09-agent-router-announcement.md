@@ -42,16 +42,6 @@ Nothing you deploy is renamed. The product name changes in prose only.
 
 Your manifests from yesterday apply tomorrow. There is nothing to migrate.
 
-## What stays the same for now
-
-Container images, Helm charts, and the Go module path keep their current names:
-`docker.io/envoyproxy/ai-gateway-*` and `github.com/envoyproxy/ai-gateway`. Nothing about
-them changes on 10 September.
-
-Some of these may move to the new home over time. If they do, we will announce it well ahead
-of time, with a migration path, and the existing names will keep working through a
-deprecation period. You will not wake up to a broken install.
-
 ## What does change
 
 - **The name.** Envoy AI Gateway becomes Agent Router.
