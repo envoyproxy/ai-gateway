@@ -7,6 +7,13 @@ go 1.27.1
 // The issue is causing the API doc links to be incorrectly generated for multi-versioned CRDs
 replace github.com/elastic/crd-ref-docs => github.com/antonincms/crd-ref-docs v0.0.0-20260202155621-4e5d193dde4f
 
+// actionlint@v1.7.8 is written against the go.yaml.in/yaml/v4 v4.0.0-rc.2 API. Something else in
+// this module's graph (pulled in indirectly, unrelated to actionlint) requires a newer pre-release
+// (v4.0.0-rc.6) that changed the parser error API, which breaks the actionlint build under MVS.
+// Pin to the version actionlint actually supports until it upgrades (tracked upstream).
+// https://github.com/rhysd/actionlint/pull/730
+replace go.yaml.in/yaml/v4 => go.yaml.in/yaml/v4 v4.0.0-rc.2
+
 tool (
 	github.com/apache/skywalking-eyes/cmd/license-eye
 	github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker
