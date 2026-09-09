@@ -206,7 +206,7 @@ const config: Config = {
     announcementBar: {
       id: 'agent_router_rebrand',
       content:
-        '<b class="announceFormer">Formerly Envoy AI Gateway</b> — now an Agentic AI Foundation project. Same code, same maintainers. <a href="/blog">Read the announcement →</a>',
+        '<b class="announceFormer">Formerly Envoy AI Gateway</b> — now an Agentic AI Foundation project. Same code, same maintainers. <a href="/blog/envoy-ai-gateway-is-now-agent-router">Read the announcement →</a>',
       backgroundColor: 'var(--ar-cream-2)',
       textColor: 'var(--ar-ink-600)',
       isCloseable: true,
