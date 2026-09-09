@@ -34,15 +34,23 @@ else in the foundation.
 
 Nothing you deploy is renamed. The product name changes in prose only.
 
-- **CRDs and API group are unchanged.** `AIGatewayRoute`, `AIServiceBackend`,
-  `BackendSecurityPolicy`, and the `aigateway.envoyproxy.io` API group stay as they are.
-- **The CLI is still `aigw`**, and the `envoy-ai-gateway-system` namespace is unchanged.
-- **Container images, Helm charts, and the Go module path are unchanged.**
-  `docker.io/envoyproxy/ai-gateway-*` and `github.com/envoyproxy/ai-gateway` keep working.
+- **CRDs and API group stay as they are.** `AIGatewayRoute`, `AIServiceBackend`,
+  `BackendSecurityPolicy`, and the `aigateway.envoyproxy.io` API group are not being renamed.
+- **The CLI is still `aigw`**, and the `envoy-ai-gateway-system` namespace stays the same.
 - **Same maintainers, same release cadence, same Apache 2.0 license.**
 - **Envoy stays underneath.** Agent Router is still built on Envoy and Envoy Gateway.
 
 Your manifests from yesterday apply tomorrow. There is nothing to migrate.
+
+## What stays the same for now
+
+Container images, Helm charts, and the Go module path keep their current names:
+`docker.io/envoyproxy/ai-gateway-*` and `github.com/envoyproxy/ai-gateway`. Nothing about
+them changes on 10 September.
+
+Some of these may move to the new home over time. If they do, we will announce it well ahead
+of time, with a migration path, and the existing names will keep working through a
+deprecation period. You will not wake up to a broken install.
 
 ## What does change
 
