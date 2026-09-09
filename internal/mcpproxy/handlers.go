@@ -387,10 +387,12 @@ type (
 )
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
+//
+// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
+// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
 	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
 	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
-	cacheables := make([]mcp.Cacheable, 0, len(responses))
 	route := m.routes[s.route]
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.
@@ -405,7 +407,6 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 	// is needed for them here. Always-mode backends prefix inline; both can coexist on the
 	// same route. Tools are filtered by toolSelector and authorization before inclusion.
 	for _, r := range responses {
-		cacheables = append(cacheables, r.res.Cacheable)
 		backendMode := route.effectivePrefixMode(r.backendName)
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
@@ -442,66 +443,51 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 		}
 	}
 
-	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
-	resp.Cacheable = mcp.Cacheable{
-		TTLMs:      ttlMs,
-		CacheScope: cacheScope,
-	}
-
 	return resp
 }
 
 // mergeResourceList merges the list of resources from all backends and prepare the response message to be sent back to the client.
+//
+// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
+// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeResourceList(_ *session, responses []broadCastResponse[mcp.ListResourcesResult]) mcp.ListResourcesResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	// TODO: do we need a more sophisticated merging logic here?
 	// TODO: how to handle NextCursor?
 	resp := mcp.ListResourcesResult{Resources: make([]*mcp.Resource, 0)}
-	cacheables := make([]mcp.Cacheable, 0, len(responses))
 	for _, r := range responses {
-		cacheables = append(cacheables, r.res.Cacheable)
 		for _, res := range r.res.Resources {
 			res.Name = downstreamResourceName(res.Name, r.backendName)
 			res.URI = downstreamResourceURI(res.URI, r.backendName)
 			resp.Resources = append(resp.Resources, res)
 		}
 	}
-	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
-	resp.Cacheable = mcp.Cacheable{
-		TTLMs:      ttlMs,
-		CacheScope: cacheScope,
-	}
 	return resp
 }
 
 // mergeResourcesTemplateList merges the list of resource templates from all backends and prepare the response message to be sent back to the client.
+//
+// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
+// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []broadCastResponse[mcp.ListResourceTemplatesResult]) mcp.ListResourceTemplatesResult {
 	resp := mcp.ListResourceTemplatesResult{ResourceTemplates: make([]*mcp.ResourceTemplate, 0)}
-	cacheables := make([]mcp.Cacheable, 0, len(responses))
 	for _, r := range responses {
-		cacheables = append(cacheables, r.res.Cacheable)
 		for _, res := range r.res.ResourceTemplates {
 			res.Name = downstreamResourceName(res.Name, r.backendName)
 			res.URITemplate = downstreamResourceURI(res.URITemplate, r.backendName)
 			resp.ResourceTemplates = append(resp.ResourceTemplates, res)
 		}
 	}
-	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
-	resp.Cacheable = mcp.Cacheable{
-		TTLMs:      ttlMs,
-		CacheScope: cacheScope,
-	}
 	return resp
 }
 
 // mergePromptsList merges the list of prompts from all backends and prepare the response message to be sent back to the client.
+//
+// Caching hints (ttlMs/cacheScope) are not applied here: they exist only in the
+// 2026-07-28 spec. Modern handlers attach them after merge via applyMergedCachingHints.
 func (m *mcpRequestContext) mergePromptsList(s *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	aggregatedResponse := mcp.ListPromptsResult{Prompts: make([]*mcp.Prompt, 0)}
-	cacheables := make([]mcp.Cacheable, 0, len(responses))
-	for _, r := range responses {
-		cacheables = append(cacheables, r.res.Cacheable)
-
 	route := m.routes[s.route]
 	for _, r := range responses {
 		backendMode := filterapi.PrefixModeAlways
@@ -537,11 +523,6 @@ func (m *mcpRequestContext) mergePromptsList(s *session, responses []broadCastRe
 			res.Name = prefixed
 			aggregatedResponse.Prompts = append(aggregatedResponse.Prompts, res)
 		}
-	}
-	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
-	aggregatedResponse.Cacheable = mcp.Cacheable{
-		TTLMs:      ttlMs,
-		CacheScope: cacheScope,
 	}
 	return aggregatedResponse
 }

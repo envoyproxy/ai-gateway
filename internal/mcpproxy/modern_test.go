@@ -318,6 +318,40 @@ func TestHandleModernToolsList_AggregatesAndPrefixes(t *testing.T) {
 	}
 	require.Contains(t, names, downstreamResourceName("search", "backend1"))
 	require.Contains(t, names, downstreamResourceName("search", "backend2"))
+	require.Equal(t, "0", string(result["ttlMs"]))
+	require.Equal(t, `"public"`, string(result["cacheScope"]))
+}
+
+func TestHandleModernToolsList_MergesCachingHints(t *testing.T) {
+	respFn := func(backend, _ string) any {
+		if backend == "backend1" {
+			return mcp.ListToolsResult{
+				Tools:     []*mcp.Tool{{Name: "search"}},
+				Cacheable: mcp.Cacheable{TTLMs: 2000, CacheScope: "public"},
+			}
+		}
+		return mcp.ListToolsResult{
+			Tools:     []*mcp.Tool{{Name: "search"}},
+			Cacheable: mcp.Cacheable{TTLMs: 500, CacheScope: "private"},
+		}
+	}
+	server := httptest.NewServer(modernBackendHandler(t, nil, nil, respFn))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	delete(proxy.routes["test-route"].toolSelectors, "backend1")
+
+	r := newModernRequest("tools/list")
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "tools/list", nil)
+
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	require.NoError(t, err)
+
+	result := decodeResult(t, rr)
+	require.Equal(t, "500", string(result["ttlMs"]))
+	require.Equal(t, `"private"`, string(result["cacheScope"]))
 }
 
 func TestHandleModernToolsList_ToolSelectorFilters(t *testing.T) {
@@ -1043,6 +1077,16 @@ func TestMergedProtocolVersion_FloorEngagedWarning(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyMergedCachingHints(t *testing.T) {
+	var dst mcp.Cacheable
+	applyMergedCachingHints(&dst, []broadCastResponse[mcp.ListToolsResult]{
+		{backendName: "b1", res: mcp.ListToolsResult{Cacheable: mcp.Cacheable{TTLMs: 2000, CacheScope: "public"}}},
+		{backendName: "b2", res: mcp.ListToolsResult{Cacheable: mcp.Cacheable{TTLMs: 500, CacheScope: "private"}}},
+	})
+	require.Equal(t, 500, dst.TTLMs)
+	require.Equal(t, "private", dst.CacheScope)
 }
 
 func TestMergeCachingHintsFromBackends(t *testing.T) {

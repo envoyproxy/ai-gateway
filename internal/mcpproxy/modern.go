@@ -316,6 +316,7 @@ func (m *mcpRequestContext) handleModernToolsList(ctx context.Context, w http.Re
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](ctx, m, req, route, routeConfig)
 	result := m.mergeToolsList(&session{route: route}, responses)
+	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -335,6 +336,7 @@ func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w htt
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourcesResult](ctx, m, req, route, routeConfig)
 	result := m.mergeResourceList(&session{route: route}, responses)
+	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -352,6 +354,7 @@ func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Contex
 	}
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourceTemplatesResult](ctx, m, req, route, routeConfig)
 	result := m.mergeResourcesTemplateList(&session{route: route}, responses)
+	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -371,6 +374,7 @@ func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListPromptsResult](ctx, m, req, route, routeConfig)
 	result := m.mergePromptsList(&session{route: route}, responses)
+	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -384,7 +388,8 @@ func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.
 // The returned []broadCastResponse[T] is intentionally shaped like the legacy
 // aggregation input so the modern handlers can reuse the same merge* functions
 // (mergeToolsList, mergeResourceList, ...) and avoid drifting from the legacy
-// prefixing/filtering/authorization logic.
+// prefixing/filtering/authorization logic. Caching hints are applied after
+// merge via applyMergedCachingHints — they are not part of the shared merge.
 func sendToAllModernBackendsAndAggregateResponses[T any](ctx context.Context, m *mcpRequestContext, req *jsonrpc.Request, route filterapi.MCPRouteName, routeConfig *mcpProxyConfigRoute) []broadCastResponse[T] {
 	responses := make([]broadCastResponse[T], 0, len(routeConfig.backends))
 	for backendName, backend := range routeConfig.backends {
@@ -661,6 +666,26 @@ func ensureResultType(result json.RawMessage) json.RawMessage {
 // isSupportedVersion checks if a protocol version is in our supported set.
 func isSupportedVersion(v string) bool {
 	return v == protocolVersion20260728
+}
+
+// applyMergedCachingHints copies the most-restrictive ttlMs/cacheScope from
+// backend responses onto a gateway-aggregated modern result. Caching hints
+// (SEP-2549) exist only in the 2026-07-28 spec and must not be set by the
+// shared merge* functions used by the legacy path.
+func applyMergedCachingHints[T interface {
+	GetTTLMs() int
+	GetCacheScope() string
+}](dst *mcp.Cacheable, responses []broadCastResponse[T]) {
+	cacheables := make([]mcp.Cacheable, 0, len(responses))
+	for _, r := range responses {
+		cacheables = append(cacheables, mcp.Cacheable{
+			TTLMs:      r.res.GetTTLMs(),
+			CacheScope: r.res.GetCacheScope(),
+		})
+	}
+	ttlMs, cacheScope := mergeCachingHintsFromBackends(cacheables)
+	dst.TTLMs = ttlMs
+	dst.CacheScope = cacheScope
 }
 
 // mergeCachingHintsFromBackends merges caching hints from multiple backends.
