@@ -4,7 +4,7 @@ title: AIGatewayRoute + InferencePool Guide
 sidebar_position: 3
 ---
 
-import Setup from './_setup.mdx';
+import Setup from './\_setup.mdx';
 
 # AIGatewayRoute + InferencePool Guide
 

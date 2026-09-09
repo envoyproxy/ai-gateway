@@ -4,7 +4,7 @@ title: HTTPRoute + InferencePool Guide
 sidebar_position: 2
 ---
 
-import Setup from './_setup.mdx';
+import Setup from './\_setup.mdx';
 
 # HTTPRoute + InferencePool Guide
 
