@@ -16,7 +16,7 @@ This guide demonstrates how to use InferencePool with AIGatewayRoute for advance
 Before starting, ensure you have:
 
 1. **Kubernetes cluster** with Gateway API support
-2. **Envoy AI Gateway** installed and configured
+2. **Agent Router** installed and configured
 
 ## Step 1: Install Gateway API Inference Extension
 
@@ -29,7 +29,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 <CodeBlock language="shell">
-{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-config.yaml
+{`kubectl apply -f https://raw.githubusercontent.com/theagentrouter/agent-router/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-config.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 
@@ -45,7 +45,7 @@ See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#ad
 Deploy sample inference backends and related resources:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/base.yaml
+kubectl apply -f https://raw.githubusercontent.com/theagentrouter/agent-router/${vars.aigwGitRef}/examples/inference-pool/base.yaml
 ```
 
 > **Note**: These deployments create the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the AIGatewayRoute configuration below.
