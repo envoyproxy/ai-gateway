@@ -27,7 +27,14 @@ import (
 //   - Mixed: Never and Always backends coexist on one route.
 //   - Collision: two Never backends with the same tool name → NotAccepted.
 func TestMCPPrefixMode(t *testing.T) {
-	// mcp_route.yaml must have been applied first (creates the Gateway and mcp-backend Deployment).
+	// Apply the base mcp_route.yaml first: it creates the mcp-gateway Gateway and the
+	// mcp-backend Deployment that this test's routes and Services reuse. Applying it here
+	// (rather than relying on TestMCP having run) makes this test independent of test
+	// execution order — Go runs test files alphabetically, so this file runs before
+	// mcp_route_test.go and cannot assume that gateway already exists.
+	const baseManifest = "testdata/mcp_route.yaml"
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
+
 	const manifest = "testdata/mcp_route_prefix_mode.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
