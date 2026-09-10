@@ -152,6 +152,35 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 	return params.Meta
 }
 
+// selectAuthorizedBackends returns the subset of route backends this request may fan out to.
+// spec.backendSelector is evaluated once per candidate backend using the caller's
+// headers. JWT/CEL inputs are parsed once and reused across candidates. With no
+// selector configured, all route backends are returned.
+func (m *mcpRequestContext) selectAuthorizedBackends(routeName filterapi.MCPRouteName, route *mcpProxyConfigRoute) (map[filterapi.MCPBackendName]filterapi.MCPBackend, error) {
+	if route.backendSelector == nil {
+		return route.backends, nil
+	}
+	headers := m.requestHeaders
+	if headers == nil {
+		headers = http.Header{}
+	}
+	filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.backends))
+	authzCtx := m.newAuthzContext(&authorizationRequest{Headers: headers})
+	for name, backend := range route.backends {
+		allowed, _ := m.authorizeRequestWith(route.backendSelector, &authorizationRequest{
+			Headers: headers,
+			Backend: name,
+		}, authzCtx)
+		if allowed {
+			filtered[name] = backend
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("%w for route %s", errNoMatchingBackendSelector, routeName)
+	}
+	return filtered, nil
+}
+
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
 // startAt is the time when the overall HTTP request started, used for recording request duration metrics.
@@ -168,26 +197,9 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	// spec.backendSelector, if configured, is evaluated once per candidate backend here,
 	// at session-initialize time, rather than on every subsequent call in the session.
 	// With no selector configured, all backends are considered (unchanged behavior).
-	selectedBackends := backends.backends
-	if backends.backendSelector != nil {
-		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(backends.backends))
-		// The JWT and CEL headers are identical for every candidate backend in this loop --
-		// only request.mcp.backend changes -- so parse/build them once and reuse across
-		// all candidates instead of redoing it per backend.
-		authzCtx := m.newAuthzContext(&authorizationRequest{Headers: m.requestHeaders})
-		for name, backend := range backends.backends {
-			allowed, _ := m.authorizeRequestWith(backends.backendSelector, &authorizationRequest{
-				Headers: m.requestHeaders,
-				Backend: name,
-			}, authzCtx)
-			if allowed {
-				filtered[name] = backend
-			}
-		}
-		if len(filtered) == 0 {
-			return nil, fmt.Errorf("%w for route %s", errNoMatchingBackendSelector, routeName)
-		}
-		selectedBackends = filtered
+	selectedBackends, err := m.selectAuthorizedBackends(routeName, backends)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract per-backend forward headers.

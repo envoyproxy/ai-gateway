@@ -47,47 +47,21 @@ func (m *mcpRequestContext) serveModernPOST(w http.ResponseWriter, r *http.Reque
 		err     error
 		errType metrics.MCPErrorType
 		result  handlerResult
+		span    tracingapi.MCPSpan
 	)
-
-	// Record metrics and close the tracing span once the request completes,
-	// mirroring the deferred bookkeeping on the legacy path (serveLegacyPOST).
-	// Handlers that fan out to multiple backends (e.g. server/discover, *_list)
-	// set perBackendMetricsRecorded to skip the generic per-backend recording
-	// here and avoid double-counting.
+	// Arguments are captured in the closure so they are read after the handler
+	// returns, not at defer registration. session is nil on the stateless
+	// modern path; params may also be nil there.
 	defer func() {
-		if m.l.Enabled(ctx, slog.LevelDebug) {
-			m.l.Debug("Completed modern MCP POST request",
-				slog.String("method", req.Method),
-				slog.String("error_type", string(errType)),
-				slog.String("duration", time.Since(startAt).String()))
-		}
-
-		if m.perBackendMetricsRecorded {
-			return
-		}
-
-		metricsInstance := m.metrics
-		if result.backendName != "" {
-			metricsInstance = m.metrics.WithBackend(result.backendName)
-		}
-
-		if err != nil {
-			applicationError := false
-			var errToolCall *errToolCall
-			if errors.As(err, &errToolCall) {
-				applicationError = true
-			}
-			if applicationError {
-				metricsInstance.RecordMethodErrorCount(ctx, req.Method, nil, metrics.MCPStatusFailed)
-			} else {
-				metricsInstance.RecordMethodErrorCount(ctx, req.Method, nil, metrics.MCPStatusError)
-			}
-			metricsInstance.RecordRequestErrorDuration(ctx, startAt, errType, nil)
-			return
-		}
-
-		metricsInstance.RecordRequestDuration(ctx, startAt, nil)
-		metricsInstance.RecordMethodCount(ctx, req.Method, nil)
+		m.recordPOSTCompletion(&postCompletion{
+			ctx:     ctx,
+			method:  req.Method,
+			errType: errType,
+			err:     err,
+			startAt: startAt,
+			span:    span,
+			result:  result,
+		})
 	}()
 
 	route := r.Header.Get(internalapi.MCPRouteHeader)
@@ -105,17 +79,6 @@ func (m *mcpRequestContext) serveModernPOST(w http.ResponseWriter, r *http.Reque
 		err = fmt.Errorf("Mcp-Method header mismatch")
 		onErrorResponse(w, http.StatusBadRequest,
 			fmt.Sprintf("Mcp-Method header '%s' does not match body method '%s'", headerMethod, req.Method))
-		return
-	}
-
-	headerVersion := r.Header.Get(mcpProtocolVersionHeader)
-	if headerVersion == "" {
-		headerVersion = protocolVersion20260728
-	}
-	if !isSupportedVersion(headerVersion) {
-		errType = metrics.MCPErrorUnsupportedProtocolVersion
-		err = fmt.Errorf("unsupported protocol version: %s", headerVersion)
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("unsupported protocol version: %s", headerVersion))
 		return
 	}
 
@@ -138,22 +101,16 @@ func (m *mcpRequestContext) serveModernPOST(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Start a tracing span for the request, mirroring the legacy path. The span
-	// is closed in the deferred block below. Fan-out handlers additionally record
+	// is closed in recordPOSTCompletion. Fan-out handlers additionally record
 	// per-backend routing on the span via RecordRouteToBackend.
-	var span tracingapi.MCPSpan
 	if params := modernParamsForHeaderMetadata(req); params != nil {
 		span = m.tracer.StartSpanAndInjectMeta(ctx, req, params, r.Header)
 	}
-	defer func() {
-		if span == nil {
-			return
-		}
-		if err != nil {
-			span.EndSpanOnError(string(errType), err)
-		} else {
-			span.EndSpan()
-		}
-	}()
+
+	// The incoming request is the source of truth for backendSelector and
+	// per-tool authorization. Tests that invoke handlers directly still set
+	// m.requestHeaders themselves.
+	m.requestHeaders = r.Header
 
 	// Dispatch based on method. Handlers return the resolved backend (when any)
 	// and an error so the deferred block can attribute metrics correctly.
@@ -179,22 +136,38 @@ func (m *mcpRequestContext) serveModernPOST(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// handleServerDiscover fans out server/discover to all backends, merges results.
+// resolveModernRouteBackends looks up the route and evaluates backendSelector
+// against this request. The returned map is the only backend set discovery and
+// list fan-out may talk to. Writes 404 (unknown route) or 403 (no matching
+// backends) on failure.
+func (m *mcpRequestContext) resolveModernRouteBackends(w http.ResponseWriter, route filterapi.MCPRouteName) (*mcpProxyConfigRoute, map[filterapi.MCPBackendName]filterapi.MCPBackend, error) {
+	routeConfig, ok := m.routes[route]
+	if !ok {
+		onErrorResponse(w, http.StatusNotFound, "route not found")
+		return nil, nil, fmt.Errorf("%w: %s", errBackendNotFound, route)
+	}
+	selected, err := m.selectAuthorizedBackends(route, routeConfig)
+	if err != nil {
+		onErrorResponse(w, http.StatusForbidden, "access denied")
+		return nil, nil, err
+	}
+	return routeConfig, selected, nil
+}
+
+// handleServerDiscover fans out server/discover to selected backends, merges results.
 //
 // This is a fan-out handler: it records per-backend metrics itself and sets
 // perBackendMetricsRecorded so the generic recording in serveModernPOST is
 // skipped.
 func (m *mcpRequestContext) handleServerDiscover(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, route filterapi.MCPRouteName, span tracingapi.MCPSpan) (handlerResult, error) {
 	m.perBackendMetricsRecorded = true
-
-	routeConfig, ok := m.routes[route]
-	if !ok {
-		onErrorResponse(w, http.StatusNotFound, "route not found")
-		return handlerResult{}, fmt.Errorf("%w: %s", errBackendNotFound, route)
+	_, selectedBackends, err := m.resolveModernRouteBackends(w, route)
+	if err != nil {
+		return handlerResult{}, err
 	}
 
 	var results []*mcp.DiscoverResult
-	for _, backend := range routeConfig.backends {
+	for _, backend := range selectedBackends {
 		backendStartAt := time.Now()
 		result, err := m.discoverBackend(ctx, route, backend)
 		backendMetrics := m.metrics.WithBackend(backend.Name)
@@ -219,7 +192,7 @@ func (m *mcpRequestContext) handleServerDiscover(ctx context.Context, w http.Res
 		return handlerResult{}, errors.New("failed to discover any backend")
 	}
 	merged := mergeDiscoverResults(m.l, results)
-	merged.Instructions = fmt.Sprintf("Envoy AI Gateway — MCP proxy aggregating %d backends", len(routeConfig.backends))
+	merged.Instructions = fmt.Sprintf("Agent Router — MCP proxy aggregating %d backends", len(selectedBackends))
 	writeJSONRPCResult(w, req.ID, merged)
 	return handlerResult{}, nil
 }
@@ -255,7 +228,7 @@ func (m *mcpRequestContext) discoverBackend(ctx context.Context, route filterapi
 func discoverParams() []byte {
 	return []byte(`{"_meta":{` +
 		`"` + metaProtocolVersion + `":"` + protocolVersion20260728 + `",` +
-		`"` + metaClientInfo + `":{"name":"envoy-ai-gateway","version":"1.0.0"},` +
+		`"` + metaClientInfo + `":{"name":agent-router","version":"1.0.0"},` +
 		`"` + metaClientCapabilities + `":{}` +
 		`}}`)
 }
@@ -303,18 +276,17 @@ func mergeDiscoverResults(l *slog.Logger, results []*mcp.DiscoverResult) *mcp.Di
 func (m *mcpRequestContext) handleModernToolsList(ctx context.Context, w http.ResponseWriter, r *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
 	m.perBackendMetricsRecorded = true
 
-	routeConfig, ok := m.routes[route]
-	if !ok {
-		onErrorResponse(w, http.StatusNotFound, "route not found")
-		return handlerResult{}, fmt.Errorf("%w: %s", errBackendNotFound, route)
-	}
-
 	// mergeToolsList reads per-caller headers from m.requestHeaders for authorization.
 	// In production this is set at construction (== r.Header); ensure it is populated
 	// even when this handler is invoked directly (e.g. in tests) so auth stays enforced.
 	m.requestHeaders = r.Header
 
-	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](ctx, m, req, route, routeConfig)
+	_, selected, err := m.resolveModernRouteBackends(w, route)
+	if err != nil {
+		return handlerResult{}, err
+	}
+
+	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](ctx, m, req, route, selected)
 	result := m.mergeToolsList(&session{route: route}, responses)
 	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
@@ -325,16 +297,16 @@ func (m *mcpRequestContext) handleModernToolsList(ctx context.Context, w http.Re
 //
 // Fan-out handler: records per-backend metrics itself and sets
 // perBackendMetricsRecorded.
-func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w http.ResponseWriter, _ *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
+func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w http.ResponseWriter, r *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
 	m.perBackendMetricsRecorded = true
+	m.requestHeaders = r.Header
 
-	routeConfig, ok := m.routes[route]
-	if !ok {
-		onErrorResponse(w, http.StatusNotFound, "route not found")
-		return handlerResult{}, fmt.Errorf("%w: %s", errBackendNotFound, route)
+	_, selected, err := m.resolveModernRouteBackends(w, route)
+	if err != nil {
+		return handlerResult{}, err
 	}
 
-	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourcesResult](ctx, m, req, route, routeConfig)
+	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourcesResult](ctx, m, req, route, selected)
 	result := m.mergeResourceList(&session{route: route}, responses)
 	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
@@ -344,15 +316,15 @@ func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w htt
 // handleModernResourceTemplatesList handles resources/templates/list (P1.7 fan-out).
 // Fans out to all backends and namespaces each template's uriTemplate with the
 // backend prefix, mirroring resources/list.
-func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Context, w http.ResponseWriter, _ *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
+func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Context, w http.ResponseWriter, r *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
 	m.perBackendMetricsRecorded = true
+	m.requestHeaders = r.Header
 
-	routeConfig, ok := m.routes[route]
-	if !ok {
-		onErrorResponse(w, http.StatusNotFound, "route not found")
-		return handlerResult{}, fmt.Errorf("%w: %s", errBackendNotFound, route)
+	_, selected, err := m.resolveModernRouteBackends(w, route)
+	if err != nil {
+		return handlerResult{}, err
 	}
-	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourceTemplatesResult](ctx, m, req, route, routeConfig)
+	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourceTemplatesResult](ctx, m, req, route, selected)
 	result := m.mergeResourcesTemplateList(&session{route: route}, responses)
 	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
@@ -363,36 +335,39 @@ func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Contex
 //
 // Fan-out handler: records per-backend metrics itself and sets
 // perBackendMetricsRecorded.
-func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.ResponseWriter, _ *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
+func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.ResponseWriter, r *http.Request, req *jsonrpc.Request, route filterapi.MCPRouteName) (handlerResult, error) {
 	m.perBackendMetricsRecorded = true
+	m.requestHeaders = r.Header
 
-	routeConfig, ok := m.routes[route]
-	if !ok {
-		onErrorResponse(w, http.StatusNotFound, "route not found")
-		return handlerResult{}, fmt.Errorf("%w: %s", errBackendNotFound, route)
+	_, selected, err := m.resolveModernRouteBackends(w, route)
+	if err != nil {
+		return handlerResult{}, err
 	}
 
-	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListPromptsResult](ctx, m, req, route, routeConfig)
+	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListPromptsResult](ctx, m, req, route, selected)
 	result := m.mergePromptsList(&session{route: route}, responses)
 	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
 
-// sendToAllModernBackendsAndAggregateResponses fans out a modern (stateless) list request to all backends in
-// the route and collects each backend's result unmarshaled into T. Backends that
-// fail the request or whose result cannot be unmarshaled are logged and skipped,
+// sendToAllModernBackendsAndAggregateResponses fans out a modern (stateless) list request
+// to the already-selected backend set and collects each backend's result unmarshaled into T.
+// Backends that fail the request or whose result cannot be unmarshaled are logged and skipped,
 // mirroring the "partial failure is non-fatal" behavior of the legacy aggregation
 // path (sendToAllBackendsAndAggregateResponses).
+//
+// Callers must pass the set from resolveModernRouteBackends / selectBackends; this
+// function does not re-evaluate backendSelector.
 //
 // The returned []broadCastResponse[T] is intentionally shaped like the legacy
 // aggregation input so the modern handlers can reuse the same merge* functions
 // (mergeToolsList, mergeResourceList, ...) and avoid drifting from the legacy
 // prefixing/filtering/authorization logic. Caching hints are applied after
 // merge via applyMergedCachingHints — they are not part of the shared merge.
-func sendToAllModernBackendsAndAggregateResponses[T any](ctx context.Context, m *mcpRequestContext, req *jsonrpc.Request, route filterapi.MCPRouteName, routeConfig *mcpProxyConfigRoute) []broadCastResponse[T] {
-	responses := make([]broadCastResponse[T], 0, len(routeConfig.backends))
-	for backendName, backend := range routeConfig.backends {
+func sendToAllModernBackendsAndAggregateResponses[T any](ctx context.Context, m *mcpRequestContext, req *jsonrpc.Request, route filterapi.MCPRouteName, backends map[filterapi.MCPBackendName]filterapi.MCPBackend) []broadCastResponse[T] {
+	responses := make([]broadCastResponse[T], 0, len(backends))
+	for backendName, backend := range backends {
 		backendStartAt := time.Now()
 		backendMetrics := m.metrics.WithBackend(backendName)
 		resp, err := m.sendModernRequest(ctx, req, route, backend)
@@ -661,11 +636,6 @@ func ensureResultType(result json.RawMessage) json.RawMessage {
 	check["resultType"] = json.RawMessage(`"complete"`)
 	out, _ := json.Marshal(check)
 	return out
-}
-
-// isSupportedVersion checks if a protocol version is in our supported set.
-func isSupportedVersion(v string) bool {
-	return v == protocolVersion20260728
 }
 
 // applyMergedCachingHints copies the most-restrictive ttlMs/cacheScope from

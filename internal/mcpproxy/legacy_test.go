@@ -278,7 +278,7 @@ func TestServePOST_InitializeRequest_NegotiatesProtocolVersion(t *testing.T) {
 			initReq := &jsonrpc.Request{
 				Method: "initialize",
 				ID:     id,
-				Params: []byte(fmt.Sprintf(`{"protocolVersion": %q, "capabilities": {}, "clientInfo": {"name": "Test", "version": "1.0.0"}}`, tc.clientVersion)),
+				Params: fmt.Appendf(nil, `{"protocolVersion": %q, "capabilities": {}, "clientInfo": {"name": "Test", "version": "1.0.0"}}`, tc.clientVersion),
 			}
 			body, err := jsonrpc.EncodeMessage(initReq)
 			require.NoError(t, err)

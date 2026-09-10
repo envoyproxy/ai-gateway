@@ -16,9 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -119,19 +121,6 @@ func TestServeModernPOST_MethodHeaderMismatch(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "does not match body method")
-}
-
-func TestServeModernPOST_UnsupportedVersion(t *testing.T) {
-	proxy := newTestMCPProxy()
-	r := newModernRequest("tools/list")
-	r.Header.Set(mcpProtocolVersionHeader, "1999-01-01")
-	rr := httptest.NewRecorder()
-	req := modernReq(t, "tools/list", nil)
-
-	proxy.serveModernPOST(rr, r, req, time.Now())
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "unsupported protocol version")
 }
 
 func TestServeModernPOST_RemovedMethods(t *testing.T) {
@@ -280,6 +269,95 @@ func TestHandleServerDiscover_AllBackendsFail(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to discover any backend")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func jwtBackendSelectorAllowing(t *testing.T) *compiledAuthorization {
+	t.Helper()
+	return mustCompileBackendSelector(t, &filterapi.MCPRouteAuthorization{
+		DefaultAction: filterapi.AuthorizationActionDeny,
+		Rules: []filterapi.MCPRouteAuthorizationRule{
+			{
+				Action: filterapi.AuthorizationActionAllow,
+				CEL:    ptr.To(`request.mcp.backend in request.auth.jwt.claims.mcp_backends`),
+			},
+		},
+	})
+}
+
+func TestHandleServerDiscover_BackendSelectorFilters(t *testing.T) {
+	callCount := &perBackendCallCount{}
+	respFn := func(_, _ string) any {
+		return mcp.DiscoverResult{SupportedVersions: []string{protocolVersion20260728}, Capabilities: &mcp.ServerCapabilities{}}
+	}
+	server := httptest.NewServer(modernBackendHandler(t, callCount, nil, respFn))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.routes["test-route"].backendSelector = jwtBackendSelectorAllowing(t)
+	proxy.requestHeaders = http.Header{
+		"Authorization": []string{"Bearer " + bearerTokenWithClaims(jwt.MapClaims{"mcp_backends": []string{"backend2"}})},
+	}
+
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "server/discover", nil)
+	_, err := proxy.handleServerDiscover(context.Background(), rr, req, "test-route", nil)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, 0, callCount.get("backend1"))
+	require.Equal(t, 1, callCount.get("backend2"))
+	result := decodeResult(t, rr)
+	require.Contains(t, string(result["instructions"]), "aggregating 1 backends")
+}
+
+func TestHandleModernToolsList_BackendSelectorFilters(t *testing.T) {
+	callCount := &perBackendCallCount{}
+	respFn := func(backend, _ string) any {
+		return mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}
+	}
+	server := httptest.NewServer(modernBackendHandler(t, callCount, nil, respFn))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	delete(proxy.routes["test-route"].toolSelectors, "backend1")
+	proxy.routes["test-route"].backendSelector = jwtBackendSelectorAllowing(t)
+
+	token := bearerTokenWithClaims(jwt.MapClaims{"mcp_backends": []string{"backend2"}})
+	r := newModernRequest("tools/list")
+	r.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "tools/list", nil)
+
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, 0, callCount.get("backend1"))
+	require.Equal(t, 1, callCount.get("backend2"))
+
+	result := decodeResult(t, rr)
+	var tools struct {
+		Tools []*mcp.Tool `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(fmt.Appendf(nil, `{"tools":%s}`, result["tools"]), &tools))
+	require.Len(t, tools.Tools, 1)
+	require.Equal(t, downstreamResourceName("search", "backend2"), tools.Tools[0].Name)
+}
+
+func TestServeModernPOST_BackendSelectorDenied(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].backendSelector = mustCompileBackendSelector(t, &filterapi.MCPRouteAuthorization{
+		DefaultAction: filterapi.AuthorizationActionDeny,
+	})
+
+	r := newModernRequest("tools/list")
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "tools/list", nil)
+	proxy.serveModernPOST(rr, r, req, time.Now())
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Equal(t, "access denied", rr.Body.String())
 }
 
 // -----------------------------------------------------------------------------
@@ -516,7 +594,7 @@ func TestSendToAllModernBackends_PartialFailure(t *testing.T) {
 	req := modernReq(t, "tools/list", nil)
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](
-		context.Background(), proxy, req, "test-route", proxy.routes["test-route"])
+		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends)
 
 	require.Len(t, responses, 1)
 	require.Equal(t, "backend2", responses[0].backendName)
@@ -544,7 +622,7 @@ func TestSendToAllModernBackends_UnmarshalFailureSkipped(t *testing.T) {
 	req := modernReq(t, "tools/list", nil)
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](
-		context.Background(), proxy, req, "test-route", proxy.routes["test-route"])
+		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends)
 
 	require.Len(t, responses, 1)
 	require.Equal(t, "backend2", responses[0].backendName)
@@ -1153,10 +1231,4 @@ func TestWriteJSONRPCResult(t *testing.T) {
 	var result map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(envelope["result"], &result))
 	require.Equal(t, `"complete"`, string(result["resultType"]))
-}
-
-func TestIsSupportedVersion(t *testing.T) {
-	require.True(t, isSupportedVersion(protocolVersion20260728))
-	require.False(t, isSupportedVersion(protocolVersion20250618))
-	require.False(t, isSupportedVersion("1999-01-01"))
 }
