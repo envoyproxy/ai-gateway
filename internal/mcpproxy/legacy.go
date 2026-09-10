@@ -641,11 +641,26 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 }
 
 func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracingapi.MCPSpan, r *http.Request) (handlerResult, error) {
-	backendName, toolName, err := upstreamResourceName(p.Name)
-	if err != nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
-		return handlerResult{}, err
+	var (
+		backendName, toolName string
+		resolvedFromIndex     bool
+	)
+	// route.neverModeToolIndex is static, per-route config (see LoadConfig), so this lookup is
+	// consistent regardless of how many separate HTTP requests this client session is made of.
+	if route := m.routes[s.route]; route != nil {
+		if indexedBackend, inIndex := route.neverModeToolIndex[p.Name]; inIndex {
+			backendName, toolName, resolvedFromIndex = indexedBackend, p.Name, true
+		}
 	}
+	if !resolvedFromIndex {
+		var err error
+		backendName, toolName, err = upstreamResourceName(p.Name)
+		if err != nil {
+			onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
+			return handlerResult{}, err
+		}
+	}
+
 	result := handlerResult{backendName: backendName}
 
 	backend, err := m.getBackendForRoute(s.route, backendName)
@@ -654,13 +669,14 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
 
-	// Validate that the tool is whitelisted for this route
+	// Validate that the tool is whitelisted for this route.
 	route := m.routes[s.route]
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
 		return result, fmt.Errorf("route not found: %s", s.route)
 	}
+
 	selector := route.toolSelectors[backendName]
 	if selector != nil && !selector.allows(toolName) {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name: %s", toolName))
@@ -1155,9 +1171,26 @@ func (m *mcpRequestContext) handlePing(_ context.Context, w http.ResponseWriter,
 	return
 }
 
+// resolvePromptBackend resolves the backend and upstream prompt name for a client-supplied
+// prompt name on the given route. If a Never-mode backend on this route declared this exact
+// name via promptSelector.include (recorded statically in route.neverModePromptIndex at config
+// load — see MCPPromptFilter and LoadConfig), that backend is used and the name is left bare.
+// Otherwise it falls back to parsing the "<backendName>__<prompt>" prefix.
+//
+// Shared by handlePromptGetRequest and handleCompletionComplete's "ref/prompt" case so both
+// resolve names identically.
+func (m *mcpRequestContext) resolvePromptBackend(routeName filterapi.MCPRouteName, name string) (backendName, promptName string, err error) {
+	if route := m.routes[routeName]; route != nil {
+		if indexedBackend, inIndex := route.neverModePromptIndex[name]; inIndex {
+			return indexedBackend, name, nil
+		}
+	}
+	return upstreamResourceName(name)
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) (handlerResult, error) {
-	backendName, promptName, err := upstreamResourceName(p.Name)
+	backendName, promptName, err := m.resolvePromptBackend(s.route, p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid prompt name %s: %v", p.Name, err))
 		return handlerResult{}, err
@@ -1196,7 +1229,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 	)
 	switch param.Ref.Type {
 	case "ref/prompt":
-		backendName, param.Ref.Name, err = upstreamResourceName(param.Ref.Name)
+		backendName, param.Ref.Name, err = m.resolvePromptBackend(s.route, param.Ref.Name)
 	case "ref/resource":
 		backendName, param.Ref.URI, err = upstreamResourceURI(param.Ref.URI)
 	}

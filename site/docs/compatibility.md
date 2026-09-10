@@ -8,14 +8,14 @@ sidebar_position: 6
 
 This document provides compatibility information for Agent Router releases with their dependencies.
 
-| Agent Router | Envoy Gateway                 | Kubernetes | Gateway API | Support Status |
-| ------------ | ----------------------------- | ---------- | ----------- | -------------- |
-| main         | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Development    |
-| v1.0.x       | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Supported      |
-| v0.7.x       | v1.8.x+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Supported      |
-| v0.6.x       | v1.7.x+ (Envoy Proxy v1.37.x) | v1.32+     | v1.4.x      | Supported      |
-| v0.5.x       | v1.6.x+ (Envoy Proxy v1.35.x) | v1.32+     | v1.4.x      | Supported      |
-| others       | N/A                           | N/A        | N/A         | End of Life    |
+| Agent Router | Envoy Gateway                 | Kubernetes | Gateway API | Inference Extension | Support Status |
+| ------------ | ----------------------------- | ---------- | ----------- | ------------------- | -------------- |
+| main         | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.6.x      | v1.6.0              | Development    |
+| v1.0.x       | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | v1.0.2              | Supported      |
+| v0.7.x       | v1.8.x+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | v1.0.2              | Supported      |
+| v0.6.x       | v1.7.x+ (Envoy Proxy v1.37.x) | v1.32+     | v1.4.x      | v1.0.2              | Supported      |
+| v0.5.x       | v1.6.x+ (Envoy Proxy v1.35.x) | v1.32+     | v1.4.x      | v1.0.2              | Supported      |
+| others       | N/A                           | N/A        | N/A         | N/A                 | End of Life    |
 
 Note that "compatibility" means that these specific combinations have been tested and verified to work together.
 Other versions may work but are not officially supported.
