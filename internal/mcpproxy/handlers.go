@@ -391,49 +391,52 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
 	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
 	route := m.routes[s.route]
-	if route != nil {
-		// Aggregate tools from all backends. Per-backend PrefixMode controls whether a backend's
-		// tools are prefixed with "<backendName>__" (Always) or exposed as bare names (Never).
-		// Never-mode bare names are exactly the ones in route.neverModeToolIndex, a static map
-		// computed at config load from each Never-mode backend's declared toolSelector.include
-		// (admission-validated for cross-backend uniqueness), so no runtime collision bookkeeping
-		// is needed for them here. Always-mode backends prefix inline; both can coexist on the
-		// same route. Tools are filtered by toolSelector and authorization before inclusion.
-		for _, r := range responses {
-			backendMode := route.effectivePrefixMode(r.backendName)
-			selector := route.toolSelectors[r.backendName]
-			for _, tool := range r.res.Tools {
-				if selector != nil && !selector.allows(tool.Name) {
+	if route == nil {
+		// This should never happen as the route must have been validated when the session is created.
+		return resp
+	}
+
+	// Aggregate tools from all backends. Per-backend PrefixMode controls whether a backend's
+	// tools are prefixed with "<backendName>__" (Always) or exposed as bare names (Never).
+	// Never-mode bare names are exactly the ones in route.neverModeToolIndex, a static map
+	// computed at config load from each Never-mode backend's declared toolSelector.include
+	// (admission-validated for cross-backend uniqueness), so no runtime collision bookkeeping
+	// is needed for them here. Always-mode backends prefix inline; both can coexist on the
+	// same route. Tools are filtered by toolSelector and authorization before inclusion.
+	for _, r := range responses {
+		backendMode := route.effectivePrefixMode(r.backendName)
+		selector := route.toolSelectors[r.backendName]
+		for _, tool := range r.res.Tools {
+			if selector != nil && !selector.allows(tool.Name) {
+				continue
+			}
+			if route.authorization != nil {
+				allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
+					Headers:   m.requestHeaders,
+					MCPMethod: "tools/call",
+					Backend:   r.backendName,
+					Tool:      tool.Name,
+				})
+				if !allowed {
 					continue
 				}
-				if route.authorization != nil {
-					allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
-						Headers:   m.requestHeaders,
-						MCPMethod: "tools/call",
-						Backend:   r.backendName,
-						Tool:      tool.Name,
-					})
-					if !allowed {
-						continue
-					}
-				}
-				if backendMode != filterapi.PrefixModeNever {
-					prefixed := downstreamResourceName(tool.Name, r.backendName)
-					// Guard against an Always-mode backend's prefixed name accidentally colliding
-					// with a bare name a Never-mode backend on this route declared ownership of.
-					if owner, collision := route.neverModeToolIndex[prefixed]; collision {
-						m.l.Warn("dropping MCP tool name that collides with a prefixMode=Never backend's declared bare name",
-							slog.String("tool", prefixed),
-							slog.String("always_mode_backend", r.backendName),
-							slog.String("never_mode_backend", owner),
-						)
-						continue
-					}
-					tool.Name = prefixed
-				}
-				rewriteMetaResourceURIs(tool.Meta, r.backendName)
-				resp.Tools = append(resp.Tools, tool)
 			}
+			if backendMode != filterapi.PrefixModeNever {
+				prefixed := downstreamResourceName(tool.Name, r.backendName)
+				// Guard against an Always-mode backend's prefixed name accidentally colliding
+				// with a bare name a Never-mode backend on this route declared ownership of.
+				if owner, collision := route.neverModeToolIndex[prefixed]; collision {
+					m.l.Warn("dropping MCP tool name that collides with a prefixMode=Never backend's declared bare name",
+						slog.String("tool", prefixed),
+						slog.String("always_mode_backend", r.backendName),
+						slog.String("never_mode_backend", owner),
+					)
+					continue
+				}
+				tool.Name = prefixed
+			}
+			rewriteMetaResourceURIs(tool.Meta, r.backendName)
+			resp.Tools = append(resp.Tools, tool)
 		}
 	}
 
