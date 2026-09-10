@@ -867,3 +867,184 @@ func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
 type errReader struct{ err error }
 
 func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
+// TestMergeToolsList_PerBackendPrefixMode verifies that per-backend PrefixMode works:
+// Never-mode backends expose bare names (resolved from the static, config-level
+// neverModeToolIndex that LoadConfig would have computed from toolSelector.include);
+// Always-mode backends keep the prefix.
+func TestMergeToolsList_PerBackendPrefixMode(t *testing.T) {
+	tests := []struct {
+		name               string
+		b1Mode             filterapi.PrefixMode
+		b2Mode             filterapi.PrefixMode
+		neverModeToolIndex map[string]string
+		wantTools          []string
+	}{
+		{
+			name:      "both Always — both prefixed",
+			b1Mode:    filterapi.PrefixModeAlways,
+			b2Mode:    filterapi.PrefixModeAlways,
+			wantTools: []string{"backend1__search", "backend2__list"},
+		},
+		{
+			name:               "both Never — both bare",
+			b1Mode:             filterapi.PrefixModeNever,
+			b2Mode:             filterapi.PrefixModeNever,
+			neverModeToolIndex: map[string]string{"search": "backend1", "list": "backend2"},
+			wantTools:          []string{"search", "list"},
+		},
+		{
+			name:               "mixed — backend1 Never bare, backend2 Always prefixed",
+			b1Mode:             filterapi.PrefixModeNever,
+			b2Mode:             filterapi.PrefixModeAlways,
+			neverModeToolIndex: map[string]string{"search": "backend1"},
+			wantTools:          []string{"search", "backend2__list"},
+		},
+		{
+			name:   "cross-mode collision — Always backend's prefixed name dropped",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			// backend2's tool, once prefixed, collides with a name backend1 (Never mode)
+			// declared ownership of. This can only happen if backend2's actual tool name is
+			// "backend2__search"; it must be dropped rather than shown twice under one name.
+			neverModeToolIndex: map[string]string{"search": "backend1", "backend2__search": "backend1"},
+			wantTools:          []string{"search"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := &mcpRequestContext{
+				metrics: stubMetrics{},
+				ProxyConfig: &ProxyConfig{
+					mcpProxyConfig: &mcpProxyConfig{
+						routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+							"test-route": {
+								backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+									"backend1": {Name: "backend1", PrefixMode: tt.b1Mode},
+									"backend2": {Name: "backend2", PrefixMode: tt.b2Mode},
+								},
+								neverModeToolIndex: tt.neverModeToolIndex,
+							},
+						},
+					},
+					l: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
+				},
+				requestHeaders: http.Header{},
+			}
+
+			var responses []broadCastResponse[mcp.ListToolsResult]
+			if tt.name == "cross-mode collision — Always backend's prefixed name dropped" {
+				responses = []broadCastResponse[mcp.ListToolsResult]{
+					{backendName: "backend1", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+					{backendName: "backend2", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+				}
+			} else {
+				responses = []broadCastResponse[mcp.ListToolsResult]{
+					{backendName: "backend1", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}},
+					{backendName: "backend2", res: mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "list"}}}},
+				}
+			}
+
+			s := &session{route: "test-route"}
+			result := proxy.mergeToolsList(s, responses)
+
+			got := make([]string, len(result.Tools))
+			for i, tool := range result.Tools {
+				got[i] = tool.Name
+			}
+			require.ElementsMatch(t, tt.wantTools, got)
+		})
+	}
+}
+
+// TestMergePromptsList_PerBackendPrefixMode verifies prompt naming under PrefixMode: a
+// Never-mode backend only gets bare prompt names for names it opted into via
+// promptSelector.include (route.neverModePromptIndex); without that declaration its prompts
+// stay prefixed even under Never mode, and a bare name colliding with an Always-mode backend's
+// prefixed name is dropped.
+func TestMergePromptsList_PerBackendPrefixMode(t *testing.T) {
+	tests := []struct {
+		name                 string
+		b1Mode               filterapi.PrefixMode
+		b2Mode               filterapi.PrefixMode
+		neverModePromptIndex map[string]string
+		responses            []broadCastResponse[mcp.ListPromptsResult]
+		wantPrompts          []string
+	}{
+		{
+			name:   "both Always — both prefixed",
+			b1Mode: filterapi.PrefixModeAlways,
+			b2Mode: filterapi.PrefixModeAlways,
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "farewell"}}}},
+			},
+			wantPrompts: []string{"backend1__greeting", "backend2__farewell"},
+		},
+		{
+			name:                 "Never mode with declared promptSelector — bare",
+			b1Mode:               filterapi.PrefixModeNever,
+			b2Mode:               filterapi.PrefixModeAlways,
+			neverModePromptIndex: map[string]string{"greeting": "backend1"},
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "farewell"}}}},
+			},
+			wantPrompts: []string{"greeting", "backend2__farewell"},
+		},
+		{
+			name:   "Never mode without promptSelector — stays prefixed",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			// No neverModePromptIndex entry for backend1: it didn't opt in.
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+			},
+			wantPrompts: []string{"backend1__greeting"},
+		},
+		{
+			name:   "cross-mode collision — Always backend's prefixed name dropped",
+			b1Mode: filterapi.PrefixModeNever,
+			b2Mode: filterapi.PrefixModeAlways,
+			neverModePromptIndex: map[string]string{
+				"greeting":           "backend1",
+				"backend2__greeting": "backend1",
+			},
+			responses: []broadCastResponse[mcp.ListPromptsResult]{
+				{backendName: "backend1", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+				{backendName: "backend2", res: mcp.ListPromptsResult{Prompts: []*mcp.Prompt{{Name: "greeting"}}}},
+			},
+			wantPrompts: []string{"greeting"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := &mcpRequestContext{
+				metrics: stubMetrics{},
+				ProxyConfig: &ProxyConfig{
+					mcpProxyConfig: &mcpProxyConfig{
+						routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+							"test-route": {
+								backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+									"backend1": {Name: "backend1", PrefixMode: tt.b1Mode},
+									"backend2": {Name: "backend2", PrefixMode: tt.b2Mode},
+								},
+								neverModePromptIndex: tt.neverModePromptIndex,
+							},
+						},
+					},
+					l: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
+				},
+			}
+
+			result := proxy.mergePromptsList(&session{route: "test-route"}, tt.responses)
+			got := make([]string, len(result.Prompts))
+			for i, p := range result.Prompts {
+				got[i] = p.Name
+			}
+			require.ElementsMatch(t, tt.wantPrompts, got)
+		})
+	}
+}

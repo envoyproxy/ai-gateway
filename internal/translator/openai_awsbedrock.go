@@ -446,7 +446,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 
 	// AWS Bedrock Converse API does not support N(multiple choices) > 0, so there could be only one choice.
 	choice := openai.ChatCompletionResponseChoice{
-		Index: (int64)(0),
+		Index: int64(0),
 		Message: openai.ChatCompletionResponseChoiceMessage{
 			Role: bedrockResp.Output.Message.Role,
 		},

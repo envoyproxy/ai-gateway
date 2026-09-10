@@ -4,130 +4,15 @@ title: AIGatewayRoute + InferencePool Guide
 sidebar_position: 3
 ---
 
-import CodeBlock from '@theme/CodeBlock';
-import vars from '../../\_vars.json';
+import Setup from './\_setup.mdx';
 
 # AIGatewayRoute + InferencePool Guide
 
 This guide demonstrates how to use InferencePool with AIGatewayRoute for advanced AI-specific inference routing. This approach provides enhanced features like model-based routing, token rate limiting, and advanced observability.
 
-## Prerequisites
+<Setup />
 
-Before starting, ensure you have:
-
-1. **Kubernetes cluster** with Gateway API support
-2. **Envoy AI Gateway** installed and configured
-
-## Step 1: Install Gateway API Inference Extension
-
-Install the Gateway API Inference Extension CRDs and controller:
-
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${vars.gaieVersion}/manifests.yaml
-```
-
-After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
-
-<CodeBlock language="shell">
-{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-config.yaml
-
-kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
-
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available`}
-</CodeBlock>
-
-## Step 2: Ensure Envoy Gateway is configured for InferencePool
-
-See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc)
-
-## Step 3: Deploy Inference Backends
-
-Deploy sample inference backends and related resources:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/base.yaml
-```
-
-> **Note**: These deployments create the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the AIGatewayRoute configuration below.
-
-## Step 4: Create AIServiceBackend for Mixed Routing
-
-Create an AIServiceBackend for traditional backend routing alongside InferencePool:
-
-```yaml
-cat <<EOF | kubectl apply -f -
-apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIServiceBackend
-metadata:
-  name: envoy-ai-gateway-basic-testupstream
-  namespace: default
-spec:
-  schema:
-    name: OpenAI
-  backendRef:
-    name: envoy-ai-gateway-basic-testupstream
-    kind: Backend
-    group: gateway.envoyproxy.io
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: envoy-ai-gateway-basic-testupstream
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: envoy-ai-gateway-basic-testupstream.default.svc.cluster.local
-        port: 80
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: envoy-ai-gateway-basic-testupstream
-  namespace: default
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: envoy-ai-gateway-basic-testupstream
-  template:
-    metadata:
-      labels:
-        app: envoy-ai-gateway-basic-testupstream
-    spec:
-      containers:
-        - name: testupstream
-          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
-          env:
-            - name: TESTUPSTREAM_ID
-              value: test
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 1
-            periodSeconds: 1
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: envoy-ai-gateway-basic-testupstream
-  namespace: default
-spec:
-  selector:
-    app: envoy-ai-gateway-basic-testupstream
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080
-  type: ClusterIP
-EOF
-```
-
-## Step 5: Configure Gateway and AIGatewayRoute
+## Step 4: Configure Gateway and AIGatewayRoute
 
 Create a Gateway and AIGatewayRoute with multiple InferencePool backends:
 
@@ -194,7 +79,7 @@ spec:
 EOF
 ```
 
-## Step 6: Test the Configuration
+## Step 5: Test the Configuration
 
 Test different model routing scenarios:
 
