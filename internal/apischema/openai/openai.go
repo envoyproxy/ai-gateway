@@ -1601,7 +1601,8 @@ func (p *PromptTokensDetails) UnmarshalJSON(data []byte) error {
 
 func unmarshalCacheWriteTokens[T int | int64](data []byte) (value T, ok bool, err error) {
 	var fields struct {
-		CacheWriteTokens     *T `json:"cache_write_tokens"`
+		CacheWriteTokens *T `json:"cache_write_tokens"`
+		// TODO: Remove cache_creation_input_tokens compatibility after existing AI Gateway deployments have migrated.
 		LegacyCreationTokens *T `json:"cache_creation_input_tokens"`
 	}
 	if err = json.Unmarshal(data, &fields); err != nil {
