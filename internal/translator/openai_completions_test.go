@@ -156,7 +156,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 					"total_tokens": 13,
 					"prompt_tokens_details": {
 						"cached_tokens": 2,
-						"cache_creation_input_tokens": 1
+						"cache_write_tokens": 1
 					}
 				}
 			}`,

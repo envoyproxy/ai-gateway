@@ -1879,30 +1879,30 @@ func TestPromptTokensDetails(t *testing.T) {
 		{
 			name: "with text tokens",
 			details: PromptTokensDetails{
-				TextTokens:          15,
-				AudioTokens:         8,
-				CachedTokens:        384,
-				CacheCreationTokens: 10,
+				TextTokens:       15,
+				AudioTokens:      8,
+				CachedTokens:     384,
+				CacheWriteTokens: 10,
 			},
 			expected: `{
 				"text_tokens": 15,
 				"audio_tokens": 8,
 				"cached_tokens": 384,
-				"cache_creation_input_tokens": 10
+				"cache_write_tokens": 10
 			}`,
 		},
 		{
 			name: "with zero text tokens omitted",
 			details: PromptTokensDetails{
-				TextTokens:          0,
-				AudioTokens:         8,
-				CachedTokens:        384,
-				CacheCreationTokens: 10,
+				TextTokens:       0,
+				AudioTokens:      8,
+				CachedTokens:     384,
+				CacheWriteTokens: 10,
 			},
 			expected: `{
 				"audio_tokens": 8,
 				"cached_tokens": 384,
-				"cache_creation_input_tokens": 10
+				"cache_write_tokens": 10
 			}`,
 		},
 	}
@@ -1919,6 +1919,49 @@ func TestPromptTokensDetails(t *testing.T) {
 			require.Equal(t, tc.details, decoded)
 		})
 	}
+}
+
+func TestCacheWriteTokensBackwardCompatibility(t *testing.T) {
+	t.Run("prompt token details accept legacy field", func(t *testing.T) {
+		var details PromptTokensDetails
+		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10}`), &details)
+		require.NoError(t, err)
+		require.Equal(t, 10, details.CacheWriteTokens)
+
+		encoded, err := json.Marshal(details)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"cache_write_tokens":10}`, string(encoded))
+	})
+
+	t.Run("official field takes precedence", func(t *testing.T) {
+		var details PromptTokensDetails
+		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10,"cache_write_tokens":12}`), &details)
+		require.NoError(t, err)
+		require.Equal(t, 12, details.CacheWriteTokens)
+	})
+
+	t.Run("responses usage accepts legacy field", func(t *testing.T) {
+		var details ResponseUsageInputTokensDetails
+		err := json.Unmarshal([]byte(`{"cached_tokens":3,"cache_creation_input_tokens":10}`), &details)
+		require.NoError(t, err)
+		require.Equal(t, int64(10), details.CacheWriteTokens)
+
+		encoded, err := json.Marshal(details)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"cached_tokens":3,"cache_write_tokens":10}`, string(encoded))
+	})
+
+	t.Run("response token details accept legacy field", func(t *testing.T) {
+		var details ResponseTokensDetails
+		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10}`), &details)
+		require.NoError(t, err)
+		require.Equal(t, int64(10), details.CacheWriteTokens)
+
+		encoded, err := json.Marshal(details)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), "cache_creation_input_tokens")
+		require.Contains(t, string(encoded), `"cache_write_tokens":10`)
+	})
 }
 
 func TestChatCompletionResponseUsage(t *testing.T) {
@@ -1959,9 +2002,9 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					AudioTokens:         8,
-					CachedTokens:        384,
-					CacheCreationTokens: 13,
+					AudioTokens:      8,
+					CachedTokens:     384,
+					CacheWriteTokens: 13,
 				},
 			},
 			expected: `{
@@ -1975,7 +2018,7 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				"prompt_tokens_details": {
 					"audio_tokens": 8,
 					"cached_tokens": 384,
-					"cache_creation_input_tokens": 13
+					"cache_write_tokens": 13
 				}
 			}`,
 		},
@@ -1993,10 +2036,10 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					TextTokens:          15,
-					AudioTokens:         8,
-					CachedTokens:        384,
-					CacheCreationTokens: 21,
+					TextTokens:       15,
+					AudioTokens:      8,
+					CachedTokens:     384,
+					CacheWriteTokens: 21,
 				},
 			},
 			expected: `{
@@ -2012,7 +2055,7 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					"text_tokens": 15,
 					"audio_tokens": 8,
 					"cached_tokens": 384,
-					"cache_creation_input_tokens": 21
+					"cache_write_tokens": 21
 				}
 			}`,
 		},

@@ -1577,7 +1577,43 @@ type PromptTokensDetails struct {
 	// Cached tokens present in the prompt.
 	CachedTokens int `json:"cached_tokens,omitzero"`
 	// Tokens written to the cache.
-	CacheCreationTokens int `json:"cache_creation_input_tokens,omitzero"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitzero"`
+}
+
+// UnmarshalJSON accepts OpenAI's cache_write_tokens field and the legacy
+// cache_creation_input_tokens extension previously emitted by AI Gateway.
+func (p *PromptTokensDetails) UnmarshalJSON(data []byte) error {
+	type promptTokensDetails PromptTokensDetails
+	var decoded promptTokensDetails
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int](data)
+	if err != nil {
+		return err
+	}
+	if ok {
+		decoded.CacheWriteTokens = cacheWriteTokens
+	}
+	*p = PromptTokensDetails(decoded)
+	return nil
+}
+
+func unmarshalCacheWriteTokens[T int | int64](data []byte) (value T, ok bool, err error) {
+	var fields struct {
+		CacheWriteTokens     *T `json:"cache_write_tokens"`
+		LegacyCreationTokens *T `json:"cache_creation_input_tokens"`
+	}
+	if err = json.Unmarshal(data, &fields); err != nil {
+		return value, false, err
+	}
+	if fields.CacheWriteTokens != nil {
+		return *fields.CacheWriteTokens, true, nil
+	}
+	if fields.LegacyCreationTokens != nil {
+		return *fields.LegacyCreationTokens, true, nil
+	}
+	return value, false, nil
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
@@ -7283,7 +7319,26 @@ type ResponseUsageInputTokensDetails struct {
 	CachedTokens int64 `json:"cached_tokens"`
 
 	// The number of tokens that were written to the cache.
-	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
+}
+
+// UnmarshalJSON accepts OpenAI's cache_write_tokens field and AI Gateway's
+// legacy cache_creation_input_tokens extension.
+func (r *ResponseUsageInputTokensDetails) UnmarshalJSON(data []byte) error {
+	type responseUsageInputTokensDetails ResponseUsageInputTokensDetails
+	var decoded responseUsageInputTokensDetails
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int64](data)
+	if err != nil {
+		return err
+	}
+	if ok {
+		decoded.CacheWriteTokens = cacheWriteTokens
+	}
+	*r = ResponseUsageInputTokensDetails(decoded)
+	return nil
 }
 
 // A detailed breakdown of the output tokens.
@@ -7297,14 +7352,33 @@ type ResponseTokensDetails struct {
 	// CachedTokens: Number of cached tokens.
 	CachedTokens int `json:"cached_tokens,omitempty"` //nolint:tagliatelle //follow openai api
 
-	// CacheCreationTokens: number of tokens that were written to the cache.
-	CacheCreationTokens int64 `json:"cache_creation_input_tokens"` //nolint:tagliatelle
+	// CacheWriteTokens: number of tokens that were written to the cache.
+	CacheWriteTokens int64 `json:"cache_write_tokens"` //nolint:tagliatelle
 
 	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// AudioTokens: Number of audio tokens.
 	AudioTokens int `json:"audio_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// UnmarshalJSON accepts OpenAI's cache_write_tokens field and AI Gateway's
+// legacy cache_creation_input_tokens extension.
+func (r *ResponseTokensDetails) UnmarshalJSON(data []byte) error {
+	type responseTokensDetails ResponseTokensDetails
+	var decoded responseTokensDetails
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int64](data)
+	if err != nil {
+		return err
+	}
+	if ok {
+		decoded.CacheWriteTokens = cacheWriteTokens
+	}
+	*r = ResponseTokensDetails(decoded)
+	return nil
 }
 
 // An error object returned when the model fails to generate a Response.
