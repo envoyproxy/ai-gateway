@@ -1578,43 +1578,24 @@ type PromptTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitzero"`
 	// Tokens written to the cache.
 	CacheWriteTokens int `json:"cache_write_tokens,omitzero"`
+	// Deprecated: use CacheWriteTokens. This field will be removed in v1.3.0.
+	CacheCreationTokens int `json:"cache_creation_input_tokens,omitzero"`
 }
 
-// UnmarshalJSON accepts OpenAI's cache_write_tokens field and the legacy
-// cache_creation_input_tokens extension previously emitted by AI Gateway.
-func (p *PromptTokensDetails) UnmarshalJSON(data []byte) error {
+// CacheWriteTokensValue returns the greatest cache-write token value reported
+// under either the OpenAI or legacy AI Gateway field.
+func (p *PromptTokensDetails) CacheWriteTokensValue() int {
+	return max(p.CacheWriteTokens, p.CacheCreationTokens)
+}
+
+// MarshalJSON emits both cache-write field names with the same value for
+// backwards compatibility. Zero values retain the struct's omission behavior.
+func (p PromptTokensDetails) MarshalJSON() ([]byte, error) {
+	cacheWriteTokens := p.CacheWriteTokensValue()
+	p.CacheWriteTokens = cacheWriteTokens
+	p.CacheCreationTokens = cacheWriteTokens
 	type promptTokensDetails PromptTokensDetails
-	var decoded promptTokensDetails
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int](data)
-	if err != nil {
-		return err
-	}
-	if ok {
-		decoded.CacheWriteTokens = cacheWriteTokens
-	}
-	*p = PromptTokensDetails(decoded)
-	return nil
-}
-
-func unmarshalCacheWriteTokens[T int | int64](data []byte) (value T, ok bool, err error) {
-	var fields struct {
-		CacheWriteTokens *T `json:"cache_write_tokens"`
-		// TODO: Remove cache_creation_input_tokens compatibility after existing AI Gateway deployments have migrated.
-		LegacyCreationTokens *T `json:"cache_creation_input_tokens"`
-	}
-	if err = json.Unmarshal(data, &fields); err != nil {
-		return value, false, err
-	}
-	if fields.CacheWriteTokens != nil {
-		return *fields.CacheWriteTokens, true, nil
-	}
-	if fields.LegacyCreationTokens != nil {
-		return *fields.LegacyCreationTokens, true, nil
-	}
-	return value, false, nil
+	return json.Marshal(promptTokensDetails(p))
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
@@ -7321,25 +7302,24 @@ type ResponseUsageInputTokensDetails struct {
 
 	// The number of tokens that were written to the cache.
 	CacheWriteTokens int64 `json:"cache_write_tokens"`
+	// Deprecated: use CacheWriteTokens. This field will be removed in v1.3.0.
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
 }
 
-// UnmarshalJSON accepts OpenAI's cache_write_tokens field and AI Gateway's
-// legacy cache_creation_input_tokens extension.
-func (r *ResponseUsageInputTokensDetails) UnmarshalJSON(data []byte) error {
+// CacheWriteTokensValue returns the greatest cache-write token value reported
+// under either the OpenAI or legacy AI Gateway field.
+func (r *ResponseUsageInputTokensDetails) CacheWriteTokensValue() int64 {
+	return max(r.CacheWriteTokens, r.CacheCreationTokens)
+}
+
+// MarshalJSON emits both cache-write field names with the same value for
+// backwards compatibility.
+func (r ResponseUsageInputTokensDetails) MarshalJSON() ([]byte, error) {
+	cacheWriteTokens := r.CacheWriteTokensValue()
+	r.CacheWriteTokens = cacheWriteTokens
+	r.CacheCreationTokens = cacheWriteTokens
 	type responseUsageInputTokensDetails ResponseUsageInputTokensDetails
-	var decoded responseUsageInputTokensDetails
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int64](data)
-	if err != nil {
-		return err
-	}
-	if ok {
-		decoded.CacheWriteTokens = cacheWriteTokens
-	}
-	*r = ResponseUsageInputTokensDetails(decoded)
-	return nil
+	return json.Marshal(responseUsageInputTokensDetails(r))
 }
 
 // A detailed breakdown of the output tokens.
@@ -7355,6 +7335,8 @@ type ResponseTokensDetails struct {
 
 	// CacheWriteTokens: number of tokens that were written to the cache.
 	CacheWriteTokens int64 `json:"cache_write_tokens"` //nolint:tagliatelle
+	// Deprecated: use CacheWriteTokens. This field will be removed in v1.3.0.
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"` //nolint:tagliatelle
 
 	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api
@@ -7363,23 +7345,20 @@ type ResponseTokensDetails struct {
 	AudioTokens int `json:"audio_tokens,omitempty"` //nolint:tagliatelle //follow openai api
 }
 
-// UnmarshalJSON accepts OpenAI's cache_write_tokens field and AI Gateway's
-// legacy cache_creation_input_tokens extension.
-func (r *ResponseTokensDetails) UnmarshalJSON(data []byte) error {
+// CacheWriteTokensValue returns the greatest cache-write token value reported
+// under either the OpenAI or legacy AI Gateway field.
+func (r *ResponseTokensDetails) CacheWriteTokensValue() int64 {
+	return max(r.CacheWriteTokens, r.CacheCreationTokens)
+}
+
+// MarshalJSON emits both cache-write field names with the same value for
+// backwards compatibility.
+func (r ResponseTokensDetails) MarshalJSON() ([]byte, error) {
+	cacheWriteTokens := r.CacheWriteTokensValue()
+	r.CacheWriteTokens = cacheWriteTokens
+	r.CacheCreationTokens = cacheWriteTokens
 	type responseTokensDetails ResponseTokensDetails
-	var decoded responseTokensDetails
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	cacheWriteTokens, ok, err := unmarshalCacheWriteTokens[int64](data)
-	if err != nil {
-		return err
-	}
-	if ok {
-		decoded.CacheWriteTokens = cacheWriteTokens
-	}
-	*r = ResponseTokensDetails(decoded)
-	return nil
+	return json.Marshal(responseTokensDetails(r))
 }
 
 // An error object returned when the model fails to generate a Response.

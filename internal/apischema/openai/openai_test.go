@@ -1879,30 +1879,34 @@ func TestPromptTokensDetails(t *testing.T) {
 		{
 			name: "with text tokens",
 			details: PromptTokensDetails{
-				TextTokens:       15,
-				AudioTokens:      8,
-				CachedTokens:     384,
-				CacheWriteTokens: 10,
+				TextTokens:          15,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheWriteTokens:    10,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"text_tokens": 15,
 				"audio_tokens": 8,
 				"cached_tokens": 384,
-				"cache_write_tokens": 10
+				"cache_write_tokens": 10,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 		{
 			name: "with zero text tokens omitted",
 			details: PromptTokensDetails{
-				TextTokens:       0,
-				AudioTokens:      8,
-				CachedTokens:     384,
-				CacheWriteTokens: 10,
+				TextTokens:          0,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheWriteTokens:    10,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"audio_tokens": 8,
 				"cached_tokens": 384,
-				"cache_write_tokens": 10
+				"cache_write_tokens": 10,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 	}
@@ -1926,41 +1930,47 @@ func TestCacheWriteTokensBackwardCompatibility(t *testing.T) {
 		var details PromptTokensDetails
 		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10}`), &details)
 		require.NoError(t, err)
-		require.Equal(t, 10, details.CacheWriteTokens)
+		require.Equal(t, 10, details.CacheCreationTokens)
+		require.Equal(t, 10, details.CacheWriteTokensValue())
 
 		encoded, err := json.Marshal(details)
 		require.NoError(t, err)
-		require.JSONEq(t, `{"cache_write_tokens":10}`, string(encoded))
+		require.JSONEq(t, `{"cache_write_tokens":10,"cache_creation_input_tokens":10}`, string(encoded))
 	})
 
 	t.Run("official field takes precedence", func(t *testing.T) {
 		var details PromptTokensDetails
 		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10,"cache_write_tokens":12}`), &details)
 		require.NoError(t, err)
-		require.Equal(t, 12, details.CacheWriteTokens)
+		require.Equal(t, 12, details.CacheWriteTokensValue())
+
+		encoded, err := json.Marshal(details)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"cache_write_tokens":12,"cache_creation_input_tokens":12}`, string(encoded))
 	})
 
 	t.Run("responses usage accepts legacy field", func(t *testing.T) {
 		var details ResponseUsageInputTokensDetails
 		err := json.Unmarshal([]byte(`{"cached_tokens":3,"cache_creation_input_tokens":10}`), &details)
 		require.NoError(t, err)
-		require.Equal(t, int64(10), details.CacheWriteTokens)
+		require.Equal(t, int64(10), details.CacheCreationTokens)
+		require.Equal(t, int64(10), details.CacheWriteTokensValue())
 
 		encoded, err := json.Marshal(details)
 		require.NoError(t, err)
-		require.JSONEq(t, `{"cached_tokens":3,"cache_write_tokens":10}`, string(encoded))
+		require.JSONEq(t, `{"cached_tokens":3,"cache_write_tokens":10,"cache_creation_input_tokens":10}`, string(encoded))
 	})
 
 	t.Run("response token details accept legacy field", func(t *testing.T) {
 		var details ResponseTokensDetails
 		err := json.Unmarshal([]byte(`{"cache_creation_input_tokens":10}`), &details)
 		require.NoError(t, err)
-		require.Equal(t, int64(10), details.CacheWriteTokens)
+		require.Equal(t, int64(10), details.CacheCreationTokens)
+		require.Equal(t, int64(10), details.CacheWriteTokensValue())
 
 		encoded, err := json.Marshal(details)
 		require.NoError(t, err)
-		require.NotContains(t, string(encoded), "cache_creation_input_tokens")
-		require.Contains(t, string(encoded), `"cache_write_tokens":10`)
+		require.JSONEq(t, `{"cache_write_tokens":10,"cache_creation_input_tokens":10}`, string(encoded))
 	})
 }
 
@@ -2002,9 +2012,10 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					AudioTokens:      8,
-					CachedTokens:     384,
-					CacheWriteTokens: 13,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheWriteTokens:    13,
+					CacheCreationTokens: 13,
 				},
 			},
 			expected: `{
@@ -2018,7 +2029,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				"prompt_tokens_details": {
 					"audio_tokens": 8,
 					"cached_tokens": 384,
-					"cache_write_tokens": 13
+					"cache_write_tokens": 13,
+					"cache_creation_input_tokens": 13
 				}
 			}`,
 		},
@@ -2036,10 +2048,11 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					TextTokens:       15,
-					AudioTokens:      8,
-					CachedTokens:     384,
-					CacheWriteTokens: 21,
+					TextTokens:          15,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheWriteTokens:    21,
+					CacheCreationTokens: 21,
 				},
 			},
 			expected: `{
@@ -2055,7 +2068,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					"text_tokens": 15,
 					"audio_tokens": 8,
 					"cached_tokens": 384,
-					"cache_write_tokens": 21
+					"cache_write_tokens": 21,
+					"cache_creation_input_tokens": 21
 				}
 			}`,
 		},

@@ -64,7 +64,7 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 			attrs = append(attrs,
 				attribute.Int(openinference.LLMTokenCountPromptAudio, td.AudioTokens),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, td.CachedTokens),
-				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, td.CacheWriteTokens),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, td.CacheWriteTokensValue()),
 			)
 		}
 	}
@@ -205,8 +205,8 @@ func buildResponsesResponseAttributes(resp *openai.Response, config *openinferen
 		if resp.Usage.InputTokensDetails.CachedTokens > 0 {
 			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(resp.Usage.InputTokensDetails.CachedTokens)))
 		}
-		if resp.Usage.InputTokensDetails.CacheWriteTokens > 0 {
-			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(resp.Usage.InputTokensDetails.CacheWriteTokens)))
+		if cacheWriteTokens := resp.Usage.InputTokensDetails.CacheWriteTokensValue(); cacheWriteTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(cacheWriteTokens)))
 		}
 		if resp.Usage.OutputTokensDetails.ReasoningTokens > 0 {
 			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountCompletionReasoning, int(resp.Usage.OutputTokensDetails.ReasoningTokens)))

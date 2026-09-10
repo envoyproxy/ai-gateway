@@ -441,8 +441,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					CompletionTokens: 20,
 					TotalTokens:      38,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens:     5,
-						CacheWriteTokens: 3,
+						CachedTokens:        5,
+						CacheWriteTokens:    3,
+						CacheCreationTokens: 3,
 					},
 					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
@@ -477,8 +478,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Usage: openai.Usage{
 					PromptTokens: 42, CompletionTokens: 15, TotalTokens: 57,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens:     10,
-						CacheWriteTokens: 7,
+						CachedTokens:        10,
+						CacheWriteTokens:    7,
+						CacheCreationTokens: 7,
 					},
 					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
