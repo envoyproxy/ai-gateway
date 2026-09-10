@@ -103,6 +103,14 @@ type MCPRouteSpec struct {
 	// +optional
 	SecurityPolicy *MCPRouteSecurityPolicy `json:"securityPolicy,omitempty"`
 
+	// BackendTrafficPolicy configures the auto-generated Envoy Gateway BackendTrafficPolicy
+	// resources for this MCPRoute, for example the OAuth protected resource metadata policy
+	// created when SecurityPolicy.OAuth is configured.
+	//
+	// +kubebuilder:validation:Optional
+	// +optional
+	BackendTrafficPolicy *MCPRouteBackendTrafficPolicy `json:"backendTrafficPolicy,omitempty"`
+
 	// BackendSelector restricts which of this route's backends a given request may fan
 	// out to, evaluated once per candidate backend when a client session is initialized.
 	// If unspecified, all backends on the route are considered.
@@ -110,6 +118,28 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:Optional
 	// +optional
 	BackendSelector *MCPBackendSelector `json:"backendSelector,omitempty"`
+}
+
+// MCPRouteBackendTrafficPolicy configures how the Envoy Gateway BackendTrafficPolicy
+// resources auto-generated for a MCPRoute interact with other BackendTrafficPolicy
+// resources (e.g. an operator-defined rate limiting policy) targeting the same HTTPRoute.
+type MCPRouteBackendTrafficPolicy struct {
+	// MergeType determines how the auto-generated BackendTrafficPolicy (for example, the
+	// OAuth protected resource metadata policy) is merged with other BackendTrafficPolicy
+	// configurations targeting the same route or a parent Gateway/Listener.
+	//
+	// When set, the auto-generated BackendTrafficPolicy will merge with the closest parent
+	// BackendTrafficPolicy in the route's attachment hierarchy instead of overriding it
+	// entirely, per Envoy Gateway's merge semantics.
+	//
+	// If unset, no merging occurs, and the auto-generated BackendTrafficPolicy fully
+	// overrides any other BackendTrafficPolicy targeting the same route.
+	//
+	// See: https://gateway.envoyproxy.io/docs/tasks/traffic/backend-traffic-policy/
+	//
+	// +kubebuilder:validation:XValidation:rule="self != 'Replace'",message="Replace is not a valid MergeType for BackendTrafficPolicy"
+	// +optional
+	MergeType *egv1a1.MergeType `json:"mergeType,omitempty"`
 }
 
 // MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
@@ -280,6 +310,24 @@ type MCPRouteSecurityPolicy struct {
 	//
 	// +optional
 	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
+
+	// MergeType determines how the auto-generated SecurityPolicy for this MCPRoute (which
+	// enforces OAuth/JWT, API key, or external authorization) is merged with other
+	// SecurityPolicy configurations targeting the same route or a parent Gateway/Listener.
+	//
+	// When set, the auto-generated SecurityPolicy will merge with the closest parent
+	// SecurityPolicy in the route's attachment hierarchy (for example, one targeting a
+	// Gateway, Gateway listener, ListenerSet, or ListenerSet listener) instead of
+	// overriding it entirely, per Envoy Gateway's merge semantics.
+	//
+	// If unset, no merging occurs, and the auto-generated SecurityPolicy fully overrides
+	// any other SecurityPolicy targeting the same route.
+	//
+	// See: https://gateway.envoyproxy.io/docs/tasks/security/apikey-authn/
+	//
+	// +kubebuilder:validation:XValidation:rule="self != 'Replace'",message="Replace is not a valid MergeType for SecurityPolicy"
+	// +optional
+	MergeType *egv1a1.MergeType `json:"mergeType,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
