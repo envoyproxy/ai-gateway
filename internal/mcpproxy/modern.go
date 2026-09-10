@@ -228,7 +228,7 @@ func (m *mcpRequestContext) discoverBackend(ctx context.Context, route filterapi
 func discoverParams() []byte {
 	return []byte(`{"_meta":{` +
 		`"` + metaProtocolVersion + `":"` + protocolVersion20260728 + `",` +
-		`"` + metaClientInfo + `":{"name":agent-router","version":"1.0.0"},` +
+		`"` + metaClientInfo + `":{"name":"agent-router","version":"1.0.0"},` +
 		`"` + metaClientCapabilities + `":{}` +
 		`}}`)
 }

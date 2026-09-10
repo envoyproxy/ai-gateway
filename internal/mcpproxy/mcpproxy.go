@@ -231,9 +231,9 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				m.l.Debug("creating MCP session", slog.String("backend", backend.Name))
 			}
 			backendStartAt := time.Now()
-			initResult, err := m.initializeSession(ctx, routeName, backend, p, startAt)
-			if err != nil {
-				m.l.Error("failed to create MCP session", slog.String("backend", backend.Name), slog.String("error", err.Error()))
+			initResult, initErr := m.initializeSession(ctx, routeName, backend, p, startAt)
+			if initErr != nil {
+				m.l.Error("failed to create MCP session", slog.String("backend", backend.Name), slog.String("error", initErr.Error()))
 				// If one backend fails, don't fail the overall connection. Create a session to the rest of the backends, as they
 				// may provide the needed methods.
 				// TODO: should we record a metric for this?

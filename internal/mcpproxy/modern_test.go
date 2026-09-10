@@ -313,7 +313,7 @@ func TestHandleServerDiscover_BackendSelectorFilters(t *testing.T) {
 
 func TestHandleModernToolsList_BackendSelectorFilters(t *testing.T) {
 	callCount := &perBackendCallCount{}
-	respFn := func(backend, _ string) any {
+	respFn := func(_, _ string) any {
 		return mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "search"}}}
 	}
 	server := httptest.NewServer(modernBackendHandler(t, callCount, nil, respFn))
@@ -1206,6 +1206,15 @@ func TestDiscoverParams(t *testing.T) {
 	var parsed map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(discoverParams(), &parsed))
 	require.Contains(t, parsed, "_meta")
+
+	id, err := jsonrpc.MakeID("gw-discover-test")
+	require.NoError(t, err)
+	_, err = jsonrpc.EncodeMessage(&jsonrpc.Request{
+		ID:     id,
+		Method: "server/discover",
+		Params: discoverParams(),
+	})
+	require.NoError(t, err)
 }
 
 func TestEnsureResultType(t *testing.T) {
