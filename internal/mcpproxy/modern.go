@@ -288,7 +288,6 @@ func (m *mcpRequestContext) handleModernToolsList(ctx context.Context, w http.Re
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](ctx, m, req, route, selected)
 	result := m.mergeToolsList(&session{route: route}, responses)
-	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -308,7 +307,6 @@ func (m *mcpRequestContext) handleModernResourcesList(ctx context.Context, w htt
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourcesResult](ctx, m, req, route, selected)
 	result := m.mergeResourceList(&session{route: route}, responses)
-	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -326,7 +324,6 @@ func (m *mcpRequestContext) handleModernResourceTemplatesList(ctx context.Contex
 	}
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListResourceTemplatesResult](ctx, m, req, route, selected)
 	result := m.mergeResourcesTemplateList(&session{route: route}, responses)
-	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -346,7 +343,6 @@ func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListPromptsResult](ctx, m, req, route, selected)
 	result := m.mergePromptsList(&session{route: route}, responses)
-	applyMergedCachingHints(&result.Cacheable, responses)
 	writeJSONRPCResult(w, req.ID, &result)
 	return handlerResult{}, nil
 }
@@ -363,8 +359,7 @@ func (m *mcpRequestContext) handleModernPromptsList(ctx context.Context, w http.
 // The returned []broadCastResponse[T] is intentionally shaped like the legacy
 // aggregation input so the modern handlers can reuse the same merge* functions
 // (mergeToolsList, mergeResourceList, ...) and avoid drifting from the legacy
-// prefixing/filtering/authorization logic. Caching hints are applied after
-// merge via applyMergedCachingHints — they are not part of the shared merge.
+// prefixing/filtering/authorization/caching-hint logic.
 func sendToAllModernBackendsAndAggregateResponses[T any](ctx context.Context, m *mcpRequestContext, req *jsonrpc.Request, route filterapi.MCPRouteName, backends map[filterapi.MCPBackendName]filterapi.MCPBackend) []broadCastResponse[T] {
 	responses := make([]broadCastResponse[T], 0, len(backends))
 	for backendName, backend := range backends {
@@ -639,9 +634,13 @@ func ensureResultType(result json.RawMessage) json.RawMessage {
 }
 
 // applyMergedCachingHints copies the most-restrictive ttlMs/cacheScope from
-// backend responses onto a gateway-aggregated modern result. Caching hints
-// (SEP-2549) exist only in the 2026-07-28 spec and must not be set by the
-// shared merge* functions used by the legacy path.
+// backend responses onto a gateway-aggregated list result. SEP-2549 is
+// backward compatible: servers MAY omit the fields (clients treat missing
+// ttlMs as 0), and clients that do not understand them ignore extra result
+// properties. Shared merge* functions therefore apply hints on both the
+// legacy and modern list paths.
+//
+// https://modelcontextprotocol.io/seps/2549-TTL-for-list-results#backward-compatibility
 func applyMergedCachingHints[T interface {
 	GetTTLMs() int
 	GetCacheScope() string
@@ -660,10 +659,10 @@ func applyMergedCachingHints[T interface {
 
 // mergeCachingHintsFromBackends merges caching hints from multiple backends.
 //
-// Caching hints applied to gateway-generated cacheable results (2026-07-28
-// caching spec). Servers MUST include caching hints (ttlMs/cacheScope) on
-// complete results for server/discover, tools/list, prompts/list,
-// resources/list, resources/templates/list, and resources/read.
+// Caching hints (SEP-2549) apply to complete results for server/discover,
+// tools/list, prompts/list, resources/list, resources/templates/list, and
+// resources/read. Modern servers MUST send them; older servers MAY omit them,
+// in which case missing ttlMs is treated as 0 (immediately stale).
 //
 // TODO: come up with a proper multiplexing-aware caching strategy. Ideal way
 // would be to coalesce and shield the backends using an internal cache slice
