@@ -950,11 +950,11 @@ type ThinkingEnabled struct {
 }
 
 type ThinkingDisabled struct {
-	Type string `json:"type,"`
+	Type string `json:"type"`
 }
 
 type ThinkingAdaptive struct {
-	Type string `json:"type,"`
+	Type string `json:"type"`
 
 	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
 	Display string `json:"display,omitempty"`
