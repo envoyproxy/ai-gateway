@@ -1048,3 +1048,168 @@ func TestMergePromptsList_PerBackendPrefixMode(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeToolsList_CacheableMetadata(t *testing.T) {
+	t.Run("single backend preserves metadata", func(t *testing.T) {
+		responses := []broadCastResponse[mcp.ListToolsResult]{
+			{
+				backendName: "backend1",
+				res: mcp.ListToolsResult{
+					Cacheable: mcp.Cacheable{TTLMs: 5000, CacheScope: "private"},
+					Tools:     []*mcp.Tool{{Name: "test-tool"}},
+				},
+			},
+		}
+		proxy := newTestMCPProxy()
+		proxy.routes["test-route"].toolSelectors = nil
+		proxy.requestHeaders = http.Header{}
+		result := proxy.mergeToolsList(&session{route: "test-route"}, responses)
+		require.Equal(t, 5000, result.TTLMs)
+		require.Equal(t, "private", result.CacheScope)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+		require.Contains(t, string(encoded), `"cacheScope":"private"`)
+		require.Contains(t, string(encoded), `"ttlMs":5000`)
+	})
+
+	t.Run("multi-backend conservative aggregation", func(t *testing.T) {
+		responses := []broadCastResponse[mcp.ListToolsResult]{
+			{
+				backendName: "backend1",
+				res: mcp.ListToolsResult{
+					Cacheable: mcp.Cacheable{TTLMs: 60000, CacheScope: "public"},
+					Tools:     []*mcp.Tool{{Name: "test-tool"}},
+				},
+			},
+			{
+				backendName: "backend2",
+				res: mcp.ListToolsResult{
+					Cacheable: mcp.Cacheable{TTLMs: 1000, CacheScope: "private"},
+					Tools:     []*mcp.Tool{{Name: "other-tool"}},
+				},
+			},
+		}
+		proxy := newTestMCPProxy()
+		proxy.routes["test-route"].toolSelectors = nil
+		proxy.requestHeaders = http.Header{}
+		result := proxy.mergeToolsList(&session{route: "test-route"}, responses)
+		require.Equal(t, 1000, result.TTLMs)
+		require.Equal(t, "private", result.CacheScope)
+	})
+
+	t.Run("no upstream metadata yields valid default", func(t *testing.T) {
+		responses := []broadCastResponse[mcp.ListToolsResult]{
+			{
+				backendName: "backend1",
+				res:         mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "test-tool"}}},
+			},
+		}
+		proxy := newTestMCPProxy()
+		proxy.routes["test-route"].toolSelectors = nil
+		proxy.requestHeaders = http.Header{}
+		result := proxy.mergeToolsList(&session{route: "test-route"}, responses)
+		require.Equal(t, 0, result.TTLMs)
+		require.Equal(t, "public", result.CacheScope)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+	})
+
+	t.Run("empty responses slice", func(t *testing.T) {
+		proxy := newTestMCPProxy()
+		proxy.routes["test-route"].toolSelectors = nil
+		proxy.requestHeaders = http.Header{}
+		result := proxy.mergeToolsList(&session{route: "test-route"}, nil)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+	})
+}
+
+func TestMergeListResults_NeverEmitEmptyCacheScope(t *testing.T) {
+	t.Run("resources", func(t *testing.T) {
+		proxy := newTestMCPProxy()
+		session := &session{route: "test-route"}
+		responses := []broadCastResponse[mcp.ListResourcesResult]{
+			{
+				backendName: "backend1",
+				res: mcp.ListResourcesResult{
+					Cacheable: mcp.Cacheable{TTLMs: 1234, CacheScope: "public"},
+					Resources: []*mcp.Resource{{Name: "r1", URI: "test://r1"}},
+				},
+			},
+		}
+		result := proxy.mergeResourceList(session, responses)
+		require.Equal(t, 1234, result.TTLMs)
+		require.Equal(t, "public", result.CacheScope)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+
+		empty := proxy.mergeResourceList(session, nil)
+		encodedEmpty, err := json.Marshal(empty)
+		require.NoError(t, err)
+		require.NotContains(t, string(encodedEmpty), `"cacheScope":""`)
+	})
+
+	t.Run("resource templates", func(t *testing.T) {
+		proxy := newTestMCPProxy()
+		session := &session{route: "test-route"}
+		responses := []broadCastResponse[mcp.ListResourceTemplatesResult]{
+			{
+				backendName: "backend1",
+				res: mcp.ListResourceTemplatesResult{
+					Cacheable:         mcp.Cacheable{TTLMs: 1234, CacheScope: "public"},
+					ResourceTemplates: []*mcp.ResourceTemplate{{Name: "t1", URITemplate: "test://{id}"}},
+				},
+			},
+		}
+		result := proxy.mergeResourcesTemplateList(session, responses)
+		require.Equal(t, 1234, result.TTLMs)
+		require.Equal(t, "public", result.CacheScope)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+
+		empty := proxy.mergeResourcesTemplateList(session, nil)
+		encodedEmpty, err := json.Marshal(empty)
+		require.NoError(t, err)
+		require.NotContains(t, string(encodedEmpty), `"cacheScope":""`)
+	})
+
+	t.Run("prompts", func(t *testing.T) {
+		proxy := newTestMCPProxy()
+		session := &session{route: "test-route"}
+		responses := []broadCastResponse[mcp.ListPromptsResult]{
+			{
+				backendName: "backend1",
+				res: mcp.ListPromptsResult{
+					Cacheable: mcp.Cacheable{TTLMs: 1234, CacheScope: "public"},
+					Prompts:   []*mcp.Prompt{{Name: "p1"}},
+				},
+			},
+		}
+		result := proxy.mergePromptsList(session, responses)
+		require.Equal(t, 1234, result.TTLMs)
+		require.Equal(t, "public", result.CacheScope)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+
+		empty := proxy.mergePromptsList(session, nil)
+		encodedEmpty, err := json.Marshal(empty)
+		require.NoError(t, err)
+		require.NotContains(t, string(encodedEmpty), `"cacheScope":""`)
+	})
+
+	t.Run("tools empty responses slice", func(t *testing.T) {
+		proxy := newTestMCPProxy()
+		proxy.routes["test-route"].toolSelectors = nil
+		proxy.requestHeaders = http.Header{}
+		result := proxy.mergeToolsList(&session{route: "test-route"}, nil)
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), `"cacheScope":""`)
+	})
+}

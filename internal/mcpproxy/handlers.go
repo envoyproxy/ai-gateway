@@ -386,6 +386,56 @@ type (
 	broadCastResponseMergeFn[T any] func(*session, []broadCastResponse[T]) T
 )
 
+// cacheableResult is the subset of mcp.Cacheable (mcp.CacheableResult) needed
+// to aggregate SEP-2549 cache metadata across backend responses.
+type cacheableResult interface {
+	GetTTLMs() int
+	GetCacheScope() string
+}
+
+// aggregateCacheable returns the conservative SEP-2549 cache metadata for an
+// aggregated list response. The proxy must never emit an empty cacheScope:
+// under SEP-2549 "cacheScope" is only valid as "public", "private", or
+// omitted, and the SDK marshals the zero value as an invalid "".
+//   - TTLMs: the minimum of all backends' TTL values, clamped to >= 0, so the
+//     aggregated response is never cached longer than any contributor's
+//     advertised freshness. 0 (immediately stale) is the safe default when no
+//     backend advertises freshness.
+//   - CacheScope: "private" if ANY backend scope is private (the most
+//     restrictive scope wins); otherwise the first non-empty backend scope;
+//     otherwise "public", which is the SEP-2549 default when the field is
+//     absent and therefore always safe to emit explicitly.
+func aggregateCacheable[T cacheableResult](responses []broadCastResponse[T]) mcp.Cacheable {
+	aggregated := mcp.Cacheable{CacheScope: "public"} // SEP-2549 default
+	if len(responses) == 0 {
+		return aggregated
+	}
+	minTTL := responses[0].res.GetTTLMs()
+	firstScope := responses[0].res.GetCacheScope()
+	anyPrivate := firstScope == "private"
+	for _, r := range responses[1:] {
+		if t := r.res.GetTTLMs(); t < minTTL {
+			minTTL = t
+		}
+		if s := r.res.GetCacheScope(); s == "private" {
+			anyPrivate = true
+		} else if firstScope == "" && s != "" {
+			firstScope = s
+		}
+	}
+	if minTTL < 0 {
+		minTTL = 0
+	}
+	aggregated.TTLMs = minTTL
+	switch {
+	case anyPrivate:
+		aggregated.CacheScope = "private"
+	case firstScope != "":
+		aggregated.CacheScope = firstScope
+	}
+	return aggregated
+}
+
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
 	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
@@ -439,6 +489,7 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 			resp.Tools = append(resp.Tools, tool)
 		}
 	}
+	resp.Cacheable = aggregateCacheable(responses)
 
 	return resp
 }
@@ -456,6 +507,7 @@ func (m *mcpRequestContext) mergeResourceList(_ *session, responses []broadCastR
 			resp.Resources = append(resp.Resources, res)
 		}
 	}
+	resp.Cacheable = aggregateCacheable(responses)
 	return resp
 }
 
@@ -469,6 +521,7 @@ func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []b
 			resp.ResourceTemplates = append(resp.ResourceTemplates, res)
 		}
 	}
+	resp.Cacheable = aggregateCacheable(responses)
 	return resp
 }
 
@@ -513,6 +566,7 @@ func (m *mcpRequestContext) mergePromptsList(s *session, responses []broadCastRe
 			aggregatedResponse.Prompts = append(aggregatedResponse.Prompts, res)
 		}
 	}
+	aggregatedResponse.Cacheable = aggregateCacheable(responses)
 
 	return aggregatedResponse
 }
