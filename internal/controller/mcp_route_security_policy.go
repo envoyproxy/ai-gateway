@@ -212,7 +212,7 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 }
 
 // ensureOAuthProtectedResourceMetadataBTP ensures that the BackendTrafficPolicy resource exists with response override for WWW-Authenticate header.
-func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
+func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string, resourceURL string) error {
 	var backendTrafficPolicy egv1a1.BackendTrafficPolicy
 	backendTrafficPolicyName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 	err := c.client.Get(ctx, client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
@@ -236,7 +236,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 
 	// Build WWW-Authenticate header value based on RFC 9728 and MCP spec.
 	auth := mcpRoute.Spec.SecurityPolicy.OAuth
-	wwwAuthenticateValue := buildWWWAuthenticateHeaderValue(&auth.ProtectedResourceMetadata)
+	wwwAuthenticateValue := buildWWWAuthenticateHeaderValue(resourceURL, auth.ProtectedResourceMetadata.ScopesSupported)
 
 	// Configure response override for 401 responses.
 	backendTrafficPolicy.Spec = egv1a1.BackendTrafficPolicySpec{
@@ -302,12 +302,140 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 	return nil
 }
 
+// resolveDeterministicHostname returns the single unambiguous, non-wildcard hostname for the MCPRoute.
+// It checks the route's Spec.Hostnames first. If none are specified, it inspects the parent Gateway/Listener
+// referenced in Spec.ParentRefs.
+func resolveDeterministicHostname(ctx context.Context, k8sClient client.Client, mcpRoute *aigv1b1.MCPRoute) (string, error) {
+	if len(mcpRoute.Spec.Hostnames) > 1 {
+		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route specifies multiple hostnames; resource must be explicitly configured")
+	}
+	if len(mcpRoute.Spec.Hostnames) == 1 {
+		h := string(mcpRoute.Spec.Hostnames[0])
+		if strings.Contains(h, "*") {
+			return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: route hostname %q contains wildcard; resource must be explicitly configured", h)
+		}
+		if h == "" {
+			return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route hostname is empty; resource must be explicitly configured")
+		}
+		return h, nil
+	}
+
+	// No hostnames on the route, resolve via parentRefs.
+	if len(mcpRoute.Spec.ParentRefs) == 0 {
+		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route has no hostnames or parentRefs configured; resource must be explicitly configured")
+	}
+	if len(mcpRoute.Spec.ParentRefs) > 1 {
+		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route references multiple parent gateways; resource must be explicitly configured")
+	}
+	if k8sClient == nil {
+		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway cannot be inspected without Kubernetes client; resource must be explicitly configured")
+	}
+
+	parentRef := mcpRoute.Spec.ParentRefs[0]
+	if parentRef.Kind != nil && *parentRef.Kind != "Gateway" {
+		return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parentRef kind %q is not Gateway; resource must be explicitly configured", *parentRef.Kind)
+	}
+
+	gwNamespace := mcpRoute.Namespace
+	if parentRef.Namespace != nil {
+		gwNamespace = string(*parentRef.Namespace)
+	}
+	gwName := string(parentRef.Name)
+
+	var gw gwapiv1.Gateway
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: gwNamespace, Name: gwName}, &gw); err != nil {
+		return "", fmt.Errorf("failed to get parent Gateway %s/%s for OAuth resource derivation: %w", gwNamespace, gwName, err)
+	}
+
+	if parentRef.SectionName != nil && *parentRef.SectionName != "" {
+		sectionName := *parentRef.SectionName
+		var targetListener *gwapiv1.Listener
+		for i := range gw.Spec.Listeners {
+			if string(gw.Spec.Listeners[i].Name) == string(sectionName) {
+				targetListener = &gw.Spec.Listeners[i]
+				break
+			}
+		}
+		if targetListener == nil {
+			return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway %s/%s has no listener named %q", gwNamespace, gwName, sectionName)
+		}
+		if targetListener.Hostname == nil || *targetListener.Hostname == "" {
+			return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: listener %q on parent Gateway %s/%s has no hostname configured; resource must be explicitly configured", sectionName, gwNamespace, gwName)
+		}
+		h := string(*targetListener.Hostname)
+		if strings.Contains(h, "*") {
+			return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: listener %q hostname %q contains wildcard; resource must be explicitly configured", sectionName, h)
+		}
+		return h, nil
+	}
+
+	// No sectionName specified, inspect listeners.
+	uniqueHostnames := make(map[string]struct{})
+	for _, l := range gw.Spec.Listeners {
+		if l.Protocol != "" && l.Protocol != gwapiv1.HTTPProtocolType && l.Protocol != gwapiv1.HTTPSProtocolType {
+			continue
+		}
+		if l.Hostname != nil && *l.Hostname != "" {
+			uniqueHostnames[string(*l.Hostname)] = struct{}{}
+		}
+	}
+
+	if len(uniqueHostnames) == 0 {
+		return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway %s/%s has no HTTP/HTTPS listeners with configured hostnames; resource must be explicitly configured", gwNamespace, gwName)
+	}
+	if len(uniqueHostnames) > 1 {
+		return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway %s/%s has multiple listener hostnames; resource must be explicitly configured", gwNamespace, gwName)
+	}
+
+	var h string
+	for name := range uniqueHostnames {
+		h = name
+	}
+	if strings.Contains(h, "*") {
+		return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway %s/%s listener hostname %q contains wildcard; resource must be explicitly configured", gwNamespace, gwName, h)
+	}
+	return h, nil
+}
+
+// resolveOAuthResourceURL returns the resource URL to use for OAuth metadata, either from the
+// explicit ProtectedResourceMetadata.Resource field or auto-derived from the deterministic hostname.
+func resolveOAuthResourceURL(ctx context.Context, k8sClient client.Client, mcpRoute *aigv1b1.MCPRoute) (string, error) {
+	if mcpRoute.Spec.SecurityPolicy == nil || mcpRoute.Spec.SecurityPolicy.OAuth == nil {
+		return "", errors.New("OAuth configuration is nil")
+	}
+
+	auth := mcpRoute.Spec.SecurityPolicy.OAuth
+	if auth.ProtectedResourceMetadata.Resource != nil && *auth.ProtectedResourceMetadata.Resource != "" {
+		return strings.TrimSuffix(*auth.ProtectedResourceMetadata.Resource, "/"), nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	hostname, err := resolveDeterministicHostname(ctx, k8sClient, mcpRoute)
+	if err != nil {
+		return "", err
+	}
+
+	path := ptr.Deref(mcpRoute.Spec.Path, "/mcp")
+	if path == "" {
+		path = "/mcp"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	path = strings.TrimSuffix(path, "/")
+
+	return fmt.Sprintf("https://%s%s", hostname, path), nil
+}
+
 // buildResourceMetadataURL constructs the OAuth protected resource metadata URL using the resource identifier.
 // References:
 // * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildResourceMetadataURL(metadata *aigv1b1.ProtectedResourceMetadata) string {
-	resourceURL := strings.TrimSuffix(metadata.Resource, "/")
+func buildResourceMetadataURL(resource string) string {
+	resourceURL := strings.TrimSuffix(resource, "/")
 
 	var (
 		baseURL       string
@@ -342,23 +470,23 @@ func buildResourceMetadataURL(metadata *aigv1b1.ProtectedResourceMetadata) strin
 // References:
 // * https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildWWWAuthenticateHeaderValue(metadata *aigv1b1.ProtectedResourceMetadata) string {
-	resourceMetadataURL := buildResourceMetadataURL(metadata)
+func buildWWWAuthenticateHeaderValue(resourceURL string, scopesSupported []string) string {
+	resourceMetadataURL := buildResourceMetadataURL(resourceURL)
 	headerValue := `Bearer error="invalid_token", error_description="The access token is missing or invalid"`
 
 	// Add resource_metadata as per RFC 9728 Section 5.1.
 	headerValue = fmt.Sprintf(`%s, resource_metadata="%s"`, headerValue, resourceMetadataURL)
 
-	if len(metadata.ScopesSupported) > 0 {
+	if len(scopesSupported) > 0 {
 		// Add scope as per RFC 6750 Section 3.
-		headerValue = fmt.Sprintf(`%s, scope="%s"`, headerValue, strings.Join(metadata.ScopesSupported, " "))
+		headerValue = fmt.Sprintf(`%s, scope="%s"`, headerValue, strings.Join(scopesSupported, " "))
 	}
 
 	return headerValue
 }
 
 // ensureOAuthProtectedResourceMetadataHRF ensures that the HTTPRouteFilter resource exists with direct response for OAuth metadata.
-func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
+func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, resourceURL string) error {
 	if mcpRoute.Spec.SecurityPolicy == nil || mcpRoute.Spec.SecurityPolicy.OAuth == nil {
 		return nil
 	}
@@ -385,7 +513,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context
 	}
 
 	// Build OAuth protected resource metadata JSON response.
-	metadataJSON := buildOAuthProtectedResourceMetadataJSON(mcpRoute.Spec.SecurityPolicy.OAuth)
+	metadataJSON := buildOAuthProtectedResourceMetadataJSON(mcpRoute.Spec.SecurityPolicy.OAuth, resourceURL)
 
 	// Configure direct response with OAuth metadata.
 	httpRouteFilter.Spec = egv1a1.HTTPRouteFilterSpec{
@@ -491,9 +619,9 @@ func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Contex
 // References:
 // * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-protected-resource-metadata
-func buildOAuthProtectedResourceMetadataJSON(auth *aigv1b1.MCPRouteOAuth) string {
+func buildOAuthProtectedResourceMetadataJSON(auth *aigv1b1.MCPRouteOAuth, resourceURL string) string {
 	response := map[string]interface{}{
-		"resource":                 auth.ProtectedResourceMetadata.Resource,
+		"resource":                 resourceURL,
 		"authorization_servers":    []string{auth.Issuer},
 		"bearer_methods_supported": []string{"header"},
 	}
@@ -502,9 +630,6 @@ func buildOAuthProtectedResourceMetadataJSON(auth *aigv1b1.MCPRouteOAuth) string
 	}
 	if len(auth.ProtectedResourceMetadata.ScopesSupported) != 0 {
 		response["scopes_supported"] = auth.ProtectedResourceMetadata.ScopesSupported
-	}
-	if auth.ProtectedResourceMetadata.ResourceName != nil && *auth.ProtectedResourceMetadata.ResourceName != "" {
-		response["resource_name"] = auth.ProtectedResourceMetadata.ResourceName
 	}
 	if len(auth.ProtectedResourceMetadata.ResourceSigningAlgValuesSupported) > 0 {
 		response["resource_signing_alg_values_supported"] = auth.ProtectedResourceMetadata.ResourceSigningAlgValuesSupported
@@ -591,13 +716,18 @@ func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context,
 }
 
 func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
+	resourceURL, err := resolveOAuthResourceURL(ctx, c.client, mcpRoute)
+	if err != nil {
+		return err
+	}
+
 	// Create BackendTrafficPolicy for WWW-Authenticate header with OAuth resource metadata in 401 responses.
-	if btpErr := c.ensureOAuthProtectedResourceMetadataBTP(ctx, mcpRoute, httpRouteName); btpErr != nil {
+	if btpErr := c.ensureOAuthProtectedResourceMetadataBTP(ctx, mcpRoute, httpRouteName, resourceURL); btpErr != nil {
 		return fmt.Errorf("failed to ensure BackendTrafficPolicy: %w", btpErr)
 	}
 
 	// Create HTTPRouteFilter for OAuth protected resource metadata endpoint.
-	if hrfErr := c.ensureOAuthProtectedResourceMetadataHRF(ctx, mcpRoute); hrfErr != nil {
+	if hrfErr := c.ensureOAuthProtectedResourceMetadataHRF(ctx, mcpRoute, resourceURL); hrfErr != nil {
 		return fmt.Errorf("failed to ensure HTTPRouteFilter: %w", hrfErr)
 	}
 

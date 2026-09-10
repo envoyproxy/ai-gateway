@@ -275,6 +275,7 @@ func TestMCPRoutes(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
+		{name: "resource_omitted.yaml"},
 		{
 			name:   "same_backend_names.yaml",
 			expErr: `MCPRoute.aigateway.envoyproxy.io "same-backend-names" is invalid: spec.backendRefs: Invalid value: "array": all backendRefs names must be unique`,
