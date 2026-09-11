@@ -2879,6 +2879,17 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},
 		{
+			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSOpenAI},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSOpenAI, Prefix: "openai/v1"},
+		},
+		{
+			in: aigv1b1.VersionedAPISchema{
+				Name:   aigv1b1.APISchemaAWSOpenAI,
+				Prefix: ptr.To("custom/v1"),
+			},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSOpenAI, Prefix: "custom/v1"},
+		},
+		{
 			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAnthropic},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic, Prefix: "v1"},
 		},
