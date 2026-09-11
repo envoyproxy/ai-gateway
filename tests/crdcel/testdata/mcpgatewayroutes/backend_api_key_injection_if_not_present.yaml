@@ -3,11 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# Valid: overwrite false with a header-injected API key (secretRef).
+# Valid: injectionPolicy IfNotPresent with a header-injected API key (secretRef).
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
-  name: backend-apikey-overwrite-false
+  name: backend-apikey-injection-if-not-present
   namespace: default
 spec:
   parentRefs:
@@ -22,7 +22,7 @@ spec:
         apiKey:
           secretRef:
             name: github-sa-token
-          overwrite: false
+          injectionPolicy: IfNotPresent
       forwardHeaders:
         - name: X-GitHub-PAT
           backendHeader: Authorization

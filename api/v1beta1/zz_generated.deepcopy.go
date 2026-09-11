@@ -1240,9 +1240,9 @@ func (in *MCPBackendAPIKey) DeepCopyInto(out *MCPBackendAPIKey) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.Overwrite != nil {
-		in, out := &in.Overwrite, &out.Overwrite
-		*out = new(bool)
+	if in.InjectionPolicy != nil {
+		in, out := &in.InjectionPolicy, &out.InjectionPolicy
+		*out = new(MCPBackendAPIKeyInjectionPolicy)
 		**out = **in
 	}
 }

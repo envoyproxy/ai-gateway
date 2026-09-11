@@ -253,7 +253,7 @@ Each `forwardHeaders` entry specifies:
 
 Headers are scoped per-backend — during fan-out operations like `tools/list`, only the backends with explicit `forwardHeaders` configuration receive the forwarded headers. Other backends in the same route are unaffected.
 
-To keep a default least-privilege service-account token on a backend while letting callers override it with a personal access token, set `securityPolicy.apiKey.overwrite: false` and map the client token onto the same header with `forwardHeaders`. When the client omits that header, the gateway injects the configured API key. When the client sends it, the forwarded value is preserved. The default is `overwrite: true`, which always injects the configured credential.
+To keep a default least-privilege service-account token on a backend while letting callers override it with a personal access token, set `securityPolicy.apiKey.injectionPolicy: IfNotPresent` and map the client token onto the same header with `forwardHeaders`. When the client omits that header, the gateway injects the configured API key. When the client sends it, the forwarded value is preserved. The default is `injectionPolicy: Always`, which always injects the configured credential.
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -274,13 +274,13 @@ spec:
         apiKey:
           secretRef:
             name: github-sa-token # default least-privilege service account
-          overwrite: false
+          injectionPolicy: IfNotPresent
       forwardHeaders:
         - name: X-GitHub-PAT
           backendHeader: Authorization
 ```
 
-`overwrite` applies only to header injection. Do not combine `overwrite: false` with `queryParam`. If the MCPRoute itself uses OAuth or API-key client authentication, do not forward inbound `Authorization` (that is the gateway token). Use a dedicated client header and `backendHeader` to map it onto the backend credential header.
+`injectionPolicy` applies only to header injection. Do not combine `injectionPolicy: IfNotPresent` with `queryParam`. If the MCPRoute itself uses OAuth or API-key client authentication, do not forward inbound `Authorization` (that is the gateway token). Use a dedicated client header and `backendHeader` to map it onto the backend credential header.
 
 ### OAuth Authentication
 

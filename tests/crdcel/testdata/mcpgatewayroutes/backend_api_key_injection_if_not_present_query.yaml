@@ -3,11 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This should fail validation: overwrite false is header-injection only.
+# This should fail validation: IfNotPresent is header-injection only.
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
-  name: backend-apikey-overwrite-false-query
+  name: backend-apikey-injection-if-not-present-query
   namespace: default
 spec:
   parentRefs:
@@ -22,4 +22,4 @@ spec:
         apiKey:
           inline: "my-api-key"
           queryParam: "api_key"
-          overwrite: false
+          injectionPolicy: IfNotPresent

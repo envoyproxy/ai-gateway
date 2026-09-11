@@ -667,11 +667,11 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 	egFilterName := mcpBackendRefFilterName(mcpRoute, ref.Name)
 
 	// Determine credential handling from the backend's security policy.
-	// - inline API keys with overwrite (default): use RequestHeaderModifier (no security benefit
-	//   from a Secret since the plaintext is already in the MCPRoute CRD manifest).
-	// - secretRef API keys, and inline keys with overwrite:false: use credentialInjection via a
-	//   managed Secret. RequestHeaderModifier Set always replaces, so overwrite:false needs
-	//   HTTPCredentialInjectionFilter.overwrite to inject only when the header is absent.
+	// - inline API keys with injectionPolicy Always (default): use RequestHeaderModifier (no security
+	//   benefit from a Secret since the plaintext is already in the MCPRoute CRD manifest).
+	// - secretRef API keys, and inline keys with injectionPolicy IfNotPresent: use credentialInjection
+	//   via a managed Secret. RequestHeaderModifier Set always replaces, so IfNotPresent needs
+	//   HTTPCredentialInjectionFilter.overwrite=false to inject only when the header is absent.
 	// - query param API keys: embed in the URL rewrite path (There is no route filter support for query params).
 	var credentialSecretName string
 	var credentialHeader *string
@@ -681,12 +681,12 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 
 	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
 		apiKey := ref.SecurityPolicy.APIKey
-		overwrite := ptr.Deref(apiKey.Overwrite, true)
+		overwrite := ptr.Deref(apiKey.InjectionPolicy, aigv1b1.MCPBackendAPIKeyInjectionAlways) != aigv1b1.MCPBackendAPIKeyInjectionIfNotPresent
 
 		switch {
 		case apiKey.QueryParam != nil:
 			// Query parameter injection cannot use Envoy Gateway's credentialInjection filter;
-			// embed directly in the URL rewrite path. overwrite does not apply here.
+			// embed directly in the URL rewrite path. injectionPolicy does not apply here.
 			// TODO: evaluate alternatives to avoid embedding the secret in the HTTPRoute manifest.
 			apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
 			if err != nil {
@@ -710,8 +710,8 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				},
 			}
 		case apiKey.SecretRef != nil || apiKey.Inline != nil:
-			// Header injection that must honor overwrite: create a managed credential Secret
-			// and use HTTPRouteFilter credentialInjection. Inline overwrite:false shares this
+			// Header injection that must honor injectionPolicy: create a managed credential Secret
+			// and use HTTPRouteFilter credentialInjection. Inline IfNotPresent shares this
 			// path because RequestHeaderModifier Set always replaces the header.
 			credSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
 			if err := c.ensureCredentialSecret(ctx, credSecretName, mcpRoute, apiKey); err != nil {
@@ -788,7 +788,8 @@ func mcpRouteHeaderValue(mcpRoute *aigv1b1.MCPRoute) string {
 // When credentialSecretName is non-empty, the filter is configured with credential injection referencing
 // the given secret (which must store the credential under the InjectedCredentialKey key). overwrite is
 // forwarded to HTTPCredentialInjectionFilter so the API key is only injected when the header is
-// missing if overwrite is false. When credentialSecretName is empty, only URL hostname rewrite is configured.
+// missing if overwrite is false (injectionPolicy IfNotPresent). When credentialSecretName is empty,
+// only URL hostname rewrite is configured.
 func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, filterName string, mcpRoute *aigv1b1.MCPRoute,
 	credentialSecretName string, credentialHeader *string, overwrite bool,
 ) error {

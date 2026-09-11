@@ -310,10 +310,10 @@ func TestMCPRoutes(t *testing.T) {
 			name:   "backend_api_key_both_header_and_query.yaml",
 			expErr: "only one of header or queryParam can be set",
 		},
-		{name: "backend_api_key_overwrite_false.yaml"},
+		{name: "backend_api_key_injection_if_not_present.yaml"},
 		{
-			name:   "backend_api_key_overwrite_false_query.yaml",
-			expErr: "overwrite cannot be false when queryParam is set",
+			name:   "backend_api_key_injection_if_not_present_query.yaml",
+			expErr: "injectionPolicy cannot be IfNotPresent when queryParam is set",
 		},
 		{
 			name:   "jwks_missing.yaml",

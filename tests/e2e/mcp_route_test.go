@@ -59,7 +59,7 @@ func TestMCP(t *testing.T) {
 	})
 	manyBackendsRouteToolNames := requireCreateMCPManyBackends(t)
 	backendSelectorJWTRoutePath, backendSelectorJWTKey := requireCreateMCPBackendSelectorJWTRoute(t)
-	requireCreateMCPAPIKeyOverwriteRoutes(t)
+	requireCreateMCPAPIKeyInjectionPolicyRoutes(t)
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -138,15 +138,15 @@ func TestMCP(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, sess)
 	})
-	t.Run("api key overwrite false injects when forwarded header is absent", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/api-key-overwrite-false", testMCPServerAllToolNames("mcp-backend__"),
+	t.Run("api key injectionPolicy IfNotPresent injects when forwarded header is absent", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/api-key-if-not-present", testMCPServerAllToolNames("mcp-backend__"),
 			nil, true, true)
 	})
-	t.Run("api key overwrite false preserves forwarded credential", func(t *testing.T) {
+	t.Run("api key injectionPolicy IfNotPresent preserves forwarded credential", func(t *testing.T) {
 		sess, err := client.Connect(
 			t.Context(),
 			&mcp.StreamableClientTransport{
-				Endpoint: fmt.Sprintf("%s/mcp/api-key-overwrite-false", fwd.Address()),
+				Endpoint: fmt.Sprintf("%s/mcp/api-key-if-not-present", fwd.Address()),
 				HTTPClient: &http.Client{Transport: mcpRequestHeaderInjector{
 					"X-GitHub-PAT": "Bearer wrong-pat",
 				}},
@@ -154,8 +154,8 @@ func TestMCP(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, sess)
 	})
-	t.Run("api key overwrite true replaces forwarded credential", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/api-key-overwrite-true", testMCPServerAllToolNames("mcp-backend__"),
+	t.Run("api key injectionPolicy Always replaces forwarded credential", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/api-key-always", testMCPServerAllToolNames("mcp-backend__"),
 			&http.Client{Transport: mcpRequestHeaderInjector{
 				"X-GitHub-PAT": "Bearer wrong-pat",
 			}}, true, true)
@@ -374,16 +374,16 @@ spec:
 	return "/mcp/backend-selector-jwt", priv
 }
 
-func requireCreateMCPAPIKeyOverwriteRoutes(t *testing.T) {
+func requireCreateMCPAPIKeyInjectionPolicyRoutes(t *testing.T) {
 	t.Helper()
 	const manifest = `
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
-  name: mcp-api-key-overwrite-false
+  name: mcp-api-key-if-not-present
   namespace: default
 spec:
-  path: "/mcp/api-key-overwrite-false"
+  path: "/mcp/api-key-if-not-present"
   parentRefs:
     - name: mcp-gateway
       kind: Gateway
@@ -395,7 +395,7 @@ spec:
       securityPolicy:
         apiKey:
           inline: "test-api-key"
-          overwrite: false
+          injectionPolicy: IfNotPresent
       forwardHeaders:
         - name: X-GitHub-PAT
           backendHeader: Authorization
@@ -403,10 +403,10 @@ spec:
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
-  name: mcp-api-key-overwrite-true
+  name: mcp-api-key-always
   namespace: default
 spec:
-  path: "/mcp/api-key-overwrite-true"
+  path: "/mcp/api-key-always"
   parentRefs:
     - name: mcp-gateway
       kind: Gateway
@@ -418,7 +418,7 @@ spec:
       securityPolicy:
         apiKey:
           inline: "test-api-key"
-          overwrite: true
+          injectionPolicy: Always
       forwardHeaders:
         - name: X-GitHub-PAT
           backendHeader: Authorization
