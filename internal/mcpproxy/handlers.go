@@ -306,6 +306,42 @@ func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]
 	return result
 }
 
+// extractPerBackendHeaders reads per-backend forwardHeaders for each backend in
+// the given set. Denied / unselected backends should be omitted from the map so
+// their credentials are never copied onto outbound requests.
+func (m *mcpRequestContext) extractPerBackendHeaders(backends map[filterapi.MCPBackendName]filterapi.MCPBackend) map[filterapi.MCPBackendName]map[string]string {
+	if len(backends) == 0 {
+		return nil
+	}
+	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
+	for _, backend := range backends {
+		if len(backend.ForwardHeaders) == 0 {
+			continue
+		}
+		if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+			perBackendHeaders[backend.Name] = h
+		}
+	}
+	if len(perBackendHeaders) == 0 {
+		return nil
+	}
+	return perBackendHeaders
+}
+
+// applyExtractedForwardHeaders copies route-level and per-backend forwarded
+// headers onto an outbound backend request. Del-then-Set matches the legacy
+// session path so header canonicalization cannot leave a stale value behind.
+func applyExtractedForwardHeaders(httpReq *http.Request, extraHeaders, perBackendHeaders map[string]string) {
+	for header, value := range extraHeaders {
+		httpReq.Header.Del(header)
+		httpReq.Header.Set(header, value)
+	}
+	for header, value := range perBackendHeaders {
+		httpReq.Header.Del(header)
+		httpReq.Header.Set(header, value)
+	}
+}
+
 // extractPerBackendForwardHeaders reads per-backend header forwarding config from the incoming request.
 // It supports header renaming: each entry maps a source header to an optional destination header name.
 func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterapi.MCPHeaderForward) map[string]string {

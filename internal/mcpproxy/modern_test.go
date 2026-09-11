@@ -150,6 +150,74 @@ func TestServeModernPOST_UnknownMethod(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "unknown method")
 }
 
+func TestServeModernPOST_StartsSpanOnlyForSupportedMethods(t *testing.T) {
+	// tools/call is not yet a modern-supported method; a span must not be
+	// opened just because modernParamsForHeaderMetadata can parse it.
+	t.Run("unknown method", func(t *testing.T) {
+		tracer := &fakeTracer{}
+		proxy := newTestMCPProxyWithTracer(tracer)
+		r := newModernRequest("tools/call")
+		rr := httptest.NewRecorder()
+		req := modernReq(t, "tools/call", []byte(`{"name":"t"}`))
+
+		proxy.serveModernPOST(rr, r, req, time.Now())
+
+		require.Equal(t, http.StatusNotFound, rr.Code)
+		require.Equal(t, 0, tracer.starts)
+	})
+
+	t.Run("removed method", func(t *testing.T) {
+		tracer := &fakeTracer{}
+		proxy := newTestMCPProxyWithTracer(tracer)
+		r := newModernRequest("ping")
+		rr := httptest.NewRecorder()
+		req := modernReq(t, "ping", []byte(`{}`))
+
+		proxy.serveModernPOST(rr, r, req, time.Now())
+
+		require.Equal(t, http.StatusNotFound, rr.Code)
+		require.Equal(t, 0, tracer.starts)
+	})
+
+	t.Run("supported method", func(t *testing.T) {
+		respFn := func(_, _ string) any {
+			return mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "t"}}}
+		}
+		server := httptest.NewServer(modernBackendHandler(t, nil, nil, respFn))
+		defer server.Close()
+
+		tracer := &fakeTracer{}
+		proxy := newTestMCPProxyWithTracer(tracer)
+		proxy.backendListenerAddr = server.URL
+		delete(proxy.routes["test-route"].toolSelectors, "backend1")
+
+		r := newModernRequest("tools/list")
+		rr := httptest.NewRecorder()
+		req := modernReq(t, "tools/list", []byte(`{}`))
+
+		proxy.serveModernPOST(rr, r, req, time.Now())
+
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, tracer.starts)
+		require.NotEmpty(t, tracer.span.backends)
+		require.Len(t, tracer.span.listResults, 1)
+	})
+}
+
+func TestServeModernPOST_InvalidParams(t *testing.T) {
+	tracer := &fakeTracer{}
+	proxy := newTestMCPProxyWithTracer(tracer)
+	r := newModernRequest("tools/list")
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "tools/list", []byte(`"not-an-object"`))
+
+	proxy.serveModernPOST(rr, r, req, time.Now())
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Contains(t, rr.Body.String(), "invalid params")
+	require.Equal(t, 0, tracer.starts)
+}
+
 // TestServeModernPOST_DispatchFanout drives each fan-out method end-to-end
 // through serveModernPOST against a live backend server.
 func TestServeModernPOST_DispatchFanout(t *testing.T) {
@@ -330,7 +398,7 @@ func TestHandleModernToolsList_BackendSelectorFilters(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "tools/list", nil)
 
-	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route", nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Equal(t, 0, callCount.get("backend1"))
@@ -380,7 +448,7 @@ func TestHandleModernToolsList_AggregatesAndPrefixes(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "tools/list", nil)
 
-	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route", nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rr.Code)
 
@@ -424,7 +492,7 @@ func TestHandleModernToolsList_MergesCachingHints(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "tools/list", nil)
 
-	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route", nil)
 	require.NoError(t, err)
 
 	result := decodeResult(t, rr)
@@ -447,7 +515,7 @@ func TestHandleModernToolsList_ToolSelectorFilters(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "tools/list", nil)
 
-	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route")
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "test-route", nil)
 	require.NoError(t, err)
 
 	result := decodeResult(t, rr)
@@ -470,7 +538,7 @@ func TestHandleModernToolsList_RouteNotFound(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "tools/list", nil)
 
-	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "nope")
+	_, err := proxy.handleModernToolsList(context.Background(), rr, r, req, "nope", nil)
 	require.ErrorIs(t, err, errBackendNotFound)
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
@@ -487,7 +555,7 @@ func TestHandleModernResourcesList_AggregatesAndPrefixes(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "resources/list", nil)
 
-	_, err := proxy.handleModernResourcesList(context.Background(), rr, newModernRequest("resources/list"), req, "test-route")
+	_, err := proxy.handleModernResourcesList(context.Background(), rr, newModernRequest("resources/list"), req, "test-route", nil)
 	require.NoError(t, err)
 
 	result := decodeResult(t, rr)
@@ -505,7 +573,7 @@ func TestHandleModernResourcesList_RouteNotFound(t *testing.T) {
 	proxy := newTestMCPProxy()
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "resources/list", nil)
-	_, err := proxy.handleModernResourcesList(context.Background(), rr, newModernRequest("resources/list"), req, "nope")
+	_, err := proxy.handleModernResourcesList(context.Background(), rr, newModernRequest("resources/list"), req, "nope", nil)
 	require.ErrorIs(t, err, errBackendNotFound)
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
@@ -522,7 +590,7 @@ func TestHandleModernResourceTemplatesList_Aggregates(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "resources/templates/list", nil)
 
-	_, err := proxy.handleModernResourceTemplatesList(context.Background(), rr, newModernRequest("resources/templates/list"), req, "test-route")
+	_, err := proxy.handleModernResourceTemplatesList(context.Background(), rr, newModernRequest("resources/templates/list"), req, "test-route", nil)
 	require.NoError(t, err)
 
 	result := decodeResult(t, rr)
@@ -537,7 +605,7 @@ func TestHandleModernResourceTemplatesList_RouteNotFound(t *testing.T) {
 	proxy := newTestMCPProxy()
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "resources/templates/list", nil)
-	_, err := proxy.handleModernResourceTemplatesList(context.Background(), rr, newModernRequest("resources/templates/list"), req, "nope")
+	_, err := proxy.handleModernResourceTemplatesList(context.Background(), rr, newModernRequest("resources/templates/list"), req, "nope", nil)
 	require.ErrorIs(t, err, errBackendNotFound)
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
@@ -554,7 +622,7 @@ func TestHandleModernPromptsList_Aggregates(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "prompts/list", nil)
 
-	_, err := proxy.handleModernPromptsList(context.Background(), rr, newModernRequest("prompts/list"), req, "test-route")
+	_, err := proxy.handleModernPromptsList(context.Background(), rr, newModernRequest("prompts/list"), req, "test-route", nil)
 	require.NoError(t, err)
 
 	result := decodeResult(t, rr)
@@ -572,7 +640,7 @@ func TestHandleModernPromptsList_RouteNotFound(t *testing.T) {
 	proxy := newTestMCPProxy()
 	rr := httptest.NewRecorder()
 	req := modernReq(t, "prompts/list", nil)
-	_, err := proxy.handleModernPromptsList(context.Background(), rr, newModernRequest("prompts/list"), req, "nope")
+	_, err := proxy.handleModernPromptsList(context.Background(), rr, newModernRequest("prompts/list"), req, "nope", nil)
 	require.ErrorIs(t, err, errBackendNotFound)
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
@@ -594,7 +662,7 @@ func TestSendToAllModernBackends_PartialFailure(t *testing.T) {
 	req := modernReq(t, "tools/list", nil)
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](
-		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends)
+		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends, nil)
 
 	require.Len(t, responses, 1)
 	require.Equal(t, "backend2", responses[0].backendName)
@@ -622,7 +690,7 @@ func TestSendToAllModernBackends_UnmarshalFailureSkipped(t *testing.T) {
 	req := modernReq(t, "tools/list", nil)
 
 	responses := sendToAllModernBackendsAndAggregateResponses[mcp.ListToolsResult](
-		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends)
+		context.Background(), proxy, req, "test-route", proxy.routes["test-route"].backends, nil)
 
 	require.Len(t, responses, 1)
 	require.Equal(t, "backend2", responses[0].backendName)
@@ -793,6 +861,99 @@ func TestSendModernRequest_ForwardsHeaders(t *testing.T) {
 	_, err := proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
 	require.NoError(t, err)
 	require.Equal(t, "v1", gotHeader)
+}
+
+func TestResolveModernRouteBackends_ExtractsForwardHeaders(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.requestHeaders = http.Header{
+		"X-Fwd":         []string{"route-val"},
+		"Authorization": []string{"Bearer tok"},
+		"X-Only-B1":     []string{"b1-secret"},
+	}
+	proxy.routes["test-route"].forwardHeaders = []string{"X-Fwd"}
+	b1 := proxy.routes["test-route"].backends["backend1"]
+	b1.ForwardHeaders = []filterapi.MCPHeaderForward{
+		{Name: "Authorization", BackendHeader: "X-Original-Auth"},
+		{Name: "X-Only-B1"},
+	}
+	proxy.routes["test-route"].backends["backend1"] = b1
+	b2 := proxy.routes["test-route"].backends["backend2"]
+	b2.ForwardHeaders = []filterapi.MCPHeaderForward{
+		{Name: "Authorization", BackendHeader: "X-Original-Auth"},
+	}
+	proxy.routes["test-route"].backends["backend2"] = b2
+
+	rr := httptest.NewRecorder()
+	_, selected, err := proxy.resolveModernRouteBackends(rr, "test-route")
+	require.NoError(t, err)
+	require.Contains(t, selected, "backend1")
+	require.Contains(t, selected, "backend2")
+	require.Equal(t, "route-val", proxy.extraHeaders["X-Fwd"])
+	require.Equal(t, "Bearer tok", proxy.perBackendExtraHeaders["backend1"]["X-Original-Auth"])
+	require.Equal(t, "b1-secret", proxy.perBackendExtraHeaders["backend1"]["X-Only-B1"])
+	require.Equal(t, "Bearer tok", proxy.perBackendExtraHeaders["backend2"]["X-Original-Auth"])
+	require.NotContains(t, proxy.perBackendExtraHeaders["backend2"], "X-Only-B1")
+	require.True(t, proxy.forwardHeadersResolved)
+}
+
+func TestSendModernRequest_ForwardsPerBackendHeadersAfterResolve(t *testing.T) {
+	var gotRoute, gotRenamed, gotB1Only string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRoute = r.Header.Get("X-Fwd")
+		gotRenamed = r.Header.Get("X-Original-Auth")
+		gotB1Only = r.Header.Get("X-Only-B1")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{}}`))
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{
+		"X-Fwd":         []string{"route-val"},
+		"Authorization": []string{"Bearer tok"},
+		"X-Only-B1":     []string{"b1-secret"},
+	}
+	proxy.routes["test-route"].forwardHeaders = []string{"X-Fwd"}
+	b1 := proxy.routes["test-route"].backends["backend1"]
+	b1.ForwardHeaders = []filterapi.MCPHeaderForward{
+		{Name: "Authorization", BackendHeader: "X-Original-Auth"},
+		{Name: "X-Only-B1"},
+	}
+	proxy.routes["test-route"].backends["backend1"] = b1
+
+	rr := httptest.NewRecorder()
+	_, _, err := proxy.resolveModernRouteBackends(rr, "test-route")
+	require.NoError(t, err)
+
+	req := modernReq(t, "tools/list", nil)
+	_, err = proxy.sendModernRequest(context.Background(), req, "test-route", proxy.routes["test-route"].backends["backend1"])
+	require.NoError(t, err)
+	require.Equal(t, "route-val", gotRoute)
+	require.Equal(t, "Bearer tok", gotRenamed)
+	require.Equal(t, "b1-secret", gotB1Only)
+}
+
+func TestResolveModernRouteBackends_PerBackendHeadersOnlyForSelected(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].backendSelector = jwtBackendSelectorAllowing(t)
+	proxy.requestHeaders = http.Header{
+		"Authorization": []string{"Bearer " + bearerTokenWithClaims(jwt.MapClaims{"mcp_backends": []string{"backend2"}})},
+		"X-B1":          []string{"secret-b1"},
+		"X-B2":          []string{"secret-b2"},
+	}
+	b1 := proxy.routes["test-route"].backends["backend1"]
+	b1.ForwardHeaders = []filterapi.MCPHeaderForward{{Name: "X-B1"}}
+	proxy.routes["test-route"].backends["backend1"] = b1
+	b2 := proxy.routes["test-route"].backends["backend2"]
+	b2.ForwardHeaders = []filterapi.MCPHeaderForward{{Name: "X-B2"}}
+	proxy.routes["test-route"].backends["backend2"] = b2
+
+	rr := httptest.NewRecorder()
+	_, selected, err := proxy.resolveModernRouteBackends(rr, "test-route")
+	require.NoError(t, err)
+	require.Equal(t, map[filterapi.MCPBackendName]filterapi.MCPBackend{"backend2": b2}, selected)
+	require.NotContains(t, proxy.perBackendExtraHeaders, "backend1")
+	require.Equal(t, "secret-b2", proxy.perBackendExtraHeaders["backend2"]["X-B2"])
 }
 
 // -----------------------------------------------------------------------------

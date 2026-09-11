@@ -39,6 +39,13 @@ type mcpRequestContext struct {
 	requestHeaders            http.Header
 	originalPath              string
 	perBackendMetricsRecorded bool
+	// extraHeaders and perBackendExtraHeaders are request-derived headers to
+	// forward upstream. The modern path fills them in resolveModernRouteBackends
+	// (same order as newSession). The legacy path stores the same maps on the
+	// session instead.
+	extraHeaders           map[string]string
+	perBackendExtraHeaders map[filterapi.MCPBackendName]map[string]string
+	forwardHeadersResolved bool
 }
 
 // defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
@@ -192,6 +199,10 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		return nil, fmt.Errorf("no backends found for route %s", routeName)
 	}
 
+	// Route-level headers are extracted before backendSelector so the same
+	// request-derived header set is available for authorization and later
+	// backend calls. Per-backend headers are extracted after selection so
+	// denied backends never receive forwarded credentials.
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
 	// spec.backendSelector, if configured, is evaluated once per candidate backend here,
@@ -202,15 +213,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		return nil, err
 	}
 
-	// Extract per-backend forward headers.
-	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
-	for _, backend := range selectedBackends {
-		if len(backend.ForwardHeaders) > 0 {
-			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
-				perBackendHeaders[backend.Name] = h
-			}
-		}
-	}
+	perBackendHeaders := m.extractPerBackendHeaders(selectedBackends)
 
 	var (
 		wg      sync.WaitGroup
@@ -321,15 +324,7 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 	var perBackendHeaders map[filterapi.MCPBackendName]map[string]string
 	if routeConfig := m.routes[route]; routeConfig != nil {
 		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
-		// Extract per-backend forward headers.
-		perBackendHeaders = make(map[filterapi.MCPBackendName]map[string]string)
-		for _, backend := range routeConfig.backends {
-			if len(backend.ForwardHeaders) > 0 {
-				if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
-					perBackendHeaders[backend.Name] = h
-				}
-			}
-		}
+		perBackendHeaders = m.extractPerBackendHeaders(routeConfig.backends)
 	}
 
 	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders, perBackendExtraHeaders: perBackendHeaders}, nil

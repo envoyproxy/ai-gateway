@@ -373,18 +373,13 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-Encoding", "gzip, br")
 
-	// Forward route-level headers (e.g., OAuth claimToHeaders) to the backend.
-	for header, value := range s.extraHeaders {
-		req.Header.Del(header)
-		req.Header.Set(header, value)
+	// Forward route-level headers (e.g., OAuth claimToHeaders) and per-backend
+	// headers (from MCPRouteBackendRef.forwardHeaders, with optional renaming).
+	var perBackend map[string]string
+	if s.perBackendExtraHeaders != nil {
+		perBackend = s.perBackendExtraHeaders[backend.Name]
 	}
-	// Forward per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
-	if perBackend, ok := s.perBackendExtraHeaders[backend.Name]; ok {
-		for header, value := range perBackend {
-			req.Header.Del(header)
-			req.Header.Set(header, value)
-		}
-	}
+	applyExtractedForwardHeaders(req, s.extraHeaders, perBackend)
 
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
