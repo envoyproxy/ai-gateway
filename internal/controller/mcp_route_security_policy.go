@@ -321,11 +321,8 @@ func resolveDeterministicHostname(ctx context.Context, k8sClient client.Client, 
 	}
 
 	// No hostnames on the route, resolve via parentRefs.
-	if len(mcpRoute.Spec.ParentRefs) == 0 {
-		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route has no hostnames or parentRefs configured; resource must be explicitly configured")
-	}
-	if len(mcpRoute.Spec.ParentRefs) > 1 {
-		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route references multiple parent gateways; resource must be explicitly configured")
+	if len(mcpRoute.Spec.ParentRefs) != 1 {
+		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: route must reference exactly one parent gateway; resource must be explicitly configured")
 	}
 	if k8sClient == nil {
 		return "", errors.New("cannot derive OAuth protectedResourceMetadata.resource: parent Gateway cannot be inspected without Kubernetes client; resource must be explicitly configured")

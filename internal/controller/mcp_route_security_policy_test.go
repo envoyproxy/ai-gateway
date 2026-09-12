@@ -1163,7 +1163,7 @@ func Test_resolveDeterministicHostname(t *testing.T) {
 			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "r5", Namespace: "default"},
 			},
-			expectedErr: "route has no hostnames or parentRefs configured",
+			expectedErr: "route must reference exactly one parent gateway",
 		},
 		{
 			name: "route has multiple parentRefs",
@@ -1176,7 +1176,7 @@ func Test_resolveDeterministicHostname(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "route references multiple parent gateways",
+			expectedErr: "route must reference exactly one parent gateway",
 		},
 		{
 			name: "client is nil when resolving via parentRefs",
