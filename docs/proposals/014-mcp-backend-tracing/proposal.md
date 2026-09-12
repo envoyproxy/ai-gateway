@@ -88,12 +88,12 @@ JSON-RPC response that their protocol does not provide.
 
 ## Integration Points and Lifecycle
 
-| Path | Start | Finish |
-| --- | --- | --- |
-| Session initialization in `mcpproxy.go` | Before each selected backend's initialize operation | Initialization result or failure, including any existing initialization exchange |
-| Direct methods via `invokeAndProxyResponse` in `legacy.go` | Before upstream invocation | Matching JSON-RPC result/error, tool `isError`, transport error, or cancellation |
-| Aggregating methods via `sendToBackendsFiltered` in `session.go` | Before each actual backend dispatch | Matching JSON-RPC response/error or terminal transport failure |
-| Notifications dispatched to backends | Before sending | Transport acknowledgment/failure according to the protocol |
+| Path                                                             | Start                                               | Finish                                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Session initialization in `mcpproxy.go`                          | Before each selected backend's initialize operation | Initialization result or failure, including any existing initialization exchange |
+| Direct methods via `invokeAndProxyResponse` in `legacy.go`       | Before upstream invocation                          | Matching JSON-RPC result/error, tool `isError`, transport error, or cancellation |
+| Aggregating methods via `sendToBackendsFiltered` in `session.go` | Before each actual backend dispatch                 | Matching JSON-RPC response/error or terminal transport failure                   |
+| Notifications dispatched to backends                             | Before sending                                      | Transport acknowledgment/failure according to the protocol                       |
 
 Do not finish a CLIENT operation merely when HTTP headers arrive. Conversely,
 do not leave a completed MCP operation open until a long-lived SSE transport
