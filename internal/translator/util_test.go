@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,52 @@ func TestCutSSEDataPrefix(t *testing.T) {
 			if tc.ok {
 				require.Equal(t, tc.expected, string(data))
 			}
+		})
+	}
+}
+
+func TestIndexSSEEventBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		buf         string
+		expectedIdx int
+		expectedSep int
+	}{
+		{
+			name:        "LF framing",
+			buf:         "data: a\n\n",
+			expectedIdx: bytes.Index([]byte("data: a\n\n"), []byte("\n\n")),
+			expectedSep: 2,
+		},
+		{
+			name:        "CRLF framing",
+			buf:         "data: a\r\n\r\n",
+			expectedIdx: bytes.Index([]byte("data: a\r\n\r\n"), []byte("\r\n\r\n")),
+			expectedSep: 4,
+		},
+		{
+			name:        "LF boundary before a later CRLF boundary",
+			buf:         "data: a\n\ndata: b\r\n\r\n",
+			expectedIdx: bytes.Index([]byte("data: a\n\ndata: b\r\n\r\n"), []byte("\n\n")),
+			expectedSep: 2,
+		},
+		{
+			name:        "CRLF boundary before a later LF boundary",
+			buf:         "data: a\r\n\r\ndata: b\n\n",
+			expectedIdx: bytes.Index([]byte("data: a\r\n\r\ndata: b\n\n"), []byte("\r\n\r\n")),
+			expectedSep: 4,
+		},
+		{
+			name:        "incomplete event",
+			buf:         "data: a\n",
+			expectedIdx: -1,
+			expectedSep: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			idx, sepLen := indexSSEEventBoundary([]byte(tc.buf))
+			require.Equal(t, tc.expectedIdx, idx)
+			require.Equal(t, tc.expectedSep, sepLen)
 		})
 	}
 }
