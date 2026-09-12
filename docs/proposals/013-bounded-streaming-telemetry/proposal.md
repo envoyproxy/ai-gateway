@@ -65,10 +65,10 @@ are unchanged between that commit and proposal base `4b317d8a`. These are not
 measurements of the new toolchain. Local Go 1.27.1 download attempts failed.
 
 | Text payload | Chunks | Full span, capture off, B/op | Full span, capture on, B/op | Fold only, B/op |
-| --- | --- | --- | --- | --- |
-| 16 KiB | 128 | 1,150,600 | 1,354,352 | 1,108,320 |
-| 128 KiB | 1,024 | 70,826,704 | 71,387,616 | 70,479,280 |
-| 1 MiB | 8,192 | 4,330,508,344 | 4,332,768,960 | 4,327,705,008 |
+| ------------ | ------ | ---------------------------- | --------------------------- | --------------- |
+| 16 KiB       | 128    | 1,150,600                    | 1,354,352                   | 1,108,320       |
+| 128 KiB      | 1,024  | 70,826,704                   | 71,387,616                  | 70,479,280      |
+| 1 MiB        | 8,192  | 4,330,508,344                | 4,332,768,960               | 4,327,705,008   |
 
 The table uses the second of two single-iteration runs to reduce cold-start
 effects; it is an illustrative baseline, not a statistically rigorous latency
