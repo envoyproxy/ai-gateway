@@ -329,9 +329,6 @@ func resolveDeterministicHostname(ctx context.Context, k8sClient client.Client, 
 	}
 
 	parentRef := mcpRoute.Spec.ParentRefs[0]
-	if parentRef.Kind != nil && *parentRef.Kind != "Gateway" {
-		return "", fmt.Errorf("cannot derive OAuth protectedResourceMetadata.resource: parentRef kind %q is not Gateway; resource must be explicitly configured", *parentRef.Kind)
-	}
 
 	gwNamespace := mcpRoute.Namespace
 	if parentRef.Namespace != nil {

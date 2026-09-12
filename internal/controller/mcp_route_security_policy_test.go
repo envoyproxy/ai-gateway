@@ -1192,19 +1192,6 @@ func Test_resolveDeterministicHostname(t *testing.T) {
 			expectedErr: "parent Gateway cannot be inspected without Kubernetes client",
 		},
 		{
-			name: "parentRef kind is not Gateway",
-			mcpRoute: &aigv1b1.MCPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "r8", Namespace: "default"},
-				Spec: aigv1b1.MCPRouteSpec{
-					ParentRefs: []gwapiv1.ParentReference{
-						{Name: "some-service", Kind: ptr.To(gwapiv1.Kind("Service"))},
-					},
-				},
-			},
-			k8sClient:   fakeClient,
-			expectedErr: "parentRef kind \"Service\" is not Gateway",
-		},
-		{
 			name: "parent Gateway not found",
 			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "r9", Namespace: "default"},
