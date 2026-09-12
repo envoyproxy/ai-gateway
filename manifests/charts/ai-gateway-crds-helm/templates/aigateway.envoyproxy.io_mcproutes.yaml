@@ -6069,6 +6069,9 @@ spec:
                               hostname configured on the Route or parent Gateway/Listener, combined with the MCPRoute's path.
                             format: uri
                             type: string
+                            x-kubernetes-validations:
+                            - message: resource must start with http:// or https://
+                              rule: self.startsWith('https://') || self.startsWith('http://')
                           resourceDocumentation:
                             description: ResourceDocumentation is a URL that provides
                               human-readable documentation for the resource.
@@ -12308,6 +12311,9 @@ spec:
                               hostname configured on the Route or parent Gateway/Listener, combined with the MCPRoute's path.
                             format: uri
                             type: string
+                            x-kubernetes-validations:
+                            - message: resource must start with http:// or https://
+                              rule: self.startsWith('https://') || self.startsWith('http://')
                           resourceDocumentation:
                             description: ResourceDocumentation is a URL that provides
                               human-readable documentation for the resource.

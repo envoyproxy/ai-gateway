@@ -1578,4 +1578,88 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_AutoDeriveResource(t *tes
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "route specifies multiple hostnames")
 	})
+
+	t.Run("updates HRF and BTP when gateway listener hostname changes", func(t *testing.T) {
+		gwChanging := &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw-changing", Namespace: "default"},
+			Spec: gwapiv1.GatewaySpec{
+				Listeners: []gwapiv1.Listener{
+					{
+						Name:     "https",
+						Protocol: gwapiv1.HTTPSProtocolType,
+						Hostname: (*gwapiv1.Hostname)(ptr.To("initial.example.com")),
+					},
+				},
+			},
+		}
+		require.NoError(t, fakeClient.Create(ctx, gwChanging))
+
+		mcpRoute := &aigv1b1.MCPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-gw-changing", Namespace: "default"},
+			Spec: aigv1b1.MCPRouteSpec{
+				ParentRefs: []gwapiv1.ParentReference{
+					{Name: "gw-changing"},
+				},
+				SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+					OAuth: &aigv1b1.MCPRouteOAuth{
+						Issuer: "https://auth.example.com",
+						JWKS:   jwks,
+						ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
+							ScopesSupported: []string{"tools"},
+						},
+					},
+				},
+			},
+		}
+		require.NoError(t, fakeClient.Create(ctx, mcpRoute))
+		require.NoError(t, c.syncMCPRouteSecurityPolicy(ctx, mcpRoute, "main-route"))
+
+		// Check initial BTP and HRF
+		var btp egv1a1.BackendTrafficPolicy
+		btpName := oauthProtectedResourceMetadataName(mcpRoute.Name)
+		require.NoError(t, fakeClient.Get(ctx, client.ObjectKey{Name: btpName, Namespace: mcpRoute.Namespace}, &btp))
+		require.Len(t, btp.Spec.ResponseOverride, 1)
+		var wwwAuth string
+		for _, h := range btp.Spec.ResponseOverride[0].Response.Header.Set {
+			if string(h.Name) == "WWW-Authenticate" {
+				wwwAuth = h.Value
+				break
+			}
+		}
+		require.Contains(t, wwwAuth, `resource_metadata="https://initial.example.com/.well-known/oauth-protected-resource/mcp"`)
+
+		var hrf egv1a1.HTTPRouteFilter
+		hrfName := oauthProtectedResourceMetadataName(mcpRoute.Name)
+		require.NoError(t, fakeClient.Get(ctx, client.ObjectKey{Name: hrfName, Namespace: mcpRoute.Namespace}, &hrf))
+		var body map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(*hrf.Spec.DirectResponse.Body.Inline), &body))
+		require.Equal(t, "https://initial.example.com/mcp", body["resource"])
+
+		// Gateway listener hostname changes
+		gwChanging.Spec.Listeners[0].Hostname = (*gwapiv1.Hostname)(ptr.To("updated.example.com"))
+		require.NoError(t, fakeClient.Update(ctx, gwChanging))
+
+		// Gateway watcher enqueues the MCPRoute
+		reqs := c.gatewayEventHandler(ctx, gwChanging)
+		require.Len(t, reqs, 1)
+		require.Equal(t, "default/route-gw-changing", reqs[0].String())
+
+		// Re-sync after Gateway event
+		require.NoError(t, c.syncMCPRouteSecurityPolicy(ctx, mcpRoute, "main-route"))
+
+		// Check updated BTP and HRF have the new hostname
+		require.NoError(t, fakeClient.Get(ctx, client.ObjectKey{Name: btpName, Namespace: mcpRoute.Namespace}, &btp))
+		wwwAuth = ""
+		for _, h := range btp.Spec.ResponseOverride[0].Response.Header.Set {
+			if string(h.Name) == "WWW-Authenticate" {
+				wwwAuth = h.Value
+				break
+			}
+		}
+		require.Contains(t, wwwAuth, `resource_metadata="https://updated.example.com/.well-known/oauth-protected-resource/mcp"`)
+
+		require.NoError(t, fakeClient.Get(ctx, client.ObjectKey{Name: hrfName, Namespace: mcpRoute.Namespace}, &hrf))
+		require.NoError(t, json.Unmarshal([]byte(*hrf.Spec.DirectResponse.Body.Inline), &body))
+		require.Equal(t, "https://updated.example.com/mcp", body["resource"])
+	})
 }
