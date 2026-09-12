@@ -51,6 +51,24 @@ func cutSSEDataPrefix(line []byte) ([]byte, bool) {
 	return cutSSEFieldPrefix(line, sseDataPrefix)
 }
 
+// indexSSEEventBoundary returns the index and length of the first blank-line
+// boundary that terminates an SSE event in buf, or (-1, 0) when no complete
+// event is buffered yet. SSE permits either LF or CRLF line endings, so both
+// "\n\n" and "\r\n\r\n" are recognized:
+// https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
+func indexSSEEventBoundary(buf []byte) (idx, sepLen int) {
+	lf := bytes.Index(buf, []byte("\n\n"))
+	crlf := bytes.Index(buf, []byte("\r\n\r\n"))
+	switch {
+	case lf == -1 && crlf == -1:
+		return -1, 0
+	case crlf == -1 || (lf != -1 && lf < crlf):
+		return lf, len("\n\n")
+	default:
+		return crlf, len("\r\n\r\n")
+	}
+}
+
 // regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
 var regDataURI = regexp.MustCompile(`\Adata:(.+?)?(;base64)?,`)

@@ -512,6 +512,136 @@ data: [DONE]
 		require.True(t, ok)
 		require.Equal(t, uint32(10), inputTokens)
 	})
+
+	t.Run("streaming response with CRLF framing", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "gpt-4o",
+			Stream: true,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+		require.True(t, translator.stream)
+
+		// Simulate SSE stream with response events
+		sseChunks := `data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+data: {"type":"response.content_part.added","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+data: {"type":"response.output_text.delta","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"delta":"Hello"}
+
+data: {"type":"response.output_text.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"text":"Hello, how can I help?"}
+
+data: {"type":"response.content_part.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"part":{"type":"output_text","text":"Hello, how can I help?","annotations":[]}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello, how can I help?","annotations":[]}]}}
+
+data: {"type":"response.completed","response":{"id":"resp_67ccd2bed1ec8190b14f964abc0542670bb6a6b452d3795b","object":"response","created_at":1741476542,"status":"completed","model":"","output":[{"type":"message","id":"msg_67ccd2bf17f0819081ff3bb2cf6508e60bb6a6b452d3795b","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello, how can I help?"}]}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}}
+
+data: [DONE]
+
+`
+		crlfChunks := bytes.ReplaceAll([]byte(sseChunks), []byte("\n"), []byte("\r\n"))
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(crlfChunks), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(5), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), totalTokens)
+
+		cachedTokens, ok := tokenUsage.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
+	})
+
+	t.Run("streaming response with data field without space", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "gpt-4o",
+			Stream: true,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+		require.True(t, translator.stream)
+
+		// Simulate SSE stream with response events
+		sseChunks := `data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+data: {"type":"response.content_part.added","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+data: {"type":"response.output_text.delta","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"delta":"Hello"}
+
+data: {"type":"response.output_text.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"text":"Hello, how can I help?"}
+
+data: {"type":"response.content_part.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"part":{"type":"output_text","text":"Hello, how can I help?","annotations":[]}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello, how can I help?","annotations":[]}]}}
+
+data: {"type":"response.completed","response":{"id":"resp_67ccd2bed1ec8190b14f964abc0542670bb6a6b452d3795b","object":"response","created_at":1741476542,"status":"completed","model":"","output":[{"type":"message","id":"msg_67ccd2bf17f0819081ff3bb2cf6508e60bb6a6b452d3795b","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello, how can I help?"}]}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}}
+
+data: [DONE]
+
+`
+		noSpaceChunks := bytes.ReplaceAll([]byte(sseChunks), []byte("data: "), []byte("data:"))
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(noSpaceChunks), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(5), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), totalTokens)
+
+		cachedTokens, ok := tokenUsage.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
+	})
 }
 
 func TestResponses_HandleStreamingResponse(t *testing.T) {
