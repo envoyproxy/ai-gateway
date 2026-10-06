@@ -267,7 +267,7 @@ func TestResolver_CloseIsIdempotentAndBlocksLaterStart(t *testing.T) {
 }
 
 func TestResolver_StartWithNoopStoreClosesCleanly(t *testing.T) {
-	r := New(nil, nil, syncAuth, nil)
+	r := New(nil, nil, syncAuth, 0, nil)
 	r.Start()
 	require.NoError(t, r.Close())
 	select {

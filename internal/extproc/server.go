@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -26,8 +27,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/contextcache"
 	"github.com/envoyproxy/ai-gateway/internal/contextcache/gcpcache"
-	"github.com/envoyproxy/ai-gateway/internal/contextcache/redis"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
@@ -63,11 +64,14 @@ type Server struct {
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
 	uuidFn                        func() string
-	// cacheResolvers holds one context-cache resolver per GCP backend, keyed by
-	// "<backend name>|<redis url>". Resolvers are carried across config reloads so a
-	// filterapi update does not tear down and rebuild the Redis connection pool. The
-	// Redis URL is part of the key so that repointing a backend at a different Redis
-	// builds a new resolver rather than reusing a pool aimed at the old one.
+	// cacheStore is the shared context-cache store, set by EnableContextCache. Nil
+	// disables context caching for every backend.
+	cacheStore contextcache.Store
+	// cacheDefaultTTL is the cache TTL used when a cache_control marker gives none.
+	cacheDefaultTTL time.Duration
+	// cacheResolvers holds one context-cache resolver per GCP Vertex AI backend, keyed by
+	// backend name. Resolvers are carried across config reloads so that their background
+	// syncers keep running and are not restarted on every filterapi update.
 	cacheResolvers map[string]*gcpcache.Resolver
 	// cacheResolversMu guards cacheResolvers against LoadConfig racing Close.
 	cacheResolversMu sync.Mutex
@@ -88,6 +92,13 @@ func NewServer(logger *slog.Logger, enableRedaction bool) (*Server, error) {
 	return srv, nil
 }
 
+// EnableContextCache turns on context caching for every GCP Vertex AI backend, using store
+// to share resolved caches across replicas. It must be called before the first LoadConfig.
+func (s *Server) EnableContextCache(store contextcache.Store, defaultTTL time.Duration) {
+	s.cacheStore = store
+	s.cacheDefaultTTL = defaultTTL
+}
+
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
 	newConfig, err := filterapi.NewRuntimeConfig(ctx, config, backendauth.NewHandler)
@@ -102,55 +113,40 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	// Attach a context-cache resolver to each backend with GCP credentials that
-	// configures context caching. Resolvers are keyed by backend name and Redis URL and
-	// reused across reloads, so a config update does not rebuild their Redis connection
-	// pools; a reused resolver is given the reload's auth handler, since the controller
-	// rotates the token. Resolvers whose backend disappeared, dropped its cache config, or
-	// moved to another Redis are closed, which stops their background syncer.
+	// Attach a context-cache resolver to each GCP Vertex AI (Gemini) backend when context
+	// caching is enabled. Only the Gemini translator uses resolved caches, so other GCP
+	// schemas (such as GCPAnthropic) get none. Resolvers are keyed by backend name and
+	// reused across reloads; a reused resolver is given the reload's auth handler, since the
+	// controller rotates the token. Resolvers whose backend disappeared or changed schema
+	// are closed, which stops their background syncer.
 	s.cacheResolversMu.Lock()
 	defer s.cacheResolversMu.Unlock()
 	live := make(map[string]*gcpcache.Resolver, len(s.cacheResolvers))
 	for _, rb := range newConfig.Backends {
-		if _, ok := rb.Handler.(filterapi.GCPAuthHandler); !ok {
+		if s.cacheStore == nil || rb.Backend.Schema.Name != filterapi.APISchemaGCPVertexAI {
 			continue
 		}
-		cc := rb.Backend.ContextCache
-		if cc == nil || cc.URL == "" {
-			continue
-		}
-		key := rb.Backend.Name + "|" + cc.URL
-		resolver, ok := s.cacheResolvers[key]
+		auth, ok := rb.Handler.(filterapi.GCPAuthHandler)
 		if !ok {
-			store, err := redis.NewStore(cc.URL)
-			if err != nil {
-				// A bad URL disables caching for this backend rather than failing the
-				// reload: the store is an optimization, and rejecting the whole config
-				// would take down backends that have nothing to do with caching.
-				logger.Warn("invalid context cache redis url, serving backend uncached",
-					slog.String("backend", rb.Backend.Name), slog.String("error", err.Error()))
-				continue
-			}
-			resolver = gcpcache.New(nil, store, rb.Handler.(filterapi.GCPAuthHandler), logger)
-		} else {
-			// The handler is rebuilt on every reload (the controller rotates the access
-			// token), so hand the reused resolver the current one.
-			resolver.SetAuth(rb.Handler.(filterapi.GCPAuthHandler))
+			continue
 		}
-		// Start is a no-op for a resolver already running, so reused resolvers are
-		// unaffected. It runs under the resolver's own context, not ctx, which is
-		// cancelled when this reload finishes.
+		name := rb.Backend.Name
+		resolver, ok := s.cacheResolvers[name]
+		if ok {
+			resolver.SetAuth(auth)
+		} else {
+			resolver = gcpcache.New(nil, s.cacheStore, auth, s.cacheDefaultTTL, logger)
+		}
+		// Start is a no-op for a resolver already running. It runs under the resolver's own
+		// context, not ctx, which is cancelled when this reload finishes.
 		resolver.Start()
-		live[key] = resolver
+		live[name] = resolver
 		rb.CacheResolver = resolver
 	}
-	// Stop the background work of resolvers that were not carried into this config: their
-	// backend was removed, lost its cache config, or was repointed at another Redis.
-	for key, resolver := range s.cacheResolvers {
-		if _, ok := live[key]; ok {
-			continue
+	for name, resolver := range s.cacheResolvers {
+		if _, ok := live[name]; !ok {
+			_ = resolver.Close()
 		}
-		_ = resolver.Close()
 	}
 	s.cacheResolvers = live
 

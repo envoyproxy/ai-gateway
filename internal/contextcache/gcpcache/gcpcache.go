@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,8 +39,9 @@ import (
 )
 
 const (
-	// defaultTTL is the default cache TTL when none is specified in the cache_control marker.
-	defaultTTL = "300s"
+	// DefaultTTL is the cache TTL used when New is given none and the cache_control marker
+	// does not specify one.
+	DefaultTTL = 300 * time.Second
 
 	// gcpCachedContentsBasePath is the base URL for the Vertex AI cachedContents REST API.
 	gcpCachedContentsBasePath = "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/cachedContents"
@@ -58,6 +60,10 @@ type Resolver struct {
 	// logger records store failures, which are otherwise invisible because the request
 	// proceeds normally.
 	logger *slog.Logger
+
+	// defaultTTL is the GCP duration string (e.g. "300s") used when a cache_control
+	// marker does not specify a TTL.
+	defaultTTL string
 
 	// mu guards auth and the background syncer's lifecycle.
 	mu sync.Mutex
@@ -138,7 +144,7 @@ func (r *Resolver) Close() error {
 // store holds resolved cache names; pass nil to disable caching entirely, which makes
 // resolution inert rather than failing requests. auth is the backend's credentials, used
 // for both resolving and syncing; nil makes the resolver inert. logger may be nil.
-func New(httpClient *http.Client, store contextcache.Store, auth filterapi.GCPAuthHandler, logger *slog.Logger) *Resolver {
+func New(httpClient *http.Client, store contextcache.Store, auth filterapi.GCPAuthHandler, defaultTTL time.Duration, logger *slog.Logger) *Resolver {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -148,7 +154,13 @@ func New(httpClient *http.Client, store contextcache.Store, auth filterapi.GCPAu
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Resolver{httpClient: httpClient, store: store, logger: logger, auth: auth}
+	if defaultTTL <= 0 {
+		defaultTTL = DefaultTTL
+	}
+	return &Resolver{
+		httpClient: httpClient, store: store, logger: logger, auth: auth,
+		defaultTTL: gcpDuration(defaultTTL),
+	}
 }
 
 // Resolve implements contextcache.CacheResolver.
@@ -170,7 +182,7 @@ func (r *Resolver) Resolve(ctx context.Context, openAIReq *openai.ChatCompletion
 	remainderMessages := openAIReq.Messages[breakpoint+1:]
 
 	// Extract the TTL from the breakpoint message. If not found, fall back to default.
-	ttl := extractTTL(openAIReq.Messages[breakpoint])
+	ttl := extractTTL(openAIReq.Messages[breakpoint], r.defaultTTL)
 
 	// Build the Gemini cached prefix (tools + system + contents).
 	contents, systemInstruction, err := translator.OpenAIMessagesToGeminiContents(cachedMessages, openAIReq.Model)
@@ -358,11 +370,11 @@ func isCacheControlSet(fields *openai.AnthropicContentFields) bool {
 // extractTTL returns the GCP TTL string (e.g. "3600s") from the last cache_control
 // marker found in the message. Falls back to defaultTTL when none is specified.
 // Anthropic TTL values ("5m", "1h") are converted to GCP seconds format.
-func extractTTL(msg openai.ChatCompletionMessageParamUnion) string {
+func extractTTL(msg openai.ChatCompletionMessageParamUnion, defaultTTL string) string {
 	var ttl string
 	checkFields := func(f *openai.AnthropicContentFields) {
 		if f != nil && string(f.CacheControl.Type) == "ephemeral" && string(f.CacheControl.TTL) != "" {
-			ttl = anthropicTTLToGCP(string(f.CacheControl.TTL))
+			ttl = anthropicTTLToGCP(string(f.CacheControl.TTL), defaultTTL)
 		}
 	}
 	if msg.OfTool != nil {
@@ -399,7 +411,7 @@ func extractTTL(msg openai.ChatCompletionMessageParamUnion) string {
 
 // anthropicTTLToGCP converts Anthropic cache TTL values to GCP seconds format.
 // Anthropic supports "5m" and "1h"; unknown values fall back to defaultTTL.
-func anthropicTTLToGCP(ttl string) string {
+func anthropicTTLToGCP(ttl, defaultTTL string) string {
 	switch ttl {
 	case "5m":
 		return "300s"
@@ -412,6 +424,11 @@ func anthropicTTLToGCP(ttl string) string {
 		}
 		return defaultTTL
 	}
+}
+
+// gcpDuration formats d as a GCP duration string in whole seconds, e.g. "300s".
+func gcpDuration(d time.Duration) string {
+	return strconv.FormatInt(int64(d/time.Second), 10) + "s"
 }
 
 // computeKeyInputs converts a cached message prefix into Gemini format for key generation.

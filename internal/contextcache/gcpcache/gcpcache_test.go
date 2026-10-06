@@ -7,6 +7,8 @@ package gcpcache
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -156,7 +158,7 @@ func resolverWithServer(srvURL string, store ...contextcache.Store) *Resolver {
 	return New(&http.Client{
 		Transport: &redirectTransport{fakeHost: host},
 		Timeout:   5 * time.Second,
-	}, s, syncAuth, nil)
+	}, s, syncAuth, 0, nil)
 }
 
 // memStore is an in-process contextcache.Store for tests.
@@ -326,7 +328,7 @@ func TestExtractTTL(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.wantTTL, extractTTL(tc.msg))
+			require.Equal(t, tc.wantTTL, extractTTL(tc.msg, "300s"))
 		})
 	}
 }
@@ -620,7 +622,7 @@ func TestResolver_TTLDefault_SentToGoogle(t *testing.T) {
 
 	var body gcp.CreateCachedContent
 	require.NoError(t, json.Unmarshal(capturedBody, &body))
-	assert.Equal(t, defaultTTL, body.TTL)
+	assert.Equal(t, "300s", body.TTL)
 	// The resolver sets a TTL, not an expiry. A zero-value expiry must not be sent, or
 	// Google would receive "0001-01-01T00:00:00Z" alongside the TTL.
 	assert.Nil(t, body.ExpireTime)
@@ -711,4 +713,23 @@ func TestResolver_DuplicateCreateRace_KeepsOwnCreate(t *testing.T) {
 	assert.True(t, res.Created)
 	assert.Equal(t, 512, res.TokenCount)
 	assert.Equal(t, int64(0), listCalls.Load(), "the request path must not list cachedContents")
+}
+
+// The default TTL given to New is sent when the marker has none.
+func TestResolver_ConfiguredDefaultTTL_SentToGoogle(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		_, _ = fmt.Fprintf(w, `{"name":"c/x","expireTime":%q}`, time.Now().Add(10*time.Minute).UTC().Format(time.RFC3339))
+	}))
+	t.Cleanup(srv.Close)
+	r := New(&http.Client{Transport: &redirectTransport{fakeHost: srv.URL[len("http://"):]}}, nil, syncAuth, 10*time.Minute, nil)
+	_, err := r.Resolve(context.Background(), &openai.ChatCompletionRequest{
+		Model:    "gemini-1.5-pro",
+		Messages: []openai.ChatCompletionMessageParamUnion{systemMsg("sys", ephemeralFields()), userMsg("q")},
+	})
+	require.NoError(t, err)
+	var got gcp.CreateCachedContent
+	require.NoError(t, json.Unmarshal(body, &got))
+	assert.Equal(t, "600s", got.TTL)
 }
