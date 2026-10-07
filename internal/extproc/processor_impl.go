@@ -381,9 +381,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	// the resolved cache name and filtered message list.
 	if u.cacheResolver != nil {
 		if cacheSetter, ok := u.translator.(translator.ContextCacheSetter); ok {
-			// Skip requests that name their own cache.
-			if req, ok := any(u.parent.originalRequestBody).(*openai.ChatCompletionRequest); ok &&
-				(req.GCPVertexAIVendorFields == nil || req.CachedContent == "") {
+			if req, ok := any(u.parent.originalRequestBody).(*openai.ChatCompletionRequest); ok {
 				result, resolveErr := u.cacheResolver.Resolve(ctx, req)
 				if resolveErr != nil {
 					u.logger.Error("context cache resolution failed", slog.String("error", resolveErr.Error()))

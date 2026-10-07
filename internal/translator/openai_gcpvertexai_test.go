@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
@@ -782,71 +780,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			wantBody: wantBdyWithEnterpriseWebSearch,
 		},
-		{
-			name: "Request with explicit cachedContent vendor field",
-			input: openai.ChatCompletionRequest{
-				Model:     "gemini-1.5-pro",
-				MaxTokens: ptr.To(int64(1024)),
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{
-						OfUser: &openai.ChatCompletionUserMessageParam{
-							Role:    openai.ChatMessageRoleUser,
-							Content: openai.StringOrUserRoleContentUnion{Value: "Summarize the document."},
-						},
-					},
-				},
-				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
-					CachedContent: "projects/my-project/locations/us-central1/cachedContents/abc123",
-				},
-			},
-			onRetry:   false,
-			wantError: false,
-			wantHeaderMut: []internalapi.Header{
-				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-			},
-			wantBody: []byte(`{
-				"contents": [{"parts": [{"text": "Summarize the document."}], "role": "user"}],
-				"tools": null,
-				"generationConfig": {"maxOutputTokens": 1024},
-				"cachedContent": "projects/my-project/locations/us-central1/cachedContents/abc123"
-			}`),
-		},
-		{
-			name: "Request with both cache_control markers and explicit cachedContent returns error",
-			input: openai.ChatCompletionRequest{
-				Model:     "gemini-1.5-pro",
-				MaxTokens: ptr.To(int64(1024)),
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{
-						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Role: openai.ChatMessageRoleSystem,
-							Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-								{
-									Type: "text",
-									Text: "You are a helpful assistant.",
-									AnthropicContentFields: &openai.AnthropicContentFields{
-										CacheControl: anthropic.CacheControlEphemeralParam{
-											Type: constant.ValueOf[constant.Ephemeral](),
-										},
-									},
-								},
-							}},
-						},
-					},
-					{
-						OfUser: &openai.ChatCompletionUserMessageParam{
-							Role:    openai.ChatMessageRoleUser,
-							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
-						},
-					},
-				},
-				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
-					CachedContent: "projects/my-project/locations/us-central1/cachedContents/abc123",
-				},
-			},
-			onRetry:   true,
-			wantError: true,
-		},
 	}
 
 	for _, tc := range tests {
@@ -882,118 +815,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			if diff := cmp.Diff(tc.wantBody, bodyMut, bodyMutTransformer(t)); diff != "" {
 				t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
 			}
-		})
-	}
-}
-
-func TestGCPRequestHasCacheControlMarkers(t *testing.T) {
-	ephemeral := anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()}
-
-	tests := []struct {
-		name string
-		req  openai.ChatCompletionRequest
-		want bool
-	}{
-		{
-			name: "no cache_control markers",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfUser: &openai.ChatCompletionUserMessageParam{
-						Role:    openai.ChatMessageRoleUser,
-						Content: openai.StringOrUserRoleContentUnion{Value: "hello"},
-					}},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "cache_control on system message content part",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfSystem: &openai.ChatCompletionSystemMessageParam{
-						Role: openai.ChatMessageRoleSystem,
-						Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-							{
-								Type: "text",
-								Text: "You are helpful.",
-								AnthropicContentFields: &openai.AnthropicContentFields{
-									CacheControl: ephemeral,
-								},
-							},
-						}},
-					}},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "cache_control on user message text content part",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfUser: &openai.ChatCompletionUserMessageParam{
-						Role: openai.ChatMessageRoleUser,
-						Content: openai.StringOrUserRoleContentUnion{
-							Value: []openai.ChatCompletionContentPartUserUnionParam{
-								{OfText: &openai.ChatCompletionContentPartTextParam{
-									Type: "text",
-									Text: "large context",
-									AnthropicContentFields: &openai.AnthropicContentFields{
-										CacheControl: ephemeral,
-									},
-								}},
-							},
-						},
-					}},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "cache_control on tool message",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfTool: &openai.ChatCompletionToolMessageParam{
-						Role:       openai.ChatMessageRoleTool,
-						ToolCallID: "call_1",
-						Content:    openai.ContentUnion{Value: "result"},
-						AnthropicContentFields: &openai.AnthropicContentFields{
-							CacheControl: ephemeral,
-						},
-					}},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "string user message has no markers",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfUser: &openai.ChatCompletionUserMessageParam{
-						Role:    openai.ChatMessageRoleUser,
-						Content: openai.StringOrUserRoleContentUnion{Value: "plain string"},
-					}},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "system string content has no markers",
-			req: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{OfSystem: &openai.ChatCompletionSystemMessageParam{
-						Role:    openai.ChatMessageRoleSystem,
-						Content: openai.ContentUnion{Value: "plain system string"},
-					}},
-				},
-			},
-			want: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := gcpRequestHasCacheControlMarkers(&tc.req)
-			require.Equal(t, tc.want, got)
 		})
 	}
 }

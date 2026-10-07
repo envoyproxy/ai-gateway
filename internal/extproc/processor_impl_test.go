@@ -2723,28 +2723,6 @@ func Test_upstreamProcessor_CacheResolver_hitIgnoresTokenCount(t *testing.T) {
 	require.Zero(t, tr.setCacheResult.WriteTokenCount)
 }
 
-// A request that names its own cache must not be resolved, so no cache is created for it.
-func Test_upstreamProcessor_CacheResolver_explicitCachedContentSkips(t *testing.T) {
-	someBody := bodyFromModel(t, "gemini-1.5-pro", false, nil)
-	var body openai.ChatCompletionRequest
-	require.NoError(t, json.Unmarshal(someBody, &body))
-	body.GCPVertexAIVendorFields = &openai.GCPVertexAIVendorFields{CachedContent: "c/explicit"}
-
-	cr := &mockCacheResolver{}
-	tr := &mockCacheTranslator{mockTranslator: mockTranslator{t: t, expRequestBody: &body}}
-	p := &chatCompletionProcessorUpstreamFilter{
-		parent: &chatCompletionProcessorRouterFilter{
-			config: &filterapi.RuntimeConfig{}, logger: slog.Default(),
-			originalRequestBodyRaw: someBody, originalRequestBody: &body, originalModel: "gemini-1.5-pro",
-		},
-		requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "gemini-1.5-pro"},
-		metrics:        &mockMetrics{}, translator: tr, handler: &mockGCPAuthHandler{}, cacheResolver: cr,
-	}
-	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
-	require.False(t, cr.called)
-	require.Nil(t, tr.setCacheResult)
-}
-
 // Test_upstreamProcessor_CacheResolver_error verifies that a resolver error produces a 502.
 func Test_upstreamProcessor_CacheResolver_error(t *testing.T) {
 	someBody := bodyFromModel(t, "gemini-1.5-pro", false, nil)
