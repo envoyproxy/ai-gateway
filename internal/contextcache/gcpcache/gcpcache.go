@@ -468,7 +468,9 @@ func computeCacheKey(project, region, model string, contents []genai.Content, sy
 		SystemInstruction: systemInstruction,
 		Tools:             tools,
 	}
-	b, err := json.Marshal(input)
+	// Sorted map keys: tool schemas and function call args/results are maps, and an
+	// unsorted encoding would give a different key for the same prefix on each request.
+	b, err := json.MarshalSorted(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal cache key input: %w", err)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
+	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -732,4 +733,27 @@ func TestResolver_ConfiguredDefaultTTL_SentToGoogle(t *testing.T) {
 	var got gcp.CreateCachedContent
 	require.NoError(t, json.Unmarshal(body, &got))
 	assert.Equal(t, "600s", got.TTL)
+}
+
+// Maps inside the key input (tool schema properties, function call args) must not make
+// the key depend on map iteration order.
+func TestComputeCacheKey_StableWithMaps(t *testing.T) {
+	props := map[string]*genai.Schema{}
+	args := map[string]any{}
+	for i := range 50 {
+		props[fmt.Sprintf("p%02d", i)] = &genai.Schema{Type: genai.TypeString}
+		args[fmt.Sprintf("a%02d", i)] = i
+	}
+	tools := []genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{{
+		Name: "f", Parameters: &genai.Schema{Type: genai.TypeObject, Properties: props},
+	}}}}
+	contents := []genai.Content{{Role: "model", Parts: []*genai.Part{{FunctionCall: &genai.FunctionCall{Name: "f", Args: args}}}}}
+
+	want, err := computeCacheKey("p", "r", "m", contents, nil, tools)
+	require.NoError(t, err)
+	for range 100 {
+		got, err := computeCacheKey("p", "r", "m", contents, nil, tools)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
 }
