@@ -655,8 +655,8 @@ var awsOutputConfigModels = []string{
 // gcpOutputConfigModels lists model identifiers that support structured outputs
 // on GCP Vertex AI: Claude Fable 5, Claude Mythos 5, Claude Opus 5.5,
 // Claude Opus 5, Claude Opus 4.8, Claude Mythos Preview, Claude Opus 4.7,
-// Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, Claude Sonnet 4.5,
-// Claude Opus 4.5, and Claude Haiku 4.5.
+// Claude Opus 4.6, Claude Sonnet 5.5, Claude Sonnet 5, Claude Sonnet 4.6,
+// Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
 var gcpOutputConfigModels = []string{
 	"opus-4-5",       // Claude Opus 4.5
 	"sonnet-4-5",     // Claude Sonnet 4.5
@@ -668,6 +668,7 @@ var gcpOutputConfigModels = []string{
 	"opus-5",         // Claude Opus 5
 	"opus-5-5",       // Claude Opus 5.5
 	"sonnet-5",       // Claude Sonnet 5
+	"sonnet-5-5",     // Claude Sonnet 5.5
 	"fable-5",        // Claude Fable 5
 	"mythos-5",       // Claude Mythos 5
 	"mythos-preview", // Claude Mythos Preview
@@ -687,8 +688,8 @@ func outputConfigAvailable(apiSchema filterapi.APISchemaName, model internalapi.
 // effortModels lists model identifiers that support the output_config.effort parameter.
 // The effort parameter is supported by Claude Fable 5, Claude Mythos 5,
 // Claude Opus 5.5, Claude Opus 5, Claude Opus 4.8, Claude Mythos Preview,
-// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6,
-// and Claude Opus 4.5.
+// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5.5, Claude Sonnet 5,
+// Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
 	"opus-4-5",       // Claude Opus 4.5
@@ -699,6 +700,7 @@ var effortModels = []string{
 	"opus-5-5",       // Claude Opus 5.5
 	"sonnet-4-6",     // Claude Sonnet 4.6
 	"sonnet-5",       // Claude Sonnet 5
+	"sonnet-5-5",     // Claude Sonnet 5.5
 	"fable-5",        // Claude Fable 5
 	"mythos-5",       // Claude Mythos 5
 	"mythos-preview", // Claude Mythos Preview
