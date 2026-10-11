@@ -107,6 +107,8 @@ type (
 	ImageGenerationEndpointSpec struct{}
 	// ResponsesEndpointSpec implements EndpointSpec for /v1/responses.
 	ResponsesEndpointSpec struct{}
+	// DecisionsEndpointSpec implements EndpointSpec for /v1/decisions.
+	DecisionsEndpointSpec struct{}
 	// MessagesEndpointSpec implements EndpointSpec for /v1/messages.
 	MessagesEndpointSpec struct{}
 	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
@@ -413,6 +415,57 @@ func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Response
 	// nested string leaf via the generic redactor so user content inside any item type is caught.
 	redacted.Input = redactUnionField(req.Input)
 	redacted.Prompt = redactUnionField(req.Prompt)
+	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody]. Decisions is a non-streaming endpoint.
+func (DecisionsEndpointSpec) ParseBody(body []byte, _ bool) (internalapi.OriginalModel, *openai.DecisionRequest, bool, []byte, error) {
+	var req openai.DecisionRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/decisions: %w", internalapi.ErrMalformedRequest, err)
+	}
+	return req.Model, &req, false, nil, nil
+}
+
+func (DecisionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.DecisionRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
+func (DecisionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIDecisionsTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewDecisionsOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("%w: unsupported API schema: backend=%s", internalapi.ErrInvalidRequestBody, schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest removes evidence and rubric content while
+// retaining the model, question names, and discriminators needed for debugging.
+func (DecisionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.DecisionRequest) (*openai.DecisionRequest, error) {
+	redacted := *req
+	redacted.Input = redactRawJSON(req.Input)
+	redacted.SafetyIdentifier = redaction.RedactString(req.SafetyIdentifier)
+	redacted.Questions = make([]openai.DecisionQuestion, len(req.Questions))
+	for i := range req.Questions {
+		q := req.Questions[i]
+		q.Instructions = redaction.RedactString(q.Instructions)
+		q.Choices = make([]openai.DecisionChoiceOption, len(req.Questions[i].Choices))
+		for j := range req.Questions[i].Choices {
+			q.Choices[j] = openai.DecisionChoiceOption{
+				Value:       redactRawJSON(req.Questions[i].Choices[j].Value),
+				Description: redaction.RedactString(req.Questions[i].Choices[j].Description),
+			}
+		}
+		q.Levels = make([]openai.DecisionScoreLevel, len(req.Questions[i].Levels))
+		for j := range req.Questions[i].Levels {
+			q.Levels[j] = openai.DecisionScoreLevel{
+				Label:       redaction.RedactString(req.Questions[i].Levels[j].Label),
+				Description: redaction.RedactString(req.Questions[i].Levels[j].Description),
+			}
+		}
+		redacted.Questions[i] = q
+	}
 	return &redacted, nil
 }
 
