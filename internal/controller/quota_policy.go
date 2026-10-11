@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 
@@ -69,24 +70,35 @@ func NewQuotaPolicyController(
 func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var quotaPolicy aigv1a1.QuotaPolicy
 	if err := c.client.Get(ctx, req.NamespacedName, &quotaPolicy); err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			c.logger.Info("Deleting QuotaPolicy", "namespace", req.Namespace, "name", req.Name)
-			if err = c.deleteQuotaPolicyConfig(ctx, req.NamespacedName); err != nil {
-				return ctrl.Result{}, err
-			}
-			// If cached target keys exist, notify only the affected routes. Otherwise the deleted
-			// object's cross-namespace targets are unknown, so a full route sweep is the only safe
-			// fallback.
-			hasTargetKeys, notifyErr := c.notifyQuotaPolicyRoutesOnDeletion(ctx, req.NamespacedName)
-			if notifyErr != nil {
-				return ctrl.Result{}, notifyErr
-			}
-			if hasTargetKeys {
-				return ctrl.Result{}, nil
-			}
+		if client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		}
+
+		c.logger.Info(
+			"Deleting QuotaPolicy",
+			"namespace", req.Namespace,
+			"name", req.Name,
+		)
+
+		if err := c.deleteQuotaPolicyConfig(ctx, req.NamespacedName); err != nil {
+			return ctrl.Result{}, err
+		}
+		// If cached target keys exist, notify only the affected routes. Otherwise the deleted
+		// object's cross-namespace targets are unknown, so a full route sweep is the only safe
+		// fallback.
+
+		hasTargetKeys, err := c.notifyQuotaPolicyRoutesOnDeletion(
+			ctx, req.NamespacedName,
+		)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if !hasTargetKeys {
 			return ctrl.Result{}, c.notifyAllAIGatewayRoutes(ctx)
 		}
-		return ctrl.Result{}, err
+
+		return ctrl.Result{}, nil
 	}
 	c.logger.Info("Reconciling QuotaPolicy", "namespace", req.Namespace, "name", req.Name)
 
@@ -102,7 +114,7 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 
 	cacheKey := fmt.Sprintf("%s/%s", quotaPolicy.Namespace, quotaPolicy.Name)
 	c.mu.RLock()
-	previousTargetKeys := append([]string(nil), c.policyBackendKeys[cacheKey]...)
+	previousTargetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
 	needsRouteRecovery := len(previousTargetKeys) == 0 && quotaPolicyWasAccepted(&quotaPolicy)
 
@@ -249,7 +261,7 @@ func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key
 func (c *QuotaPolicyController) notifyQuotaPolicyRoutesOnDeletion(ctx context.Context, key client.ObjectKey) (bool, error) {
 	cacheKey := fmt.Sprintf("%s/%s", key.Namespace, key.Name)
 	c.mu.RLock()
-	targetKeys := append([]string(nil), c.policyBackendKeys[cacheKey]...)
+	targetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
 	if len(targetKeys) > 0 {
 		if err := c.notifyQuotaPolicyRoutesForKeys(ctx, targetKeys); err != nil {
