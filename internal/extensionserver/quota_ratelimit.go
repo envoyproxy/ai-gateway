@@ -138,6 +138,14 @@ func buildQuotaBackendPolicies(policies []aigv1a1.QuotaPolicy) map[string][]aigv
 	backends := make(map[string][]aigv1a1.QuotaPolicy)
 	for i := range policies {
 		policy := &policies[i]
+		// Skip QuotaPolicies that are being deleted. A terminating policy (non-zero DeletionTimestamp)
+		// is still returned by the cached List until its deletion fully propagates; injecting its
+		// descriptors here would re-add the deleted policy's rate_limits actions during the very
+		// re-translation that the controller's quota-policy-hash change triggers on deletion. Treating
+		// it as already absent keeps the data plane consistent with the control plane.
+		if !policy.DeletionTimestamp.IsZero() {
+			continue
+		}
 		for _, ref := range policy.Spec.TargetRefs {
 			key := policy.Namespace + "/" + string(ref.Name)
 			backends[key] = append(backends[key], *policy)
