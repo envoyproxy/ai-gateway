@@ -70,15 +70,21 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 	var quotaPolicy aigv1a1.QuotaPolicy
 	if err := c.client.Get(ctx, req.NamespacedName, &quotaPolicy); err != nil {
 		if client.IgnoreNotFound(err) == nil {
+			c.logger.Info("Deleting QuotaPolicy", "namespace", req.Namespace, "name", req.Name)
 			if err = c.deleteQuotaPolicyConfig(ctx, req.NamespacedName); err != nil {
 				return ctrl.Result{}, err
 			}
-			// Spec.TargetRefs are no longer available, so notify every AIGatewayRoute that references
-			// a backend in this namespace (wherever the route lives) instead.
-			if c.notifyQuotaPolicyRoutesOnDeletion(ctx, req.NamespacedName) {
+			// If cached target keys exist, notify only the affected routes. Otherwise the deleted
+			// object's cross-namespace targets are unknown, so a full route sweep is the only safe
+			// fallback.
+			hasTargetKeys, notifyErr := c.notifyQuotaPolicyRoutesOnDeletion(ctx, req.NamespacedName)
+			if notifyErr != nil {
+				return ctrl.Result{}, notifyErr
+			}
+			if hasTargetKeys {
 				return ctrl.Result{}, nil
 			}
-			return ctrl.Result{}, c.notifyAIGatewayRoutesForNamespace(ctx, req.Namespace)
+			return ctrl.Result{}, c.notifyAllAIGatewayRoutes(ctx)
 		}
 		return ctrl.Result{}, err
 	}
@@ -112,9 +118,15 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 		c.updateQuotaPolicyStatus(ctx, &quotaPolicy, aigv1a1.ConditionTypeAccepted, "ReconciliationSucceeded", "QuotaPolicy reconciled successfully")
 	}
 	c.notifyAIGatewayRoutes(ctx, &quotaPolicy)
-	c.notifyQuotaPolicyRoutesForKeys(ctx, previousTargetKeys)
+	if notifyErr := c.notifyQuotaPolicyRoutesForKeys(ctx, previousTargetKeys); notifyErr != nil {
+		c.logger.Error(notifyErr, "failed to notify AIGatewayRoutes for previous QuotaPolicy targets",
+			"policy", cacheKey)
+	}
 	if needsRouteRecovery {
-		c.notifyAllAIGatewayRoutes(ctx)
+		if notifyErr := c.notifyAllAIGatewayRoutes(ctx); notifyErr != nil {
+			c.logger.Error(notifyErr, "failed to recover AIGatewayRoute notifications for QuotaPolicy",
+				"policy", cacheKey)
+		}
 	}
 	return ctrl.Result{}, err
 }
@@ -168,6 +180,9 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 		}
 		if err := c.client.Get(ctx, key, &backend); err != nil {
 			if apierrors.IsNotFound(err) {
+				c.logger.Info("AIServiceBackend not found, skipping",
+					"namespace", key.Namespace, "name", key.Name,
+					"quotaPolicy", policy.Name)
 				continue
 			}
 			return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
@@ -231,47 +246,50 @@ func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key
 
 // notifyQuotaPolicyRoutesOnDeletion uses the last successfully reconciled
 // backend identities so deletion also reaches routes in other namespaces.
-func (c *QuotaPolicyController) notifyQuotaPolicyRoutesOnDeletion(ctx context.Context, key client.ObjectKey) bool {
+func (c *QuotaPolicyController) notifyQuotaPolicyRoutesOnDeletion(ctx context.Context, key client.ObjectKey) (bool, error) {
 	cacheKey := fmt.Sprintf("%s/%s", key.Namespace, key.Name)
 	c.mu.RLock()
 	targetKeys := append([]string(nil), c.policyBackendKeys[cacheKey]...)
 	c.mu.RUnlock()
 	if len(targetKeys) > 0 {
-		c.notifyQuotaPolicyRoutesForKeys(ctx, targetKeys)
+		if err := c.notifyQuotaPolicyRoutesForKeys(ctx, targetKeys); err != nil {
+			return true, err
+		}
 	}
 	c.mu.Lock()
 	delete(c.policyBackendKeys, cacheKey)
 	c.mu.Unlock()
-	return len(targetKeys) > 0
+	return len(targetKeys) > 0, nil
 }
 
-func (c *QuotaPolicyController) notifyQuotaPolicyRoutesForKeys(ctx context.Context, targetKeys []string) {
+func (c *QuotaPolicyController) notifyQuotaPolicyRoutesForKeys(ctx context.Context, targetKeys []string) error {
 	for _, backendKey := range targetKeys {
 		var routes aigv1b1.AIGatewayRouteList
 		if err := c.client.List(ctx, &routes,
 			client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: backendKey}); err != nil {
-			c.logger.Error(err, "failed to list AIGatewayRoutes for deleted QuotaPolicy backend", "backend", backendKey)
-			continue
+			return fmt.Errorf("failed to list AIGatewayRoutes for QuotaPolicy backend %s: %w", backendKey, err)
 		}
 		for i := range routes.Items {
 			c.aiGatewayRouteChan <- event.GenericEvent{Object: &routes.Items[i]}
 		}
 	}
+	return nil
 }
 
 // notifyAllAIGatewayRoutes is a conservative recovery path for a policy
 // deletion whose prior target set was not retained in memory, such as after a
 // controller restart. It prevents a stale generated route from retaining
 // policy-derived configuration.
-func (c *QuotaPolicyController) notifyAllAIGatewayRoutes(ctx context.Context) {
+func (c *QuotaPolicyController) notifyAllAIGatewayRoutes(ctx context.Context) error {
 	var routes aigv1b1.AIGatewayRouteList
 	if err := c.client.List(ctx, &routes); err != nil {
 		c.logger.Error(err, "failed to list AIGatewayRoutes for QuotaPolicy deletion recovery")
-		return
+		return fmt.Errorf("failed to list AIGatewayRoutes for QuotaPolicy deletion recovery: %w", err)
 	}
 	for i := range routes.Items {
 		c.aiGatewayRouteChan <- event.GenericEvent{Object: &routes.Items[i]}
 	}
+	return nil
 }
 
 // getMergedConfigsLocked merges all cached configs into a single RateLimitConfig.
@@ -344,39 +362,6 @@ func (c *QuotaPolicyController) notifyAIGatewayRoutes(ctx context.Context, polic
 			c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
 		}
 	}
-}
-
-// notifyAIGatewayRoutesForNamespace sends one event for each AIGatewayRoute that references an
-// AIServiceBackend in the given namespace, wherever the route lives. It is used on the QuotaPolicy
-// deletion (not-found) path, where Spec.TargetRefs are no longer available.
-func (c *QuotaPolicyController) notifyAIGatewayRoutesForNamespace(ctx context.Context, namespace string) error {
-	var backends aigv1b1.AIServiceBackendList
-	if err := c.client.List(ctx, &backends, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("failed to list AIServiceBackends in namespace %s: %w", namespace, err)
-	}
-	notified := make(map[client.ObjectKey]struct{})
-	for i := range backends.Items {
-		key := namespacedNameIndexKey(backends.Items[i].Name, namespace)
-		var aiGatewayRoutes aigv1b1.AIGatewayRouteList
-		if err := c.client.List(ctx, &aiGatewayRoutes,
-			client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
-			return fmt.Errorf("failed to list AIGatewayRoutes for backend %s: %w", key, err)
-		}
-		for j := range aiGatewayRoutes.Items {
-			route := &aiGatewayRoutes.Items[j]
-			// A route referencing several backends in this namespace is found once per backend;
-			// notify it only once.
-			routeKey := client.ObjectKeyFromObject(route)
-			if _, ok := notified[routeKey]; ok {
-				continue
-			}
-			notified[routeKey] = struct{}{}
-			c.logger.Info("notifying AIGatewayRoute of QuotaPolicy deletion",
-				"route", route.Name, "namespace", route.Namespace)
-			c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
-		}
-	}
-	return nil
 }
 
 // updateQuotaPolicyStatus updates the status of the QuotaPolicy.

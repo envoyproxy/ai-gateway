@@ -477,14 +477,27 @@ func TestQuotaPolicyController_Reconcile_Deletion_NotFound_NotifiesRoutes(t *tes
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), routeB))
 
+	// route-c references a backend in a namespace unrelated to the deleted policy.
+	// A full sweep must still notify it because the deleted policy's target namespace
+	// is unknown after the object disappears.
+	routeC := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-c", Namespace: "ns-c"},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
+			BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{
+				Name: "backend-z", Namespace: ptrTo(gwapiv1.Namespace("ns-z")),
+			}},
+		}}},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), routeC))
+
 	// The policy does not exist, so this reconcile takes the not-found deletion path.
 	_, err := c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: nsA, Name: "qp-gone"},
 	})
 	require.NoError(t, err)
 
-	require.ElementsMatch(t, []string{nsA + "/route-a", nsB + "/route-b"}, drainRouteEvents(routeCh),
-		"both routes must be notified exactly once via the namespace-wide deletion path")
+	require.ElementsMatch(t, []string{nsA + "/route-a", nsB + "/route-b", "ns-c/route-c"}, drainRouteEvents(routeCh),
+		"all routes must be notified exactly once via the full-sweep fallback")
 }
 
 // TestQuotaPolicyController_Reconcile_Deletion_NotFound_ReturnsNotifyError verifies that a failed
@@ -496,7 +509,7 @@ func TestQuotaPolicyController_Reconcile_Deletion_NotFound_ReturnsNotifyError(t 
 	listErr := errors.New("informer not synced")
 	fakeClient := interceptor.NewClient(inner, interceptor.Funcs{
 		List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-			if _, isBackendList := list.(*aigv1b1.AIServiceBackendList); isBackendList {
+			if _, isRouteList := list.(*aigv1b1.AIGatewayRouteList); isRouteList {
 				return listErr
 			}
 			return cl.List(ctx, list, opts...)
