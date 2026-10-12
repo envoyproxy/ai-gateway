@@ -354,6 +354,43 @@ func TestBuildQuotaBackendPolicies(t *testing.T) {
 		require.Contains(t, result, "default/backend-a")
 		require.Len(t, result["default/backend-a"], 2)
 	})
+
+	t.Run("terminating policy is skipped", func(t *testing.T) {
+		deleting := metav1.Now()
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				// Terminating policy: must be excluded so no descriptors are produced for it.
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", DeletionTimestamp: &deleting, Finalizers: []string{"keep"}},
+				Spec: aigv1a1.QuotaPolicySpec{
+					TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: "backend-a"}},
+				},
+			},
+			{
+				// Live policy targeting a different backend: must still be included.
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+				Spec: aigv1a1.QuotaPolicySpec{
+					TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: "backend-b"}},
+				},
+			},
+		}
+		result := buildQuotaBackendPolicies(policies)
+		require.Len(t, result, 1)
+		require.NotContains(t, result, "default/backend-a", "terminating policy must not produce descriptors")
+		require.Contains(t, result, "default/backend-b")
+	})
+
+	t.Run("only terminating policies yields empty map", func(t *testing.T) {
+		deleting := metav1.Now()
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", DeletionTimestamp: &deleting, Finalizers: []string{"keep"}},
+				Spec: aigv1a1.QuotaPolicySpec{
+					TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: "backend-a"}},
+				},
+			},
+		}
+		require.Empty(t, buildQuotaBackendPolicies(policies))
+	})
 }
 
 // verifyMetadataAction is a helper that asserts a rate limit action is a MetaData action
