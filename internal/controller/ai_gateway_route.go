@@ -539,7 +539,7 @@ func (c *AIGatewayRouteController) fetchEffectiveQuotaPoliciesForRoute(
 				continue
 			}
 			backendNamespace := ref.GetNamespace(route.Namespace)
-			key := namespacedNameIndexKey(string(ref.Name), backendNamespace)
+			key := namespacedNameIndexKey(ref.Name, backendNamespace)
 			if seenBackendKeys[key] {
 				continue
 			}
@@ -564,10 +564,6 @@ func (c *AIGatewayRouteController) fetchEffectiveQuotaPoliciesForRoute(
 				effective.Spec.TargetRefs = make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(policy.Spec.TargetRefs))
 				for _, target := range policy.Spec.TargetRefs {
 					targetNamespace := quotapolicy.TargetNamespace(target, policy.Namespace)
-					if (target.Group != "" && target.Group != aiServiceBackendGroup) ||
-						(target.Kind != "" && target.Kind != aiServiceBackendKind) {
-						continue
-					}
 					grantKey := policy.Namespace + "\x00" + targetNamespace + "\x00" + string(target.Name)
 					allowed, ok := grantCache[grantKey]
 					if !ok {

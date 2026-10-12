@@ -152,13 +152,6 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	var targetErrors []error
 	for _, ref := range policy.Spec.TargetRefs {
 		targetNamespace := quotapolicy.TargetNamespace(ref, policy.Namespace)
-		if (ref.Group != "" && ref.Group != aiServiceBackendGroup) ||
-			(ref.Kind != "" && ref.Kind != aiServiceBackendKind) {
-			targetErrors = append(targetErrors, fmt.Errorf(
-				"QuotaPolicy target %s/%s has unsupported group/kind %q/%q",
-				targetNamespace, ref.Name, ref.Group, ref.Kind))
-			continue
-		}
 		if err := c.referenceGrantValidator.validateQuotaPolicyAIServiceBackendReference(
 			ctx, policy.Namespace, targetNamespace, string(ref.Name)); err != nil {
 			// Validate authorization before reading the remote backend. This

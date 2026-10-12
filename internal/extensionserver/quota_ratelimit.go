@@ -53,6 +53,10 @@ const (
 	// quotaCostMetadataKey is the dynamic metadata key where ext_proc stores
 	// the computed quota cost for the current request.
 	quotaCostMetadataKey = "quota_cost"
+	// aiServiceBackendGroup is the API group for AIServiceBackend resources.
+	aiServiceBackendGroup = "aigateway.envoyproxy.io"
+	// aiServiceBackendKind is the kind for AIServiceBackend resources.
+	aiServiceBackendKind = "AIServiceBackend"
 )
 
 // maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the HCM
@@ -152,8 +156,8 @@ func (s *Server) authorizedQuotaPolicies(
 		targets := make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(policy.Spec.TargetRefs))
 		seenTargets := make(map[string]struct{}, len(policy.Spec.TargetRefs))
 		for _, ref := range policy.Spec.TargetRefs {
-			if (ref.Group != "" && ref.Group != controller.AIServiceBackendGroup) ||
-				(ref.Kind != "" && ref.Kind != controller.AIServiceBackendKind) {
+			if (ref.Group != "" && ref.Group != aiServiceBackendGroup) ||
+				(ref.Kind != "" && ref.Kind != aiServiceBackendKind) {
 				continue
 			}
 			targetNamespace := quotapolicy.TargetNamespace(ref, policy.Namespace)

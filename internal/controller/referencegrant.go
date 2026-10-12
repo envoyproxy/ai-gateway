@@ -14,10 +14,6 @@ import (
 )
 
 const (
-	// AIServiceBackendGroup is the API group for AIServiceBackend resources.
-	AIServiceBackendGroup = aiServiceBackendGroup
-	// AIServiceBackendKind is the kind for AIServiceBackend resources.
-	AIServiceBackendKind = aiServiceBackendKind
 	// aiGatewayRouteKind is the kind for AIGatewayRoute.
 	aiGatewayRouteKind = "AIGatewayRoute"
 	// backendSecurityPolicyKind is the kind for BackendSecurityPolicy.

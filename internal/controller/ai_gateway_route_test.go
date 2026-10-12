@@ -1018,7 +1018,6 @@ func TestFetchEffectiveQuotaPoliciesForRoute(t *testing.T) {
 		Spec: aigv1a1.QuotaPolicySpec{
 			TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{
 				{Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: "backend"},
-				{Group: "unsupported.example.com", Kind: aiServiceBackendKind, Name: "ignored"},
 				{Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: "remote", Namespace: ptr.To(gwapiv1a2.Namespace("backend-ns"))},
 			},
 		},

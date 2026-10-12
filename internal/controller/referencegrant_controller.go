@@ -100,7 +100,8 @@ func (c *ReferenceGrantController) triggerAffectedReconciles(ctx context.Context
 	for _, route := range affectedRoutes {
 		c.logger.Info("Triggering reconciliation for affected AIGatewayRoute",
 			"route_namespace", route.Namespace, "route_name", route.Name, "grant_namespace", grantNamespace)
-		if err := c.enqueueEvent(ctx, c.aiGatewayRouteChan, route, "AIGatewayRoute", grantNamespace); err != nil {
+		err = c.enqueueEvent(ctx, c.aiGatewayRouteChan, route, "AIGatewayRoute", grantNamespace)
+		if err != nil {
 			return err
 		}
 	}
@@ -186,11 +187,8 @@ func (c *ReferenceGrantController) getAffectedQuotaPolicies(
 			if quotapolicy.TargetNamespace(ref, policy.Namespace) != grantNamespace {
 				continue
 			}
-			if (ref.Group == "" || ref.Group == aiServiceBackendGroup) &&
-				(ref.Kind == "" || ref.Kind == aiServiceBackendKind) {
-				affected = append(affected, policy)
-				break
-			}
+			affected = append(affected, policy)
+			break
 		}
 	}
 	return affected, nil

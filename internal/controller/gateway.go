@@ -1112,10 +1112,6 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 		targetsRoute := false
 		authorizedTargets := make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(qp.Spec.TargetRefs))
 		for _, ref := range qp.Spec.TargetRefs {
-			if (ref.Group != "" && ref.Group != aiServiceBackendGroup) ||
-				(ref.Kind != "" && ref.Kind != aiServiceBackendKind) {
-				continue
-			}
 			targetNamespace := quotapolicy.TargetNamespace(ref, qp.Namespace)
 			if err := c.referenceGrantValidator.validateQuotaPolicyAIServiceBackendReference(
 				ctx, qp.Namespace, targetNamespace, string(ref.Name)); err != nil {
