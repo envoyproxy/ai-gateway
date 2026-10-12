@@ -1578,6 +1578,19 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			requestModel:         "gemini-3-flash",
 		},
 		{
+			name: "high reasoning effort on Pro maps to ThinkingLevelHigh",
+			input: &openai.ChatCompletionRequest{
+				ReasoningEffort: openai.ReasoningEffortHigh,
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ThinkingConfig: &genai.ThinkingConfig{
+					ThinkingLevel: genai.ThinkingLevelHigh,
+				},
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-3-pro",
+		},
+		{
 			name: "reasoning effort unsupported value",
 			input: &openai.ChatCompletionRequest{
 				ReasoningEffort: "invalid_value",
@@ -1780,6 +1793,25 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			},
 			parametersJSONSchemaAvailable: false,
 			expectedError:                 "tool bad parameters must be a JSON object",
+		},
+		{
+			name: "tool with unresolvable $ref in parameters - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name: "bad_ref",
+						Parameters: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"a": map[string]any{"$ref": "#/nonexistent/path"},
+							},
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "invalid JSON schema for parameters in tool bad_ref",
 		},
 		{
 			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=true",
@@ -2103,6 +2135,7 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			result, err := openAIToolsToGeminiTools(tc.openaiTools, tc.parametersJSONSchemaAvailable)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
+				require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 			} else {
 				require.NoError(t, err)
 				if d := cmp.Diff(tc.expected, result, cmpopts.IgnoreUnexported(genai.Schema{})); d != "" {
@@ -3319,6 +3352,7 @@ func TestOpenAIReqToGeminiGenerationConfigWithJsonSchemaToGemini(t *testing.T) {
 			got, responseMode, err := openAIReqToGeminiGenerationConfig(tc.input, tc.requestModel)
 			if tc.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tc.expectedErrMsg)
+				require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 			} else {
 				require.NoError(t, err)
 
@@ -3427,15 +3461,39 @@ func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 			expectedThinking: genai.ThinkingLevelMedium,
 		},
 		{
-			name:             "medium effort on Pro maps to ThinkingLevelHigh",
+			name:             "medium effort on Gemini 3 Pro maps to ThinkingLevelHigh",
 			reasoningEffort:  openai.ReasoningEffortMedium,
 			model:            "gemini-3-pro",
 			expectedThinking: genai.ThinkingLevelHigh,
 		},
 		{
-			name:             "high effort maps to ThinkingLevelHigh",
+			name:             "medium effort on Gemini 3 Pro preview maps to ThinkingLevelHigh",
+			reasoningEffort:  openai.ReasoningEffortMedium,
+			model:            "gemini-3-pro-preview",
+			expectedThinking: genai.ThinkingLevelHigh,
+		},
+		{
+			name:             "medium effort on Gemini 3.1 Pro preview maps to ThinkingLevelMedium",
+			reasoningEffort:  openai.ReasoningEffortMedium,
+			model:            "gemini-3.1-pro-preview",
+			expectedThinking: genai.ThinkingLevelMedium,
+		},
+		{
+			name:             "medium effort on Gemini 3.1 Flash-Lite Image maps to ThinkingLevelHigh",
+			reasoningEffort:  openai.ReasoningEffortMedium,
+			model:            "gemini-3.1-flash-lite-image",
+			expectedThinking: genai.ThinkingLevelHigh,
+		},
+		{
+			name:             "high effort on Flash maps to ThinkingLevelHigh",
 			reasoningEffort:  openai.ReasoningEffortHigh,
 			model:            "gemini-3-flash",
+			expectedThinking: genai.ThinkingLevelHigh,
+		},
+		{
+			name:             "high effort on Pro maps to ThinkingLevelHigh",
+			reasoningEffort:  openai.ReasoningEffortHigh,
+			model:            "gemini-3-pro",
 			expectedThinking: genai.ThinkingLevelHigh,
 		},
 		{

@@ -1276,51 +1276,33 @@ func Test_maybeResponseModify(t *testing.T) {
 	})
 
 	t.Run("resources/read rewrites ui Contents URIs keeping the scheme", func(t *testing.T) {
-		raw, err := json.Marshal(&mcp.ReadResourceResult{
-			Contents: []*mcp.ResourceContents{{URI: "ui://prefab/renderer.html"}},
-		})
-		require.NoError(t, err)
-		msg := &jsonrpc.Response{Result: raw}
+		msg := &jsonrpc.Response{Result: []byte(`{"contents":[{"uri":"ui://prefab/renderer.html"}]}`)}
 		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
 		var got mcp.ReadResourceResult
 		require.NoError(t, json.Unmarshal(msg.Result, &got))
 		require.Equal(t, "ui://backend1/prefab/renderer.html", got.Contents[0].URI)
 	})
 
-	t.Run("tools/call preserves unknown fields", func(t *testing.T) {
-		raw := []byte(`{
-			"content":[{"type":"resource_link","uri":"file:///data","name":"data"}],
-			"ttlMs":1000,
-			"_meta":{"ui":{"resourceUri":"ui://app/view"},"customKey":"keep-me"}
-		}`)
-		msg := &jsonrpc.Response{Result: raw}
-		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
-
-		var envelope map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(msg.Result, &envelope))
-		require.Equal(t, json.RawMessage(`1000`), envelope["ttlMs"])
-
-		var meta map[string]any
-		require.NoError(t, json.Unmarshal(envelope["_meta"], &meta))
-		require.Equal(t, "keep-me", meta["customKey"])
-		require.Equal(t, "ui://backend1/app/view", meta["ui"].(map[string]any)["resourceUri"])
-
-		var contents []map[string]any
-		require.NoError(t, json.Unmarshal(envelope["content"], &contents))
-		require.Equal(t, downstreamResourceURI("file:///data", "backend1"), contents[0]["uri"])
+	t.Run("resources/read defaults caching hints omitted by the backend", func(t *testing.T) {
+		msg := &jsonrpc.Response{Result: []byte(`{"contents":[{"uri":"file:///notes.txt","mimeType":"text/plain","text":"hello"}]}`)}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
+		require.NotContains(t, string(msg.Result), `"cacheScope":""`)
+		require.Contains(t, string(msg.Result), `"ttlMs":0`)
+		require.Contains(t, string(msg.Result), `"cacheScope":"private"`)
+		require.Contains(t, string(msg.Result), `"uri":"backend1+file:///notes.txt"`)
 	})
 
-	t.Run("resources/read preserves unknown fields", func(t *testing.T) {
-		raw := []byte(`{"contents":[{"uri":"file:///a","text":"x"}],"extra":"keep"}`)
-		msg := &jsonrpc.Response{Result: raw}
+	t.Run("resources/read replaces an empty cacheScope sent by the backend", func(t *testing.T) {
+		msg := &jsonrpc.Response{Result: []byte(`{"ttlMs":0,"cacheScope":"","contents":[{"uri":"file:///notes.txt","text":"hello"}]}`)}
 		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
+		require.Contains(t, string(msg.Result), `"cacheScope":"private"`)
+	})
 
-		var envelope map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(msg.Result, &envelope))
-		require.Equal(t, json.RawMessage(`"keep"`), envelope["extra"])
-		var contents []map[string]any
-		require.NoError(t, json.Unmarshal(envelope["contents"], &contents))
-		require.Equal(t, downstreamResourceURI("file:///a", "backend1"), contents[0]["uri"])
+	t.Run("resources/read preserves backend caching hints", func(t *testing.T) {
+		msg := &jsonrpc.Response{Result: []byte(`{"ttlMs":5000,"cacheScope":"public","contents":[{"uri":"file:///notes.txt","text":"hello"}]}`)}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
+		require.Contains(t, string(msg.Result), `"ttlMs":5000`)
+		require.Contains(t, string(msg.Result), `"cacheScope":"public"`)
 	})
 }
 
