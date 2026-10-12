@@ -29,6 +29,7 @@ type tracingImpl struct {
 	imageGenerationTracer      tracingapi.ImageGenerationTracer
 	embeddingsTracer           tracingapi.EmbeddingsTracer
 	responsesTracer            tracingapi.ResponsesTracer
+	decisionsTracer            tracingapi.DecisionsTracer
 	speechTracer               tracingapi.SpeechTracer
 	transcriptionTracer        tracingapi.TranscriptionTracer
 	translationTracer          tracingapi.TranslationTracer
@@ -66,6 +67,11 @@ func (t *tracingImpl) ImageGenerationTracer() tracingapi.ImageGenerationTracer {
 // ResponsesTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) ResponsesTracer() tracingapi.ResponsesTracer {
 	return t.responsesTracer
+}
+
+// DecisionsTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) DecisionsTracer() tracingapi.DecisionsTracer {
+	return t.decisionsTracer
 }
 
 // SpeechTracer implements the same method as documented on tracingapi.Tracing.
@@ -266,6 +272,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			recorders.responses,
+			headerAttrs,
+		),
+		decisionsTracer: newDecisionsTracer(
+			tracer,
+			propagator,
+			recorders.decisions,
 			headerAttrs,
 		),
 		speechTracer: newSpeechTracer(
