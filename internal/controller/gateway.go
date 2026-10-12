@@ -1143,7 +1143,7 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 	}
 
 	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
+	key := namespacedNameIndexKey(name, namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
@@ -1181,7 +1181,7 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 // getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
 func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1b1.BackendSecurityPolicy, error) {
 	var bspList aigv1b1.BackendSecurityPolicyList
-	key := fmt.Sprintf("%s.%s", name, namespace)
+	key := namespacedNameIndexKey(name, namespace)
 	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)

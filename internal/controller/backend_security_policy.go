@@ -362,7 +362,7 @@ func getBackendSecurityPolicyAuthOIDC(spec *aigv1b1.BackendSecurityPolicySpec) *
 
 // backendSecurityPolicyKey returns the key used for indexing and caching the backendSecurityPolicy.
 func backendSecurityPolicyKey(namespace, name string) string {
-	return fmt.Sprintf("%s.%s", name, namespace)
+	return namespacedNameIndexKey(name, namespace)
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) error {
