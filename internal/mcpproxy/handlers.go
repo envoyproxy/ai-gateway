@@ -464,27 +464,9 @@ func rewriteRawURIField(obj map[string]json.RawMessage, key string, backendName 
 	return true
 }
 
-// rewriteResourcesReadURIs re-prefixes contents[].uri on a resources/read result
-// while preserving unknown fields. Shared by legacy maybeResponseModify and the
-// modern path (which then injects caching hints). Returns (rewritten, true)
-// when at least one URI changed, or (nil, false) to pass through verbatim.
-func rewriteResourcesReadURIs(result json.RawMessage, backendName string) (json.RawMessage, bool) {
-	var m map[string]json.RawMessage
-	if json.Unmarshal(result, &m) != nil {
-		return nil, false
-	}
-	if !rewriteResourcesReadContentsURIs(m, backendName) {
-		return nil, false
-	}
-	out, err := json.Marshal(m)
-	if err != nil {
-		return nil, false
-	}
-	return out, true
-}
-
 // rewriteResourcesReadContentsURIs re-prefixes uri fields inside m["contents"].
-// Mutates m in place; returns true when any URI changed.
+// Mutates m in place; returns true when any URI changed. Shared by
+// rewriteResourcesReadResult (legacy + modern resources/read).
 func rewriteResourcesReadContentsURIs(m map[string]json.RawMessage, backendName string) bool {
 	raw, ok := m["contents"]
 	if !ok {
