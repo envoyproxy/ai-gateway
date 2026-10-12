@@ -34,6 +34,7 @@ import (
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -41,7 +42,7 @@ import (
 const testControllerSPIFFEID = "spiffe://example.org/ns/envoy-ai-gateway-system/sa/ai-gateway-controller"
 
 // TestBackendSecurityPolicyController_OpenAICredentialsSPIFFE runs the BackendSecurityPolicy controller
-// against a fake SPIFFE Workload API and a fake token exchange endpoint, and checks that the exchanged
+// against a fake SPIFFE Workload API and a fake OpenAI token exchange endpoint, and checks that the exchanged
 // access token ends up in the generated secret.
 func TestBackendSecurityPolicyController_OpenAICredentialsSPIFFE(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
@@ -50,18 +51,17 @@ func TestBackendSecurityPolicyController_OpenAICredentialsSPIFFE(t *testing.T) {
 	socketAddr := startFakeWorkloadAPI(t, workloadAPI)
 
 	var (
-		mu                sync.Mutex
-		gotSubjectToken   string
-		gotSubjectTokType string
+		mu      sync.Mutex
+		gotBody map[string]string
 	)
 	exchangeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		mu.Lock()
-		gotSubjectToken = r.PostForm.Get("subject_token")
-		gotSubjectTokType = r.PostForm.Get("subject_token_type")
+		gotBody = body
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"openai-access-token","token_type":"Bearer","expires_in":3600}`))
@@ -86,11 +86,13 @@ func TestBackendSecurityPolicyController_OpenAICredentialsSPIFFE(t *testing.T) {
 			Type: aigv1b1.BackendSecurityPolicyTypeOpenAICredentials,
 			OpenAICredentials: &aigv1b1.BackendSecurityPolicyOpenAICredentials{
 				Organization: "org-123",
-				TokenExchange: aigv1b1.BackendSecurityPolicyTokenExchange{
-					TokenURL: exchangeServer.URL,
-					SubjectToken: aigv1b1.BackendSecurityPolicySubjectToken{
+				WorkloadIdentityFederationConfig: aigv1b1.OpenAIWorkloadIdentityFederationConfig{
+					IdentityProviderID: "idp_123",
+					ServiceAccountID:   "sa_456",
+					TokenURL:           exchangeServer.URL,
+					SubjectToken: aigv1b1.OpenAISubjectToken{
 						SPIFFEJWTSVID: &aigv1b1.BackendSecurityPolicySPIFFEJWTSVID{
-							Audience:   "https://auth.example.com",
+							Audience:   "https://api.openai.com",
 							SocketPath: socketAddr,
 						},
 					},
@@ -116,12 +118,14 @@ func TestBackendSecurityPolicyController_OpenAICredentialsSPIFFE(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Equal(t, "urn:ietf:params:oauth:token-type:jwt", gotSubjectTokType)
+	require.Equal(t, "urn:ietf:params:oauth:token-type:jwt", gotBody["subject_token_type"])
+	require.Equal(t, "idp_123", gotBody["identity_provider_id"])
+	require.Equal(t, "sa_456", gotBody["service_account_id"])
 	claims := jwt.RegisteredClaims{}
-	_, err = jwt.ParseWithClaims(gotSubjectToken, &claims, func(*jwt.Token) (any, error) { return &workloadAPI.key().PublicKey, nil })
+	_, err = jwt.ParseWithClaims(gotBody["subject_token"], &claims, func(*jwt.Token) (any, error) { return &workloadAPI.key().PublicKey, nil })
 	require.NoError(t, err)
 	require.Equal(t, testControllerSPIFFEID, claims.Subject)
-	require.Equal(t, jwt.ClaimStrings{"https://auth.example.com"}, claims.Audience)
+	require.Equal(t, jwt.ClaimStrings{"https://api.openai.com"}, claims.Audience)
 }
 
 // fakeWorkloadAPI issues JWT-SVIDs for testControllerSPIFFEID.

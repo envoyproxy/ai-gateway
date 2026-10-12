@@ -7,50 +7,61 @@ package tokenprovider
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-const testJWTTokenType = "urn:ietf:params:oauth:token-type:jwt"
+func testOpenAIWorkloadIdentityConfig(tokenURL string) OpenAIWorkloadIdentityConfig {
+	return OpenAIWorkloadIdentityConfig{TokenURL: tokenURL, IdentityProviderID: "idp_123", ServiceAccountID: "sa_456"}
+}
 
-func TestNewTokenExchangeProvider(t *testing.T) {
+func TestNewOpenAIWorkloadIdentityTokenProvider(t *testing.T) {
 	subject := NewMockTokenProvider("subject", time.Now(), nil)
 	for _, tc := range []struct {
 		name    string
-		config  TokenExchangeConfig
+		config  OpenAIWorkloadIdentityConfig
 		subject TokenProvider
 		expErr  string
 	}{
 		{
 			name:    "valid",
-			config:  TokenExchangeConfig{TokenURL: "https://auth.example.com/token", SubjectTokenType: testJWTTokenType},
+			config:  testOpenAIWorkloadIdentityConfig("https://auth.openai.com/oauth/token"),
 			subject: subject,
 		},
 		{
 			name:    "empty token URL",
-			config:  TokenExchangeConfig{SubjectTokenType: testJWTTokenType},
+			config:  OpenAIWorkloadIdentityConfig{IdentityProviderID: "idp_123", ServiceAccountID: "sa_456"},
 			subject: subject,
 			expErr:  "token exchange URL must not be empty",
 		},
 		{
-			name:    "empty subject token type",
-			config:  TokenExchangeConfig{TokenURL: "https://auth.example.com/token"},
+			name:    "empty identity provider ID",
+			config:  OpenAIWorkloadIdentityConfig{TokenURL: "https://auth.openai.com/oauth/token", ServiceAccountID: "sa_456"},
 			subject: subject,
-			expErr:  "token exchange subject token type must not be empty",
+			expErr:  "identity provider ID must not be empty",
+		},
+		{
+			name:    "empty service account ID",
+			config:  OpenAIWorkloadIdentityConfig{TokenURL: "https://auth.openai.com/oauth/token", IdentityProviderID: "idp_123"},
+			subject: subject,
+			expErr:  "service account ID must not be empty",
 		},
 		{
 			name:   "nil subject token provider",
-			config: TokenExchangeConfig{TokenURL: "https://auth.example.com/token", SubjectTokenType: testJWTTokenType},
-			expErr: "token exchange subject token provider must not be nil",
+			config: testOpenAIWorkloadIdentityConfig("https://auth.openai.com/oauth/token"),
+			expErr: "subject token provider must not be nil",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			provider, err := NewTokenExchangeProvider(tc.config, tc.subject)
+			provider, err := NewOpenAIWorkloadIdentityTokenProvider(tc.config, tc.subject)
 			if tc.expErr != "" {
 				require.EqualError(t, err, tc.expErr)
 				require.Nil(t, provider)
@@ -62,27 +73,24 @@ func TestNewTokenExchangeProvider(t *testing.T) {
 	}
 }
 
-func TestTokenExchangeProvider_GetToken(t *testing.T) {
+func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 	subjectExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
 
 	t.Run("success", func(t *testing.T) {
-		var gotForm url.Values
+		var gotBody map[string]string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, http.MethodPost, r.Method)
-			require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
-			require.NoError(t, r.ParseForm())
-			gotForm = r.PostForm
+			require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &gotBody))
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"access_token":"exchanged","issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","expires_in":600}`))
+			_, _ = w.Write([]byte(`{"access_token":"exchanged","issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","expires_in":600,"expires_at":1789045200}`))
 		}))
 		defer server.Close()
 
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{
-			TokenURL:         server.URL,
-			SubjectTokenType: testJWTTokenType,
-			Audience:         "https://api.openai.com",
-			Scopes:           []string{"a", "b"},
-		}, NewMockTokenProvider("subject", subjectExpiry, nil))
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
+			NewMockTokenProvider("subject", subjectExpiry, nil))
 		require.NoError(t, err)
 
 		before := time.Now()
@@ -90,31 +98,13 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "exchanged", token.Token)
 		require.WithinRange(t, token.ExpiresAt, before.Add(600*time.Second), time.Now().Add(600*time.Second))
-		require.Equal(t, url.Values{
-			"grant_type":         {"urn:ietf:params:oauth:grant-type:token-exchange"},
-			"subject_token":      {"subject"},
-			"subject_token_type": {testJWTTokenType},
-			"audience":           {"https://api.openai.com"},
-			"scope":              {"a b"},
-		}, gotForm)
-	})
-
-	t.Run("optional parameters omitted", func(t *testing.T) {
-		var gotForm url.Values
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, r.ParseForm())
-			gotForm = r.PostForm
-			_, _ = w.Write([]byte(`{"access_token":"exchanged","expires_in":600}`))
-		}))
-		defer server.Close()
-
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: server.URL, SubjectTokenType: testJWTTokenType},
-			NewMockTokenProvider("subject", subjectExpiry, nil))
-		require.NoError(t, err)
-		_, err = provider.GetToken(t.Context())
-		require.NoError(t, err)
-		require.NotContains(t, gotForm, "audience")
-		require.NotContains(t, gotForm, "scope")
+		require.Equal(t, map[string]string{
+			"grant_type":           "urn:ietf:params:oauth:grant-type:token-exchange",
+			"subject_token":        "subject",
+			"subject_token_type":   "urn:ietf:params:oauth:token-type:jwt",
+			"identity_provider_id": "idp_123",
+			"service_account_id":   "sa_456",
+		}, gotBody)
 	})
 
 	t.Run("no expires_in uses subject token expiry", func(t *testing.T) {
@@ -123,7 +113,7 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 		}))
 		defer server.Close()
 
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: server.URL, SubjectTokenType: testJWTTokenType},
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
 			NewMockTokenProvider("subject", subjectExpiry, nil))
 		require.NoError(t, err)
 		token, err := provider.GetToken(t.Context())
@@ -132,7 +122,7 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 	})
 
 	t.Run("subject token error", func(t *testing.T) {
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: "http://127.0.0.1:0", SubjectTokenType: testJWTTokenType},
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig("http://127.0.0.1:0"),
 			NewMockTokenProvider("", time.Time{}, errors.New("workload API unavailable")))
 		require.NoError(t, err)
 		_, err = provider.GetToken(t.Context())
@@ -146,16 +136,22 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 		expErr string
 	}{
 		{
-			name:   "oauth error response",
+			name:   "openai error response",
+			status: http.StatusUnauthorized,
+			body:   `{"error":{"message":"No identity provider found for the given provider id.","type":"invalid_request_error","param":null,"code":"invalid_grant"}}`,
+			expErr: "token exchange failed with status 401: invalid_grant: No identity provider found for the given provider id.",
+		},
+		{
+			name:   "unrecognized error response",
 			status: http.StatusBadRequest,
 			body:   `{"error":"invalid_grant","error_description":"subject token expired"}`,
-			expErr: "token exchange failed with status 400: invalid_grant: subject token expired",
+			expErr: `token exchange failed with status 400: {"error":"invalid_grant","error_description":"subject token expired"}`,
 		},
 		{
 			name:   "non-json error response",
 			status: http.StatusBadGateway,
 			body:   `bad gateway`,
-			expErr: "token exchange failed with status 502",
+			expErr: "token exchange failed with status 502: bad gateway",
 		},
 		{
 			name:   "invalid json",
@@ -177,7 +173,7 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 			}))
 			defer server.Close()
 
-			provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: server.URL, SubjectTokenType: testJWTTokenType},
+			provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
 				NewMockTokenProvider("subject", subjectExpiry, nil))
 			require.NoError(t, err)
 			_, err = provider.GetToken(t.Context())
@@ -185,11 +181,25 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 		})
 	}
 
+	t.Run("long error response is truncated", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(strings.Repeat("x", maxErrorBodyLength+100)))
+		}))
+		defer server.Close()
+
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
+			NewMockTokenProvider("subject", subjectExpiry, nil))
+		require.NoError(t, err)
+		_, err = provider.GetToken(t.Context())
+		require.EqualError(t, err, "token exchange failed with status 502: "+strings.Repeat("x", maxErrorBodyLength))
+	})
+
 	t.Run("request error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		server.Close()
 
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: server.URL, SubjectTokenType: testJWTTokenType},
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
 			NewMockTokenProvider("subject", subjectExpiry, nil))
 		require.NoError(t, err)
 		_, err = provider.GetToken(t.Context())
@@ -197,7 +207,7 @@ func TestTokenExchangeProvider_GetToken(t *testing.T) {
 	})
 
 	t.Run("invalid token URL", func(t *testing.T) {
-		provider, err := NewTokenExchangeProvider(TokenExchangeConfig{TokenURL: "://bad", SubjectTokenType: testJWTTokenType},
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig("://bad"),
 			NewMockTokenProvider("subject", subjectExpiry, nil))
 		require.NoError(t, err)
 		_, err = provider.GetToken(t.Context())

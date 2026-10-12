@@ -12828,7 +12828,8 @@ spec:
               openAICredentials:
                 description: |-
                   OpenAICredentials is a mechanism to access OpenAI backend(s) without a static API key. The controller
-                  exchanges a subject token for a short-lived access token, which is injected into the Authorization header.
+                  exchanges a subject token for a short-lived access token via OpenAI Workload Identity Federation, which is
+                  injected into the Authorization header.
                 properties:
                   organization:
                     description: Organization is the OpenAI organization ID. When
@@ -12840,30 +12841,30 @@ spec:
                       sent in the "OpenAI-Project" header.
                     minLength: 1
                     type: string
-                  tokenExchange:
-                    description: TokenExchange specifies how the controller obtains
-                      an access token via OAuth 2.0 Token Exchange.
+                  workloadIdentityFederationConfig:
+                    description: WorkloadIdentityFederationConfig is the configuration
+                      for OpenAI Workload Identity Federation.
                     properties:
-                      audience:
+                      identityProviderID:
                         description: |-
-                          Audience is the RFC 8693 audience parameter: the logical name of the service the
-                          exchanged access token is intended for. It is unrelated to the audience of the subject token.
+                          IdentityProviderID is the ID of the OpenAI Workload Identity Provider configured for the issuer of the
+                          subject token, e.g. "idp_abc123".
+                        minLength: 1
                         type: string
-                      scopes:
+                      serviceAccountID:
                         description: |-
-                          Scopes is the list of scopes requested for the exchanged access token. They are unrelated to
-                          the scopes requested from the OIDC provider for the subject token.
-                        items:
-                          type: string
-                        maxItems: 16
-                        type: array
+                          ServiceAccountID is the ID of the OpenAI service account the access token is issued for. It must match a
+                          service account mapping of the identity provider.
+                        minLength: 1
+                        type: string
                       subjectToken:
                         description: SubjectToken specifies where the subject token
-                          is obtained from.
+                          is obtained from. The subject token must be a JWT.
                         properties:
                           oidcExchangeToken:
-                            description: OIDCExchangeToken obtains the subject token
-                              from an OIDC provider via the client-credentials flow.
+                            description: |-
+                              OIDCExchangeToken obtains the subject token from an OIDC provider via the client-credentials flow.
+                              The OIDC provider must return a JWT access token.
                             properties:
                               aud:
                                 description: Aud defines the audience that this ID
@@ -14869,7 +14870,8 @@ spec:
                               audience:
                                 description: |-
                                   Audience is the audience ("aud" claim) of the requested JWT-SVID. The token exchange endpoint
-                                  validates it, so it must match the audience that endpoint expects.
+                                  validates it, so it must match the audience that endpoint expects, e.g. the audience configured
+                                  for the OpenAI Workload Identity Provider.
                                 minLength: 1
                                 type: string
                               socketPath:
@@ -14887,26 +14889,20 @@ spec:
                             must be specified
                           rule: '[has(self.oidcExchangeToken), has(self.spiffeJWTSVID)].filter(x,
                             x).size() == 1'
-                      subjectTokenType:
-                        default: urn:ietf:params:oauth:token-type:jwt
-                        description: |-
-                          SubjectTokenType is the RFC 8693 subject_token_type, identifying the format of the subject token.
-                          Use "urn:ietf:params:oauth:token-type:access_token" when the OIDC provider returns an opaque access token.
-                        minLength: 1
-                        type: string
                       tokenURL:
-                        description: TokenURL is the token exchange endpoint.
-                        minLength: 1
+                        default: https://auth.openai.com/oauth/token
+                        description: TokenURL is the OpenAI token exchange endpoint.
                         type: string
                         x-kubernetes-validations:
                         - message: tokenURL must be a valid URL
                           rule: isURL(self)
                     required:
+                    - identityProviderID
+                    - serviceAccountID
                     - subjectToken
-                    - tokenURL
                     type: object
                 required:
-                - tokenExchange
+                - workloadIdentityFederationConfig
                 type: object
               targetRefs:
                 description: |-

@@ -11,9 +11,10 @@ metadata:
 spec:
   type: OpenAICredentials
   openAICredentials:
-    tokenExchange:
-      tokenURL: https://auth.example.com/oauth/token
+    workloadIdentityFederationConfig:
+      identityProviderID: idp_placeholder
+      serviceAccountID: sa_placeholder
       subjectToken:
         spiffeJWTSVID:
-          audience: https://auth.example.com
+          audience: https://api.openai.com
           socketPath: /run/spire/sockets/agent.sock

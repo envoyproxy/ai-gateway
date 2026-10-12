@@ -13,12 +13,11 @@ spec:
   openAICredentials:
     organization: org-placeholder
     project: proj_placeholder
-    tokenExchange:
-      tokenURL: https://auth.example.com/oauth/token
-      audience: https://api.openai.com
-      scopes:
-        - api.model.read
+    workloadIdentityFederationConfig:
+      identityProviderID: idp_placeholder
+      serviceAccountID: sa_placeholder
+      tokenURL: https://auth.openai.com/oauth/token
       subjectToken:
         spiffeJWTSVID:
-          audience: https://auth.example.com
+          audience: https://api.openai.com
           socketPath: unix:///run/spire/sockets/agent.sock

@@ -47,20 +47,25 @@ spec:
       name: envoy-ai-gateway-basic-openai-spiffe
   type: OpenAICredentials
   # The controller fetches a JWT-SVID for its own SPIFFE ID and exchanges it for a short-lived OpenAI
-  # access token (RFC 8693), rotating it before it expires. The SPIFFE Workload API socket must be
-  # mounted into the controller, with SPIFFE_ENDPOINT_SOCKET pointing at it (or set socketPath below).
+  # access token via OpenAI Workload Identity Federation, rotating it before it expires. The SPIFFE
+  # Workload API socket must be mounted into the controller, with SPIFFE_ENDPOINT_SOCKET pointing at it
+  # (or set socketPath below).
+  #
+  # The identity provider (trusting your SPIFFE trust domain) and the service account mapping must be
+  # configured in your OpenAI organization:
+  # https://developers.openai.com/api/reference/workload-identity-federation
   #
   # Policies run as the controller's SPIFFE identity, so only trusted cluster admins should be
   # allowed to create them.
   openAICredentials:
     organization: OPENAI_ORGANIZATION_ID # Optional. Replace with your OpenAI organization ID, or remove.
     project: OPENAI_PROJECT_ID # Optional. Replace with your OpenAI project ID, or remove.
-    tokenExchange:
-      tokenURL: https://TOKEN_EXCHANGE_HOST/oauth/token # Replace with the token exchange endpoint.
-      audience: https://api.openai.com # Optional. The audience of the exchanged access token.
+    workloadIdentityFederationConfig:
+      identityProviderID: OPENAI_IDENTITY_PROVIDER_ID # Replace with your OpenAI Workload Identity Provider ID.
+      serviceAccountID: OPENAI_SERVICE_ACCOUNT_ID # Replace with your OpenAI service account ID.
       subjectToken:
         spiffeJWTSVID:
-          audience: TOKEN_EXCHANGE_AUDIENCE # Replace with the audience the token exchange endpoint expects.
+          audience: OPENAI_IDENTITY_PROVIDER_AUDIENCE # Replace with the audience configured for the identity provider.
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend

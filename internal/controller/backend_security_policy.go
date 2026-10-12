@@ -351,17 +351,17 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 }
 
 // newOpenAITokenProvider returns a TokenProvider that exchanges the configured subject token for an
-// OpenAI access token.
+// OpenAI access token via OpenAI Workload Identity Federation.
 func (c *BackendSecurityPolicyController) newOpenAITokenProvider(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (tokenprovider.TokenProvider, error) {
-	exchange := &bsp.Spec.OpenAICredentials.TokenExchange
+	wif := &bsp.Spec.OpenAICredentials.WorkloadIdentityFederationConfig
 	var subjectTokens tokenprovider.TokenProvider
 	var err error
 	switch {
-	case exchange.SubjectToken.SPIFFEJWTSVID != nil:
-		svid := exchange.SubjectToken.SPIFFEJWTSVID
+	case wif.SubjectToken.SPIFFEJWTSVID != nil:
+		svid := wif.SubjectToken.SPIFFEJWTSVID
 		subjectTokens, err = tokenprovider.NewSPIFFETokenProvider(svid.SocketPath, svid.Audience)
-	case exchange.SubjectToken.OIDCExchangeToken != nil:
-		subjectTokens, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, &exchange.SubjectToken.OIDCExchangeToken.OIDC,
+	case wif.SubjectToken.OIDCExchangeToken != nil:
+		subjectTokens, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, &wif.SubjectToken.OIDCExchangeToken.OIDC,
 			bsp.Namespace, c.referenceGrantValidator.validateSecretReference)
 	default:
 		return nil, fmt.Errorf("one of spiffeJWTSVID or oidcExchangeToken must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
@@ -369,11 +369,10 @@ func (c *BackendSecurityPolicyController) newOpenAITokenProvider(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize subject token provider: %w", err)
 	}
-	return tokenprovider.NewTokenExchangeProvider(tokenprovider.TokenExchangeConfig{
-		TokenURL:         exchange.TokenURL,
-		SubjectTokenType: exchange.SubjectTokenType,
-		Audience:         exchange.Audience,
-		Scopes:           exchange.Scopes,
+	return tokenprovider.NewOpenAIWorkloadIdentityTokenProvider(tokenprovider.OpenAIWorkloadIdentityConfig{
+		TokenURL:           wif.TokenURL,
+		IdentityProviderID: wif.IdentityProviderID,
+		ServiceAccountID:   wif.ServiceAccountID,
 	}, subjectTokens)
 }
 
@@ -394,8 +393,8 @@ func getBackendSecurityPolicyAuthOIDC(spec *aigv1b1.BackendSecurityPolicySpec) *
 			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
 		}
 	case aigv1b1.BackendSecurityPolicyTypeOpenAICredentials:
-		if spec.OpenAICredentials != nil && spec.OpenAICredentials.TokenExchange.SubjectToken.OIDCExchangeToken != nil {
-			return &spec.OpenAICredentials.TokenExchange.SubjectToken.OIDCExchangeToken.OIDC
+		if spec.OpenAICredentials != nil && spec.OpenAICredentials.WorkloadIdentityFederationConfig.SubjectToken.OIDCExchangeToken != nil {
+			return &spec.OpenAICredentials.WorkloadIdentityFederationConfig.SubjectToken.OIDCExchangeToken.OIDC
 		}
 	}
 	return nil

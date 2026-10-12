@@ -102,7 +102,8 @@ type BackendSecurityPolicySpec struct {
 	AnthropicAPIKey *BackendSecurityPolicyAnthropicAPIKey `json:"anthropicAPIKey,omitempty"`
 
 	// OpenAICredentials is a mechanism to access OpenAI backend(s) without a static API key. The controller
-	// exchanges a subject token for a short-lived access token, which is injected into the Authorization header.
+	// exchanges a subject token for a short-lived access token via OpenAI Workload Identity Federation, which is
+	// injected into the Authorization header.
 	//
 	// +optional
 	OpenAICredentials *BackendSecurityPolicyOpenAICredentials `json:"openAICredentials,omitempty"`
@@ -386,66 +387,55 @@ type BackendSecurityPolicyOpenAICredentials struct {
 	// +kubebuilder:validation:MinLength=1
 	Project string `json:"project,omitempty"`
 
-	// TokenExchange specifies how the controller obtains an access token via OAuth 2.0 Token Exchange.
+	// WorkloadIdentityFederationConfig is the configuration for OpenAI Workload Identity Federation.
 	//
 	// +kubebuilder:validation:Required
-	TokenExchange BackendSecurityPolicyTokenExchange `json:"tokenExchange"`
+	WorkloadIdentityFederationConfig OpenAIWorkloadIdentityFederationConfig `json:"workloadIdentityFederationConfig"`
 }
 
-// BackendSecurityPolicyTokenExchange specifies an OAuth 2.0 Token Exchange (RFC 8693) request.
-// The controller obtains a subject token, exchanges it at TokenURL for an access token,
-// and stores the access token in a secret, rotating it before it expires.
+// OpenAIWorkloadIdentityFederationConfig specifies how the controller obtains an OpenAI access token via
+// OpenAI Workload Identity Federation. The controller obtains a subject token, exchanges it at TokenURL for
+// a short-lived OpenAI access token, and stores the access token in a secret, rotating it before it expires.
 //
-// TokenURL, SubjectTokenType, Audience and Scopes are parameters of the exchange request and apply
-// to any subject token source.
+// The identity provider and service account mapping must be configured in the OpenAI organization, with the
+// issuer and audience of the subject token.
 //
-// Each hop has its own audience:
-//   - subjectToken.spiffeJWTSVID.audience: the "aud" claim of the JWT-SVID, i.e. the token exchange endpoint.
-//   - subjectToken.oidcExchangeToken.aud: the audience requested from the OIDC provider for the subject token.
-//   - audience: the service the exchanged access token is intended for, e.g. the OpenAI API.
-//
-// https://datatracker.ietf.org/doc/html/rfc8693
-type BackendSecurityPolicyTokenExchange struct {
-	// TokenURL is the token exchange endpoint.
+// https://developers.openai.com/api/reference/workload-identity-federation
+type OpenAIWorkloadIdentityFederationConfig struct {
+	// IdentityProviderID is the ID of the OpenAI Workload Identity Provider configured for the issuer of the
+	// subject token, e.g. "idp_abc123".
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	IdentityProviderID string `json:"identityProviderID"`
+
+	// ServiceAccountID is the ID of the OpenAI service account the access token is issued for. It must match a
+	// service account mapping of the identity provider.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ServiceAccountID string `json:"serviceAccountID"`
+
+	// TokenURL is the OpenAI token exchange endpoint.
+	//
+	// +optional
+	// +kubebuilder:default="https://auth.openai.com/oauth/token"
 	// +kubebuilder:validation:XValidation:rule="isURL(self)",message="tokenURL must be a valid URL"
-	TokenURL string `json:"tokenURL"`
+	TokenURL string `json:"tokenURL,omitempty"`
 
-	// SubjectTokenType is the RFC 8693 subject_token_type, identifying the format of the subject token.
-	// Use "urn:ietf:params:oauth:token-type:access_token" when the OIDC provider returns an opaque access token.
-	//
-	// +optional
-	// +kubebuilder:default="urn:ietf:params:oauth:token-type:jwt"
-	// +kubebuilder:validation:MinLength=1
-	SubjectTokenType string `json:"subjectTokenType,omitempty"`
-
-	// Audience is the RFC 8693 audience parameter: the logical name of the service the
-	// exchanged access token is intended for. It is unrelated to the audience of the subject token.
-	//
-	// +optional
-	Audience string `json:"audience,omitempty"`
-
-	// Scopes is the list of scopes requested for the exchanged access token. They are unrelated to
-	// the scopes requested from the OIDC provider for the subject token.
-	//
-	// +optional
-	// +kubebuilder:validation:MaxItems=16
-	Scopes []string `json:"scopes,omitempty"`
-
-	// SubjectToken specifies where the subject token is obtained from.
+	// SubjectToken specifies where the subject token is obtained from. The subject token must be a JWT.
 	//
 	// +kubebuilder:validation:Required
-	SubjectToken BackendSecurityPolicySubjectToken `json:"subjectToken"`
+	SubjectToken OpenAISubjectToken `json:"subjectToken"`
 }
 
-// BackendSecurityPolicySubjectToken specifies the source of a subject token.
+// OpenAISubjectToken specifies the source of the subject token exchanged for an OpenAI access token.
 // Exactly one source must be configured.
 //
 // +kubebuilder:validation:XValidation:rule="[has(self.oidcExchangeToken), has(self.spiffeJWTSVID)].filter(x, x).size() == 1",message="Exactly one of oidcExchangeToken or spiffeJWTSVID must be specified"
-type BackendSecurityPolicySubjectToken struct {
+type OpenAISubjectToken struct {
 	// OIDCExchangeToken obtains the subject token from an OIDC provider via the client-credentials flow.
+	// The OIDC provider must return a JWT access token.
 	//
 	// +optional
 	OIDCExchangeToken *BackendSecurityPolicyOIDC `json:"oidcExchangeToken,omitempty"`
@@ -461,7 +451,8 @@ type BackendSecurityPolicySubjectToken struct {
 // BackendSecurityPolicySPIFFEJWTSVID specifies how to obtain a JWT-SVID from the SPIFFE Workload API.
 type BackendSecurityPolicySPIFFEJWTSVID struct {
 	// Audience is the audience ("aud" claim) of the requested JWT-SVID. The token exchange endpoint
-	// validates it, so it must match the audience that endpoint expects.
+	// validates it, so it must match the audience that endpoint expects, e.g. the audience configured
+	// for the OpenAI Workload Identity Provider.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

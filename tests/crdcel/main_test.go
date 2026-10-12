@@ -250,12 +250,16 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			expErr: "Exactly one of oidcExchangeToken or spiffeJWTSVID must be specified",
 		},
 		{
+			name:   "openai_missing_identity_provider_id.yaml",
+			expErr: "spec.openAICredentials.workloadIdentityFederationConfig.identityProviderID in body should be at least 1 chars long",
+		},
+		{
 			name:   "openai_invalid_token_url.yaml",
 			expErr: "tokenURL must be a valid URL",
 		},
 		{
 			name:   "openai_invalid_socket_path.yaml",
-			expErr: "spec.openAICredentials.tokenExchange.subjectToken.spiffeJWTSVID.socketPath in body should match",
+			expErr: "spec.openAICredentials.workloadIdentityFederationConfig.subjectToken.spiffeJWTSVID.socketPath in body should match",
 		},
 		{
 			name:   "openai_with_apikey.yaml",
@@ -296,19 +300,19 @@ func TestBackendSecurityPolicies(t *testing.T) {
 	}
 }
 
-func TestBackendSecurityPolicySubjectTokenTypeDefault(t *testing.T) {
+func TestBackendSecurityPolicyOpenAITokenURLDefault(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
 	ctx := t.Context()
 
-	data, err := testdata.ReadFile("testdata/backendsecuritypolicies/openai_spiffe.yaml")
+	data, err := testdata.ReadFile("testdata/backendsecuritypolicies/openai_oidc.yaml")
 	require.NoError(t, err)
 	bsp := &aigv1b1.BackendSecurityPolicy{}
 	require.NoError(t, yaml.UnmarshalStrict(data, bsp))
 	require.NoError(t, c.Create(ctx, bsp))
 	t.Cleanup(func() { _ = c.Delete(ctx, bsp) })
 
-	require.Equal(t, "urn:ietf:params:oauth:token-type:jwt",
-		bsp.Spec.OpenAICredentials.TokenExchange.SubjectTokenType)
+	require.Equal(t, "https://auth.openai.com/oauth/token",
+		bsp.Spec.OpenAICredentials.WorkloadIdentityFederationConfig.TokenURL)
 }
 
 func TestMCPRoutes(t *testing.T) {

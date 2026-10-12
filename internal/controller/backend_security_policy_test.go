@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
@@ -865,7 +864,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testi
 }
 
 func TestBackendSecurityPolicyController_RotateCredential_OpenAICredentials_OIDC(t *testing.T) {
-	var gotForm url.Values
+	var gotBody map[string]string
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -878,8 +877,7 @@ func TestBackendSecurityPolicyController_RotateCredential_OpenAICredentials_OIDC
 		_, _ = w.Write([]byte(`{"access_token": "subject-token", "token_type": "Bearer", "expires_in": 3600}`))
 	})
 	mux.HandleFunc("/exchange", func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
-		gotForm = r.PostForm
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
 		w.Header().Add("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token": "openai-access-token", "token_type": "Bearer", "expires_in": 3600}`))
 	})
@@ -898,12 +896,11 @@ func TestBackendSecurityPolicyController_RotateCredential_OpenAICredentials_OIDC
 		Spec: aigv1b1.BackendSecurityPolicySpec{
 			Type: aigv1b1.BackendSecurityPolicyTypeOpenAICredentials,
 			OpenAICredentials: &aigv1b1.BackendSecurityPolicyOpenAICredentials{
-				TokenExchange: aigv1b1.BackendSecurityPolicyTokenExchange{
-					TokenURL:         server.URL + "/exchange",
-					SubjectTokenType: "urn:ietf:params:oauth:token-type:access_token",
-					Audience:         "https://api.openai.com",
-					Scopes:           []string{"api.model.read"},
-					SubjectToken: aigv1b1.BackendSecurityPolicySubjectToken{
+				WorkloadIdentityFederationConfig: aigv1b1.OpenAIWorkloadIdentityFederationConfig{
+					TokenURL:           server.URL + "/exchange",
+					IdentityProviderID: "idp_123",
+					ServiceAccountID:   "sa_456",
+					SubjectToken: aigv1b1.OpenAISubjectToken{
 						OIDCExchangeToken: &aigv1b1.BackendSecurityPolicyOIDC{
 							OIDC: egv1a1.OIDC{
 								Provider: egv1a1.OIDCProvider{Issuer: server.URL},
@@ -925,10 +922,9 @@ func TestBackendSecurityPolicyController_RotateCredential_OpenAICredentials_OIDC
 	require.NoError(t, err)
 	require.Greater(t, res.RequeueAfter, 50*time.Minute)
 
-	require.Equal(t, "subject-token", gotForm.Get("subject_token"))
-	require.Equal(t, "urn:ietf:params:oauth:token-type:access_token", gotForm.Get("subject_token_type"))
-	require.Equal(t, "https://api.openai.com", gotForm.Get("audience"))
-	require.Equal(t, "api.model.read", gotForm.Get("scope"))
+	require.Equal(t, "subject-token", gotBody["subject_token"])
+	require.Equal(t, "idp_123", gotBody["identity_provider_id"])
+	require.Equal(t, "sa_456", gotBody["service_account_id"])
 
 	secret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, rotators.GetBSPSecretName("openai-oidc"))
 	require.NoError(t, err)
@@ -947,10 +943,11 @@ func TestBackendSecurityPolicyController_Reconcile_OpenAICredentials_SPIFFEUnava
 		Spec: aigv1b1.BackendSecurityPolicySpec{
 			Type: aigv1b1.BackendSecurityPolicyTypeOpenAICredentials,
 			OpenAICredentials: &aigv1b1.BackendSecurityPolicyOpenAICredentials{
-				TokenExchange: aigv1b1.BackendSecurityPolicyTokenExchange{
-					TokenURL:         "https://auth.example.com/oauth/token",
-					SubjectTokenType: "urn:ietf:params:oauth:token-type:jwt",
-					SubjectToken: aigv1b1.BackendSecurityPolicySubjectToken{
+				WorkloadIdentityFederationConfig: aigv1b1.OpenAIWorkloadIdentityFederationConfig{
+					TokenURL:           "https://auth.openai.com/oauth/token",
+					IdentityProviderID: "idp_123",
+					ServiceAccountID:   "sa_456",
+					SubjectToken: aigv1b1.OpenAISubjectToken{
 						SPIFFEJWTSVID: &aigv1b1.BackendSecurityPolicySPIFFEJWTSVID{
 							Audience:   "https://auth.example.com",
 							SocketPath: "unix://" + filepath.Join(t.TempDir(), "missing.sock"),

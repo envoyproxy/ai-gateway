@@ -11,9 +11,9 @@ metadata:
 spec:
   type: OpenAICredentials
   openAICredentials:
-    tokenExchange:
-      tokenURL: https://auth.example.com/oauth/token
-      subjectTokenType: urn:ietf:params:oauth:token-type:access_token
+    workloadIdentityFederationConfig:
+      identityProviderID: idp_placeholder
+      serviceAccountID: sa_placeholder
       subjectToken:
         oidcExchangeToken:
           oidc:

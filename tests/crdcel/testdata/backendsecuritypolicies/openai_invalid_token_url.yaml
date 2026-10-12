@@ -11,8 +11,10 @@ metadata:
 spec:
   type: OpenAICredentials
   openAICredentials:
-    tokenExchange:
+    workloadIdentityFederationConfig:
+      identityProviderID: idp_placeholder
+      serviceAccountID: sa_placeholder
       tokenURL: not a url
       subjectToken:
         spiffeJWTSVID:
-          audience: https://auth.example.com
+          audience: https://api.openai.com
