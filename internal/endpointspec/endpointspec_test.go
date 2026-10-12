@@ -506,6 +506,75 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported API schema")
 }
 
+func TestDecisionsEndpointSpec(t *testing.T) {
+	spec := DecisionsEndpointSpec{}
+
+	t.Run("parse string input", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-6-luna","input":"charged twice","questions":[{"type":"choice","name":"department","instructions":"route it","choices":[{"value":"billing","description":"payment issues"}]}]}`)
+		model, req, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-6-luna", model)
+		require.False(t, stream)
+		require.Nil(t, mutated)
+		require.JSONEq(t, `"charged twice"`, string(req.Input))
+		require.JSONEq(t, `"billing"`, string(req.Questions[0].Choices[0].Value))
+	})
+
+	t.Run("parse boolean choice values", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-6-luna","input":"confirm","questions":[{"type":"choice","instructions":"answer it","choices":[{"value":true},{"value":false}]}]}`)
+		_, req, _, _, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.JSONEq(t, `true`, string(req.Questions[0].Choices[0].Value))
+		require.JSONEq(t, `false`, string(req.Questions[0].Choices[1].Value))
+	})
+
+	t.Run("parse image input", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-6-luna","input":[{"role":"user","content":[{"type":"input_text","text":"inspect"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}],"questions":[{"type":"predicate","name":"damage","instructions":"visible damage?"}]}`)
+		_, req, _, _, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.JSONEq(t, `[{"role":"user","content":[{"type":"input_text","text":"inspect"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}]`, string(req.Input))
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "/v1/decisions")
+	})
+
+	t.Run("multipart unsupported", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody(nil, "multipart/form-data", false)
+		require.ErrorIs(t, err, errMultipartNotSupported)
+	})
+
+	t.Run("translator support", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+		require.NoError(t, err)
+
+		_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaTypeSafe}, "override")
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+	})
+}
+
+func TestDecisionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	body := []byte(`{"model":"gpt-6-luna","input":"customer complaint","safety_identifier":"user-hash-123","questions":[{"type":"choice","name":"department","instructions":"route this complaint","choices":[{"value":"billing","description":"payment issues"}]},{"type":"score","name":"severity","instructions":"score it","levels":[{"label":"critical","description":"no workaround"}]}]}`)
+	_, req, _, _, err := DecisionsEndpointSpec{}.ParseBody(body, false)
+	require.NoError(t, err)
+	redacted, err := DecisionsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+
+	encoded, err := json.Marshal(redacted)
+	require.NoError(t, err)
+	text := string(encoded)
+	require.Contains(t, text, "[REDACTED LENGTH=")
+	require.NotContains(t, text, "customer complaint")
+	require.NotContains(t, text, "payment issues")
+	require.NotContains(t, text, "critical")
+	require.NotContains(t, text, "user-hash-123")
+	require.Contains(t, text, `"safety_identifier":"[REDACTED LENGTH=`)
+	require.Contains(t, text, `"model":"gpt-6-luna"`)
+	require.Contains(t, text, `"name":"department"`)
+}
+
 func TestTokenizeEndpointSpec_ParseBody(t *testing.T) {
 	spec := TokenizeEndpointSpec{}
 

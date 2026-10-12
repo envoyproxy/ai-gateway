@@ -31,6 +31,7 @@ const (
 	GenAIOperationMessages             GenAIOperation = "messages"
 	GenAIOperationImageGeneration      GenAIOperation = "image_generation"
 	GenAIOperationResponses            GenAIOperation = "responses"
+	GenAIOperationDecisions            GenAIOperation = "decisions"
 	GenAIOperationSpeech               GenAIOperation = "speech"
 	GenAIOperationTranscription        GenAIOperation = "transcription"
 	GenAIOperationTranslation          GenAIOperation = "translation"
