@@ -999,7 +999,7 @@ func TestHashQuotaPolicies(t *testing.T) {
 
 	hash, err := hashQuotaPolicies([]*aigv1a1.QuotaPolicy{policyB, policyA})
 	require.NoError(t, err)
-	require.Len(t, hash, 8)
+	require.Len(t, hash, 16)
 
 	reversedHash, err := hashQuotaPolicies([]*aigv1a1.QuotaPolicy{policyA, policyB})
 	require.NoError(t, err)

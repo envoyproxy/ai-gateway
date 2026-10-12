@@ -100,7 +100,9 @@ func (c *ReferenceGrantController) triggerAffectedReconciles(ctx context.Context
 	for _, route := range affectedRoutes {
 		c.logger.Info("Triggering reconciliation for affected AIGatewayRoute",
 			"route_namespace", route.Namespace, "route_name", route.Name, "grant_namespace", grantNamespace)
-		c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
+		if err := c.enqueueEvent(ctx, c.aiGatewayRouteChan, route, "AIGatewayRoute", grantNamespace); err != nil {
+			return err
+		}
 	}
 
 	// Get all BackendSecurityPolicies that might be affected by this ReferenceGrant
@@ -115,7 +117,9 @@ func (c *ReferenceGrantController) triggerAffectedReconciles(ctx context.Context
 		c.logger.Info("Triggering reconciliation for affected BackendSecurityPolicy",
 			"backendsecuritypolicy_namespace", bsp.Namespace, "backendsecuritypolicy_name", bsp.Name,
 			"grant_namespace", grantNamespace)
-		c.backendSecurityPolicyChan <- event.GenericEvent{Object: bsp}
+		if err := c.enqueueEvent(ctx, c.backendSecurityPolicyChan, bsp, "BackendSecurityPolicy", grantNamespace); err != nil {
+			return err
+		}
 	}
 
 	if c.quotaPolicyChan != nil {
@@ -125,11 +129,37 @@ func (c *ReferenceGrantController) triggerAffectedReconciles(ctx context.Context
 			return err
 		}
 		for _, policy := range affectedQuotaPolicies {
-			c.quotaPolicyChan <- event.GenericEvent{Object: policy}
+			if err := c.enqueueEvent(ctx, c.quotaPolicyChan, policy, "QuotaPolicy", grantNamespace); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+// enqueueEvent avoids blocking the ReferenceGrant reconciler on a full
+// controller-runtime event channel. Returning an error instead of dropping the
+// event lets controller-runtime retry the ReferenceGrant reconciliation, which
+// preserves the invalidation event.
+func (c *ReferenceGrantController) enqueueEvent(
+	ctx context.Context,
+	ch chan event.GenericEvent,
+	object client.Object,
+	resource string,
+	grantNamespace string,
+) error {
+	select {
+	case ch <- event.GenericEvent{Object: object}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return fmt.Errorf(
+			"%s event channel buffer full while enqueueing %s/%s for ReferenceGrant namespace %s",
+			resource, object.GetNamespace(), object.GetName(), grantNamespace,
+		)
+	}
 }
 
 // getAffectedQuotaPolicies returns QuotaPolicies with a cross-namespace

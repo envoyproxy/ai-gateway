@@ -593,7 +593,7 @@ func (c *AIGatewayRouteController) fetchEffectiveQuotaPoliciesForRoute(
 	return policies, nil
 }
 
-// hashQuotaPolicies returns a stable eight-character SHA-256 hash of policies.
+// hashQuotaPolicies returns a stable 16-character SHA-256 hash of policies.
 // The input policies are not modified.
 func hashQuotaPolicies(policies []*aigv1a1.QuotaPolicy) (string, error) {
 	if len(policies) == 0 {
@@ -620,7 +620,7 @@ func hashQuotaPolicies(policies []*aigv1a1.QuotaPolicy) (string, error) {
 		return "", fmt.Errorf("failed to marshal QuotaPolicies for hashing: %w", err)
 	}
 	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:4]), nil
+	return hex.EncodeToString(sum[:8]), nil
 }
 
 // Build an annotation that contains the priority of each backend ref. This is used to ensure Envoy Gateway reconciles the

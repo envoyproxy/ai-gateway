@@ -150,12 +150,18 @@ func (s *Server) authorizedQuotaPolicies(
 	for i := range policies {
 		policy := policies[i]
 		targets := make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(policy.Spec.TargetRefs))
+		seenTargets := make(map[string]struct{}, len(policy.Spec.TargetRefs))
 		for _, ref := range policy.Spec.TargetRefs {
 			if (ref.Group != "" && ref.Group != controller.AIServiceBackendGroup) ||
 				(ref.Kind != "" && ref.Kind != controller.AIServiceBackendKind) {
 				continue
 			}
 			targetNamespace := quotapolicy.TargetNamespace(ref, policy.Namespace)
+			targetKey := targetNamespace + "/" + string(ref.Name)
+			if _, seen := seenTargets[targetKey]; seen {
+				continue
+			}
+			seenTargets[targetKey] = struct{}{}
 			if err := controller.ValidateQuotaPolicyAIServiceBackendReference(
 				ctx, s.k8sClient, policy.Namespace, targetNamespace, string(ref.Name)); err != nil {
 				continue

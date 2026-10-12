@@ -116,7 +116,6 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 	c.mu.RLock()
 	previousTargetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
-	needsRouteRecovery := len(previousTargetKeys) == 0 && quotaPolicyWasAccepted(&quotaPolicy)
 
 	err := c.syncQuotaPolicy(ctx, &quotaPolicy)
 	if err != nil {
@@ -134,12 +133,6 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 		c.logger.Error(notifyErr, "failed to notify AIGatewayRoutes for previous QuotaPolicy targets",
 			"policy", cacheKey)
 	}
-	if needsRouteRecovery {
-		if notifyErr := c.notifyAllAIGatewayRoutes(ctx); notifyErr != nil {
-			c.logger.Error(notifyErr, "failed to recover AIGatewayRoute notifications for QuotaPolicy",
-				"policy", cacheKey)
-		}
-	}
 	return ctrl.Result{}, err
 }
 
@@ -148,16 +141,6 @@ func conditionStatus(conditionType string) metav1.ConditionStatus {
 		return metav1.ConditionTrue
 	}
 	return metav1.ConditionFalse
-}
-
-func quotaPolicyWasAccepted(policy *aigv1a1.QuotaPolicy) bool {
-	for _, condition := range policy.Status.Conditions {
-		if condition.Type == aigv1a1.ConditionTypeAccepted &&
-			condition.Status == metav1.ConditionTrue {
-			return true
-		}
-	}
-	return false
 }
 
 // syncQuotaPolicy is the main reconciliation logic. It builds rate limit configs

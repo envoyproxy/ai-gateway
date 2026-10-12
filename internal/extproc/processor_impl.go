@@ -688,13 +688,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	// even if the downstream client disconnects right after the terminal chunk, before EndOfStream
 	// is observed by the extproc. The EndOfStream write below remains as the final refresh.
 	if (body.EndOfStream || !tokenUsage.IsZero()) && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
-		identity := u.aiServiceBackendName
-		if identity == "" {
-			identity = internalapi.AIServiceBackendName(u.backendName)
-			if identity == "" {
-				identity = u.backendName
-			}
-		}
+		identity := resolveAIServiceBackendName(u.aiServiceBackendName, u.backendName)
 		metadata, err := buildDynamicMetadataWithBackendIdentity(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, identity, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
@@ -758,13 +752,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
-	u.aiServiceBackendName = backend.Backend.AIServiceBackendName
-	if u.aiServiceBackendName == "" {
-		u.aiServiceBackendName = internalapi.AIServiceBackendName(u.backendName)
-		if u.aiServiceBackendName == "" {
-			u.aiServiceBackendName = u.backendName
-		}
-	}
+	u.aiServiceBackendName = resolveAIServiceBackendName(
+		backend.Backend.AIServiceBackendName, u.backendName,
+	)
 	u.routeName = routeName
 	u.handler = backend.Handler
 	u.headerMutator = headermutator.NewHeaderMutator(backend.Backend.HeaderMutation, rp.requestHeaders)
@@ -999,11 +989,21 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
 func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
-	identity := internalapi.AIServiceBackendName(backendName)
-	if identity == "" {
-		identity = backendName
-	}
+	identity := resolveAIServiceBackendName("", backendName)
 	return buildDynamicMetadataWithBackendIdentity(globalRequestCosts, requestCosts, costs, requestHeaders, backendName, identity, routeName, responseModel)
+}
+
+// resolveAIServiceBackendName returns the explicitly resolved AIServiceBackend
+// identity when available, otherwise derives it from the runtime backend name.
+// The final fallback preserves the original backend name for non-AI backends.
+func resolveAIServiceBackendName(explicitName, backendName string) string {
+	if explicitName != "" {
+		return explicitName
+	}
+	if derivedName := internalapi.AIServiceBackendName(backendName); derivedName != "" {
+		return derivedName
+	}
+	return backendName
 }
 
 func buildDynamicMetadataWithBackendIdentity(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, aiServiceBackendName, routeName, responseModel string) (*structpb.Struct, error) {
