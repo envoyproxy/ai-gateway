@@ -256,7 +256,10 @@ spec:
   to:
     - group: ""
       kind: Secret
+      name: openai-secret # the Secret's name
 ```
+
+The `name` field limits the grant to that one Secret. Without it, the grant covers every Secret in the namespace. To allow several Secrets, add a `to` entry for each.
 
 With `aigw run`, put the ReferenceGrant in the configuration file.
 
