@@ -126,11 +126,14 @@ func (c *ReferenceGrantController) triggerAffectedReconciles(ctx context.Context
 	if c.quotaPolicyChan != nil {
 		affectedQuotaPolicies, err := c.getAffectedQuotaPolicies(ctx, grantNamespace)
 		if err != nil {
-			c.logger.Error(err, "failed to get affected QuotaPolicies")
+			c.logger.Error(err, "failed to get affected QuotaPolicies", "grant_namespace", grantNamespace)
 			return err
 		}
 		for _, policy := range affectedQuotaPolicies {
-			if err := c.enqueueEvent(ctx, c.quotaPolicyChan, policy, "QuotaPolicy", grantNamespace); err != nil {
+			c.logger.Info("Triggering reconciliation for affected QuotaPolicy",
+				"quotapolicy_namespace", policy.Namespace, "quotapolicy_name", policy.Name, "grant_namespace", grantNamespace)
+			err = c.enqueueEvent(ctx, c.quotaPolicyChan, policy, "QuotaPolicy", grantNamespace)
+			if err != nil {
 				return err
 			}
 		}
