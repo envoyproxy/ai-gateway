@@ -116,6 +116,12 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 	c.mu.RLock()
 	previousTargetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
+	// After a controller restart, previousTargetKeys can be empty even for an
+	// accepted policy. If that policy changes or removes a target, routes for
+	// the old backend cannot be identified here and may retain a stale
+	// quota-policy-hash until their gateway is translated for another reason.
+	// Deletion has a separate full-sweep fallback because the deleted object no
+	// longer contains its target references.
 
 	err := c.syncQuotaPolicy(ctx, &quotaPolicy)
 	if err != nil {
