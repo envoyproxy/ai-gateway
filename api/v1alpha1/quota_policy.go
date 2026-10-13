@@ -33,7 +33,13 @@ type QuotaPolicy struct {
 
 // QuotaPolicySpec specifies rules for computing token based costs of requests.
 type QuotaPolicySpec struct {
-	// TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
+	// TargetRefs are the AIServiceBackend resources this QuotaPolicy is being attached to.
+	//
+	// The namespace of each target defaults to the QuotaPolicy's namespace when omitted.
+	// Cross-namespace references are supported by setting namespace explicitly. When the
+	// target namespace differs from the QuotaPolicy's namespace, a ReferenceGrant in the
+	// AIServiceBackend's namespace must authorize QuotaPolicy from the policy namespace to
+	// reference AIServiceBackend. Same-namespace references do not require a ReferenceGrant.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
