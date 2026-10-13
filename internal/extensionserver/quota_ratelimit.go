@@ -763,7 +763,8 @@ func buildSimpleModelEntries(modelName, policyNamespace string, targets []gwapiv
 		targetKey := quotapolicy.TargetNamespace(target, policyNamespace) + "/" + string(target.Name)
 		resolvedModel := resolveModelName(targetKey, modelName, routeModelNames)
 		entries = append(entries, &routev3.RateLimit{
-			Actions: requestTimeBaseActions(quotapolicy.TargetNamespace(target, policyNamespace), string(target.Name), resolvedModel),
+			Actions:    requestTimeBaseActions(quotapolicy.TargetNamespace(target, policyNamespace), string(target.Name), resolvedModel),
+			HitsAddend: zeroQuotaHitsAddend(),
 		})
 	}
 
@@ -776,6 +777,15 @@ func quotaHitsAddend() *routev3.RateLimit_HitsAddend {
 	return &routev3.RateLimit_HitsAddend{
 		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%",
 			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
+	}
+}
+
+// zeroQuotaHitsAddend explicitly prevents the request-time rate-limit check
+// from charging the default one hit. The actual token cost is charged by the
+// stream-done entry after ext_proc has recorded it in dynamic metadata.
+func zeroQuotaHitsAddend() *routev3.RateLimit_HitsAddend {
+	return &routev3.RateLimit_HitsAddend{
+		Number: wrapperspb.UInt64(0),
 	}
 }
 
@@ -798,7 +808,10 @@ func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1
 			clientActions := buildClientSelectorActions(rIdx, rule.ClientSelectors)
 			actions := requestTimeBaseActions(targetNamespace, string(target.Name), resolvedModel)
 			actions = append(actions, clientActions...)
-			entries = append(entries, &routev3.RateLimit{Actions: actions})
+			entries = append(entries, &routev3.RateLimit{
+				Actions:    actions,
+				HitsAddend: zeroQuotaHitsAddend(),
+			})
 		}
 
 		if quota.DefaultBucket.Limit > 0 {
@@ -813,7 +826,10 @@ func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1
 			}
 			actions := requestTimeBaseActions(targetNamespace, string(target.Name), resolvedModel)
 			actions = append(actions, defaultAction)
-			entries = append(entries, &routev3.RateLimit{Actions: actions})
+			entries = append(entries, &routev3.RateLimit{
+				Actions:    actions,
+				HitsAddend: zeroQuotaHitsAddend(),
+			})
 		}
 	}
 
