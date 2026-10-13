@@ -73,6 +73,33 @@ func TestNewOpenAIWorkloadIdentityTokenProvider(t *testing.T) {
 	}
 }
 
+func TestNewOpenAIWorkloadIdentityTokenProvider_InvalidProxyURL(t *testing.T) {
+	t.Setenv(OpenAIProxyEnvVar, "://bad")
+	provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig("https://auth.openai.com/oauth/token"),
+		NewMockTokenProvider("subject", time.Now(), nil))
+	require.ErrorContains(t, err, "invalid AI_GATEWAY_OPENAI_PROXY_URL")
+	require.Nil(t, provider)
+}
+
+func TestOpenAIWorkloadIdentityTokenProvider_GetToken_Proxy(t *testing.T) {
+	var gotHost string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A forward proxy receives the absolute request URL of the token endpoint.
+		gotHost = r.URL.Host
+		_, _ = w.Write([]byte(`{"access_token":"exchanged","expires_in":600}`))
+	}))
+	defer proxy.Close()
+	t.Setenv(OpenAIProxyEnvVar, proxy.URL)
+
+	provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig("http://auth.openai.invalid/oauth/token"),
+		NewMockTokenProvider("subject", time.Now().Add(time.Hour), nil))
+	require.NoError(t, err)
+	token, err := provider.GetToken(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "exchanged", token.Token)
+	require.Equal(t, "auth.openai.invalid", gotHost)
+}
+
 func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 	subjectExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
 

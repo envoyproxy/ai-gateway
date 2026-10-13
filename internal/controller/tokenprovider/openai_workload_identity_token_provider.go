@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -24,6 +26,9 @@ const (
 	jwtTokenType = "urn:ietf:params:oauth:token-type:jwt" // #nosec G101
 	// maxErrorBodyLength caps how much of an unrecognized error response is included in errors.
 	maxErrorBodyLength = 512
+	// OpenAIProxyEnvVar is the environment variable name for configuring the proxy URL of OpenAI token
+	// exchange requests.
+	OpenAIProxyEnvVar = "AI_GATEWAY_OPENAI_PROXY_URL"
 )
 
 // OpenAIWorkloadIdentityConfig holds the parameters of an OpenAI Workload Identity Federation token exchange.
@@ -84,11 +89,29 @@ func NewOpenAIWorkloadIdentityTokenProvider(config OpenAIWorkloadIdentityConfig,
 	if subjectTokens == nil {
 		return nil, errors.New("subject token provider must not be nil")
 	}
+	transport, err := newOpenAITransport()
+	if err != nil {
+		return nil, err
+	}
 	return &openAIWorkloadIdentityTokenProvider{
 		config:        config,
 		subjectTokens: subjectTokens,
-		httpClient:    &http.Client{Timeout: time.Minute},
+		httpClient:    &http.Client{Timeout: time.Minute, Transport: transport},
 	}, nil
+}
+
+// newOpenAITransport returns an http.RoundTripper that uses the proxy from AI_GATEWAY_OPENAI_PROXY_URL
+// if set, and otherwise the default transport's proxy settings.
+func newOpenAITransport() (http.RoundTripper, error) {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if proxyURLStr := os.Getenv(OpenAIProxyEnvVar); proxyURLStr != "" {
+		proxyURL, err := url.Parse(proxyURLStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s: %w", OpenAIProxyEnvVar, err)
+		}
+		t.Proxy = http.ProxyURL(proxyURL)
+	}
+	return t, nil
 }
 
 // GetToken implements TokenProvider.GetToken method to retrieve an OpenAI access token and its expiration time.
