@@ -55,7 +55,8 @@ var KeepCluster = func() bool {
 // any other test dependencies from scratch. The TEST_SKIP_SETUP environment variable can be set to
 // "true" to skip all of that and reuse an already set up environment instead - for example, a kind
 // cluster left running from a previous run via TEST_KEEP_CLUSTER=true. This is useful when iterating
-// on the tests themselves, since it avoids paying the setup cost on every run.
+// on the tests themselves, since it avoids paying the setup cost on every run. The reused cluster is
+// never deleted at the end of the run, so it can be reused again by the next one.
 var SkipSetup = func() bool {
 	v, _ := os.LookupEnv("TEST_SKIP_SETUP")
 	return v == "true"
@@ -110,7 +111,7 @@ func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, ne
 // SetupAll sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) error {
 	if SkipSetup {
-		fmt.Printf("Skipped to set up the test environment")
+		fmt.Printf("Skipped to set up the test environment\n")
 		return nil
 	}
 	var cancel context.CancelFunc
@@ -367,7 +368,7 @@ func CleanupKindCluster(testsFailed bool, clusterName string) {
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
-	if !testsFailed && !KeepCluster {
+	if !testsFailed && !KeepCluster && !SkipSetup {
 		cleanupLog("Destroying the kind cluster")
 		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout

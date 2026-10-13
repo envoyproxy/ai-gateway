@@ -50,8 +50,15 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	defaultTimeoutConfig.HTTPRouteMustHaveCondition = 10 * time.Second
 	defaultTimeoutConfig.HTTPRouteMustNotHaveParents = 10 * time.Second
 	defaultTimeoutConfig.GatewayMustHaveCondition = 10 * time.Second
-	// need this for GatewayWeightedAcrossTwoInferencePools to make sure
-	// the warmup test passed.
+	// This relaxation applies to the whole suite, since the conformance suite only takes one
+	// TimeoutConfig. It is needed by GatewayWeightedAcrossTwoInferencePools, whose warmup pins each
+	// request to one pod via the test EPP header but sends it through the 70/30 weighted route:
+	// a request only succeeds when Envoy's weighted pick lands on the pod's own pool (otherwise
+	// that pool's EPP has no matching endpoint). Requiring 3 consecutive successes for a secondary
+	// pod therefore needs three 30% picks in a row, which rarely happens within the consistency
+	// timeout. This is inherent to the test design, not slow xDS convergence. Other tests still
+	// retry until a request succeeds, and their routes are accepted before any request is sent,
+	// so one success is enough evidence there too.
 	defaultTimeoutConfig.RequiredConsecutiveSuccesses = 1
 	config.SetupTimeoutConfig(&defaultTimeoutConfig)
 	options.TimeoutConfig = defaultTimeoutConfig

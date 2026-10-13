@@ -2763,70 +2763,58 @@ func TestPostTranslateModify(t *testing.T) {
 	})
 }
 
-// poolWeight pairs an InferencePool name with the weight its backendRef should carry on a test
-// HTTPRoute.
+// poolWeight pairs an InferencePool with the weight its backendRef should carry on a test
+// HTTPRoute rule. An empty namespace leaves the backendRef namespace unset.
 type poolWeight struct {
-	name   string
-	weight int32
+	namespace string
+	name      string
+	weight    int32
 }
 
-// newHTTPRouteWithInferencePoolWeights builds an HTTPRoute with a single, unnamed rule whose
-// BackendRefs target InferencePools with the given weights, in order.
-func newHTTPRouteWithInferencePoolWeights(namespace, name string, weights []poolWeight) *gwapiv1.HTTPRoute {
+// newHTTPRouteWithInferencePoolWeights builds an HTTPRoute with one unnamed rule per entry of
+// rules, each rule's BackendRefs targeting InferencePools with the given weights, in order.
+func newHTTPRouteWithInferencePoolWeights(namespace, name string, rules ...[]poolWeight) *gwapiv1.HTTPRoute {
 	group := gwapiv1.Group(gwaiev1.GroupName)
 	kind := gwapiv1.Kind("InferencePool")
-	backendRefs := make([]gwapiv1.HTTPBackendRef, 0, len(weights))
-	for _, w := range weights {
-		weight := w.weight
-		backendRefs = append(backendRefs, gwapiv1.HTTPBackendRef{
-			BackendRef: gwapiv1.BackendRef{
-				BackendObjectReference: gwapiv1.BackendObjectReference{
-					Group: &group,
-					Kind:  &kind,
-					Name:  gwapiv1.ObjectName(w.name),
+	httpRules := make([]gwapiv1.HTTPRouteRule, 0, len(rules))
+	for _, weights := range rules {
+		backendRefs := make([]gwapiv1.HTTPBackendRef, 0, len(weights))
+		for _, w := range weights {
+			weight := w.weight
+			ref := gwapiv1.HTTPBackendRef{
+				BackendRef: gwapiv1.BackendRef{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Group: &group,
+						Kind:  &kind,
+						Name:  gwapiv1.ObjectName(w.name),
+					},
+					Weight: &weight,
 				},
-				Weight: &weight,
-			},
-		})
+			}
+			if w.namespace != "" {
+				ref.Namespace = ptr.To(gwapiv1.Namespace(w.namespace))
+			}
+			backendRefs = append(backendRefs, ref)
+		}
+		httpRules = append(httpRules, gwapiv1.HTTPRouteRule{BackendRefs: backendRefs})
 	}
 	return &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: gwapiv1.HTTPRouteSpec{
-			Rules: []gwapiv1.HTTPRouteRule{{BackendRefs: backendRefs}},
-		},
+		Spec:       gwapiv1.HTTPRouteSpec{Rules: httpRules},
 	}
 }
 
-// createMergedInferencePoolRoute builds an xDS route as Envoy Gateway would emit it for a rule
-// whose weighted InferencePool backendRefs got merged into one cluster/route: it carries the
-// "envoy-gateway" resource metadata pointing back at the owning HTTPRoute, plus the InferencePool
-// metadata for all of pools, and a RouteAction pointed at clusterName.
-func createMergedInferencePoolRoute(routeName, httpRouteNamespace, httpRouteName, sectionName, clusterName string, pools []*gwaiev1.InferencePool) *routev3.Route {
+// createMergedInferencePoolRoute builds an xDS route as Envoy Gateway would emit it for rule
+// ruleIndex of the given HTTPRoute, whose weighted InferencePool backendRefs got merged into one
+// cluster/route: it is named "httproute/<ns>/<name>/rule/<index>/match/0/*", carries the
+// InferencePool metadata for all of pools, and has a RouteAction pointed at clusterName.
+func createMergedInferencePoolRoute(httpRouteNamespace, httpRouteName string, ruleIndex int, clusterName string, pools []*gwaiev1.InferencePool) *routev3.Route {
 	route := &routev3.Route{
-		Name:  routeName,
+		Name:  fmt.Sprintf("httproute/%s/%s/rule/%d/match/0/*", httpRouteNamespace, httpRouteName, ruleIndex),
 		Match: &routev3.RouteMatch{PathSpecifier: &routev3.RouteMatch_Prefix{Prefix: "/"}},
 		Action: &routev3.Route_Route{Route: &routev3.RouteAction{
 			ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: clusterName},
 		}},
-	}
-	resourceFields := map[string]*structpb.Value{
-		"kind":      structpb.NewStringValue("HTTPRoute"),
-		"name":      structpb.NewStringValue(httpRouteName),
-		"namespace": structpb.NewStringValue(httpRouteNamespace),
-	}
-	if sectionName != "" {
-		resourceFields["sectionName"] = structpb.NewStringValue(sectionName)
-	}
-	route.Metadata = &corev3.Metadata{
-		FilterMetadata: map[string]*structpb.Struct{
-			envoyGatewayMetadataNamespace: {
-				Fields: map[string]*structpb.Value{
-					envoyGatewayMetadataResourcesKey: structpb.NewListValue(&structpb.ListValue{
-						Values: []*structpb.Value{structpb.NewStructValue(&structpb.Struct{Fields: resourceFields})},
-					}),
-				},
-			},
-		},
 	}
 	buildEPPMetadataForRoute(route, pools)
 	return route
@@ -2854,25 +2842,55 @@ func newTestInferencePool(namespace, name, eppName string) *gwaiev1.InferencePoo
 	}
 }
 
+// newFakeClientWithInferencePools returns a fake client holding a copy of each of pools.
+func newFakeClientWithInferencePools(t *testing.T, pools ...*gwaiev1.InferencePool) client.Client {
+	t.Helper()
+	c := newFakeClient()
+	for _, pool := range pools {
+		require.NoError(t, c.Create(t.Context(), pool.DeepCopy()))
+	}
+	return c
+}
+
 // requireClusterWeight finds the ClusterWeight for pool within weightedClusters (matched by the
-// "<originalCluster>/inferencepool/<poolName>" naming convention) and returns it along with the
-// clone from clusters it names.
+// "<originalCluster>/inferencepool/<namespace>/<name>" naming convention) and returns it along
+// with the clone from clusters it names.
 func requireClusterWeight(t *testing.T, weightedClusters []*routev3.WeightedCluster_ClusterWeight, clusters []*clusterv3.Cluster, originalClusterName string, pool *gwaiev1.InferencePool) (*routev3.WeightedCluster_ClusterWeight, *clusterv3.Cluster) {
 	t.Helper()
-	wantName := fmt.Sprintf("%s/inferencepool/%s", originalClusterName, pool.Name)
+	wantName := weightedClusterName(originalClusterName, pool)
 	for _, cw := range weightedClusters {
 		if cw.Name != wantName {
 			continue
 		}
-		for _, c := range clusters {
-			if c.Name == wantName {
-				return cw, c
-			}
-		}
-		require.Failf(t, "cluster clone not found in returned cluster list", "name=%s", wantName)
+		return cw, requireCluster(t, clusters, wantName)
 	}
 	require.Failf(t, "ClusterWeight not found", "name=%s", wantName)
 	return nil, nil
+}
+
+func weightedClusterName(originalClusterName string, pool *gwaiev1.InferencePool) string {
+	return fmt.Sprintf("%s/inferencepool/%s/%s", originalClusterName, pool.Namespace, pool.Name)
+}
+
+func requireCluster(t *testing.T, clusters []*clusterv3.Cluster, name string) *clusterv3.Cluster {
+	t.Helper()
+	for _, c := range clusters {
+		if c.Name == name {
+			return c
+		}
+	}
+	require.Failf(t, "cluster not found in returned cluster list", "name=%s", name)
+	return nil
+}
+
+// requireUpstreamH2C reports whether the cluster's upstream protocol options select HTTP/2.
+func requireUpstreamH2C(t *testing.T, cluster *clusterv3.Cluster, wantH2C bool) {
+	t.Helper()
+	anyCfg, ok := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+	require.True(t, ok, "missing HttpProtocolOptions on cluster %s", cluster.Name)
+	opts := &httpv3.HttpProtocolOptions{}
+	require.NoError(t, anyCfg.UnmarshalTo(opts))
+	require.Equal(t, wantH2C, opts.GetExplicitHttpConfig().GetHttp2ProtocolOptions() != nil)
 }
 
 // requireExtProcOverride unmarshals filterConfig[filterName] as an ExtProcPerRoute and asserts it
@@ -2907,7 +2925,7 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 	poolC := newTestInferencePool("default", "pool-c", "epp-c")
 
 	t.Run("70/30 split builds a WeightedCluster route", func(t *testing.T) {
-		c := newFakeClient()
+		c := newFakeClientWithInferencePools(t, poolA, poolB)
 		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
 			{name: "pool-a", weight: 70},
 			{name: "pool-b", weight: 30},
@@ -2915,8 +2933,8 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
-		const originalCluster = "merged-cluster"
-		mergedRoute := createMergedInferencePoolRoute("merged-route", "default", "weighted-route", "", originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		mergedRoute := createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
 		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
 		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
 
@@ -2961,7 +2979,7 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 	})
 
 	t.Run("50/30/20 split across three pools", func(t *testing.T) {
-		c := newFakeClient()
+		c := newFakeClientWithInferencePools(t, poolA, poolB, poolC)
 		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
 			{name: "pool-a", weight: 50},
 			{name: "pool-b", weight: 30},
@@ -2970,8 +2988,8 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
-		const originalCluster = "merged-cluster"
-		mergedRoute := createMergedInferencePoolRoute("merged-route", "default", "weighted-route", "", originalCluster, []*gwaiev1.InferencePool{poolA, poolB, poolC})
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		mergedRoute := createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, []*gwaiev1.InferencePool{poolA, poolB, poolC})
 		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB, poolC})
 		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
 
@@ -2995,40 +3013,233 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 		requireExtProcOverride(t, cwA.TypedPerFilterConfig, httpFilterNameForInferencePool(poolC))
 	})
 
-	t.Run("weight-0 backendRef collapses to a single unconditional route", func(t *testing.T) {
-		c := newFakeClient()
+	t.Run("weight-0 pool is dropped from the WeightedCluster and the route metadata", func(t *testing.T) {
+		c := newFakeClientWithInferencePools(t, poolA, poolB, poolC)
 		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
-			{name: "pool-a", weight: 100},
-			{name: "pool-b", weight: 0},
+			{name: "pool-a", weight: 50},
+			{name: "pool-b", weight: 50},
+			{name: "pool-c", weight: 0},
 		})))
 		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
-		const originalCluster = "merged-cluster"
-		mergedRoute := createMergedInferencePoolRoute("merged-route", "default", "weighted-route", "", originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		mergedRoute := createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, []*gwaiev1.InferencePool{poolA, poolB, poolC})
+		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB, poolC})
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{mergedCluster})
+		require.NoError(t, err)
+		require.Len(t, outClusters, 2)
+
+		route := rc.VirtualHosts[0].Routes[0]
+		require.Len(t, route.GetRoute().GetWeightedClusters().GetClusters(), 2)
+		// pool-c is no longer listed on the route, so patchVirtualHostWithInferencePool disables
+		// its filter at the route level.
+		routePools := getInferencePoolsByMetadata(route.Metadata)
+		require.Len(t, routePools, 2)
+		require.Equal(t, "pool-a", routePools[0].Name)
+		require.Equal(t, "pool-b", routePools[1].Name)
+	})
+
+	t.Run("weight-0 backendRef collapses to the surviving pool's own cluster", func(t *testing.T) {
+		// The weight-0 pool is listed first and uses a different appProtocol: the surviving pool
+		// must not inherit the merged cluster's protocol options, which derive from pools[0].
+		h2cPoolA := newTestInferencePool("default", "pool-a", "epp-a")
+		h2cPoolA.Spec.AppProtocol = gwaiev1.AppProtocolH2C
+		c := newFakeClientWithInferencePools(t, h2cPoolA, poolB)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+			{name: "pool-a", weight: 0},
+			{name: "pool-b", weight: 100},
+		})))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		mergedRoute := createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
 		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
 		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
 
 		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{mergedCluster})
 		require.NoError(t, err)
+		require.Len(t, outClusters, 1)
 
-		routes := rc.VirtualHosts[0].Routes
-		require.Len(t, routes, 1)
-		require.Nil(t, routes[0].GetRoute().GetWeightedClusters())
-		require.Equal(t, originalCluster, routes[0].GetRoute().GetCluster())
-		pools := getInferencePoolsByMetadata(routes[0].Metadata)
+		route := rc.VirtualHosts[0].Routes[0]
+		require.Nil(t, route.GetRoute().GetWeightedClusters())
+		wantCluster := weightedClusterName(originalCluster, poolB)
+		require.Equal(t, wantCluster, route.GetRoute().GetCluster())
+		pools := getInferencePoolsByMetadata(route.Metadata)
 		require.Len(t, pools, 1)
-		require.Equal(t, "pool-a", pools[0].Name)
+		require.Equal(t, "pool-b", pools[0].Name)
+		requireUpstreamH2C(t, requireCluster(t, outClusters, wantCluster), false)
+	})
 
-		// Nothing was split, so the cluster list is untouched.
-		require.Same(t, mergedCluster, outClusters[0])
+	t.Run("each pool's clone uses its own appProtocol", func(t *testing.T) {
+		h2cPoolB := newTestInferencePool("default", "pool-b", "epp-b")
+		h2cPoolB.Spec.AppProtocol = gwaiev1.AppProtocolH2C
+		c := newFakeClientWithInferencePools(t, poolA, h2cPoolB)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+			{name: "pool-a", weight: 50},
+			{name: "pool-b", weight: 50},
+		})))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		mergedRoute := createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
+		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{mergedCluster})
+		require.NoError(t, err)
+		requireUpstreamH2C(t, requireCluster(t, outClusters, weightedClusterName(originalCluster, poolA)), false)
+		requireUpstreamH2C(t, requireCluster(t, outClusters, weightedClusterName(originalCluster, poolB)), true)
+	})
+
+	t.Run("clones keep the merged cluster's other metadata and upstream filters", func(t *testing.T) {
+		h2cPoolB := newTestInferencePool("default", "pool-b", "epp-b")
+		h2cPoolB.Spec.AppProtocol = gwaiev1.AppProtocolH2C
+		c := newFakeClientWithInferencePools(t, poolA, h2cPoolB)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+			{name: "pool-a", weight: 50},
+			{name: "pool-b", weight: 50},
+		})))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		pools := []*gwaiev1.InferencePool{poolA, poolB}
+		mergedCluster := createMergedInferencePoolCluster(originalCluster, pools)
+		mergedCluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].Fields["other"] = structpb.NewStringValue("kept")
+		mergedCluster.TypedExtensionProtocolOptions = map[string]*anypb.Any{
+			"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+				UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+					ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+				}},
+				HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: "upstream-filter"}},
+			}),
+		}
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{
+			createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, pools),
+		}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{mergedCluster})
+		require.NoError(t, err)
+		for _, pool := range pools {
+			clone := requireCluster(t, outClusters, weightedClusterName(originalCluster, pool))
+			require.Equal(t, "kept", clone.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].Fields["other"].GetStringValue())
+			require.Len(t, getInferencePoolsByMetadata(clone.Metadata), 1)
+			po := &httpv3.HttpProtocolOptions{}
+			require.NoError(t, clone.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"].UnmarshalTo(po))
+			require.Len(t, po.HttpFilters, 1)
+			require.Equal(t, "upstream-filter", po.HttpFilters[0].Name)
+		}
+		requireUpstreamH2C(t, requireCluster(t, outClusters, weightedClusterName(originalCluster, poolA)), false)
+		requireUpstreamH2C(t, requireCluster(t, outClusters, weightedClusterName(originalCluster, poolB)), true)
+	})
+
+	t.Run("duplicate backendRefs to the same pool sum their weights", func(t *testing.T) {
+		c := newFakeClientWithInferencePools(t, poolA, poolB)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+			{name: "pool-a", weight: 20},
+			{name: "pool-a", weight: 80},
+			{name: "pool-b", weight: 100},
+		})))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const originalCluster = "httproute/default/weighted-route/rule/0"
+		// The merged metadata may list pool-a once per backendRef.
+		pools := []*gwaiev1.InferencePool{poolA, poolA, poolB}
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{
+			createMergedInferencePoolRoute("default", "weighted-route", 0, originalCluster, pools),
+		}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{createMergedInferencePoolCluster(originalCluster, pools)})
+		require.NoError(t, err)
+		require.Len(t, outClusters, 2)
+
+		wc := rc.VirtualHosts[0].Routes[0].GetRoute().GetWeightedClusters()
+		require.Len(t, wc.Clusters, 2)
+		cwA, _ := requireClusterWeight(t, wc.Clusters, outClusters, originalCluster, poolA)
+		cwB, _ := requireClusterWeight(t, wc.Clusters, outClusters, originalCluster, poolB)
+		require.Equal(t, uint32(100), cwA.GetWeight().GetValue())
+		require.Equal(t, uint32(100), cwB.GetWeight().GetValue())
+		require.Len(t, getInferencePoolsByMetadata(rc.VirtualHosts[0].Routes[0].Metadata), 2)
+	})
+
+	t.Run("unnamed rules sharing pools keep their own weights", func(t *testing.T) {
+		c := newFakeClientWithInferencePools(t, poolA, poolB)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("default", "weighted-route",
+			[]poolWeight{{name: "pool-a", weight: 70}, {name: "pool-b", weight: 30}},
+			[]poolWeight{{name: "pool-a", weight: 10}, {name: "pool-b", weight: 90}},
+		)))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const cluster0, cluster1 = "httproute/default/weighted-route/rule/0", "httproute/default/weighted-route/rule/1"
+		pools := []*gwaiev1.InferencePool{poolA, poolB}
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{
+			createMergedInferencePoolRoute("default", "weighted-route", 0, cluster0, pools),
+			createMergedInferencePoolRoute("default", "weighted-route", 1, cluster1, pools),
+		}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc},
+			[]*clusterv3.Cluster{createMergedInferencePoolCluster(cluster0, pools), createMergedInferencePoolCluster(cluster1, pools)})
+		require.NoError(t, err)
+		require.Len(t, outClusters, 4)
+
+		wc0 := rc.VirtualHosts[0].Routes[0].GetRoute().GetWeightedClusters()
+		cw0A, _ := requireClusterWeight(t, wc0.Clusters, outClusters, cluster0, poolA)
+		cw0B, _ := requireClusterWeight(t, wc0.Clusters, outClusters, cluster0, poolB)
+		require.Equal(t, uint32(70), cw0A.GetWeight().GetValue())
+		require.Equal(t, uint32(30), cw0B.GetWeight().GetValue())
+
+		wc1 := rc.VirtualHosts[0].Routes[1].GetRoute().GetWeightedClusters()
+		cw1A, _ := requireClusterWeight(t, wc1.Clusters, outClusters, cluster1, poolA)
+		cw1B, _ := requireClusterWeight(t, wc1.Clusters, outClusters, cluster1, poolB)
+		require.Equal(t, uint32(10), cw1A.GetWeight().GetValue())
+		require.Equal(t, uint32(90), cw1B.GetWeight().GetValue())
+	})
+
+	t.Run("same-named pools in different namespaces get their own clones", func(t *testing.T) {
+		nsAPool := newTestInferencePool("ns-a", "pool", "epp-a")
+		nsBPool := newTestInferencePool("ns-b", "pool", "epp-b")
+		c := newFakeClientWithInferencePools(t, nsAPool, nsBPool)
+		require.NoError(t, c.Create(t.Context(), newHTTPRouteWithInferencePoolWeights("ns-a", "weighted-route", []poolWeight{
+			{name: "pool", weight: 70},
+			{namespace: "ns-b", name: "pool", weight: 30},
+		})))
+		s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		const originalCluster = "httproute/ns-a/weighted-route/rule/0"
+		pools := []*gwaiev1.InferencePool{nsAPool, nsBPool}
+		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{
+			createMergedInferencePoolRoute("ns-a", "weighted-route", 0, originalCluster, pools),
+		}}}}
+
+		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{createMergedInferencePoolCluster(originalCluster, pools)})
+		require.NoError(t, err)
+		require.Len(t, outClusters, 2)
+
+		wc := rc.VirtualHosts[0].Routes[0].GetRoute().GetWeightedClusters()
+		require.Len(t, wc.Clusters, 2)
+		cwA, cloneA := requireClusterWeight(t, wc.Clusters, outClusters, originalCluster, nsAPool)
+		cwB, cloneB := requireClusterWeight(t, wc.Clusters, outClusters, originalCluster, nsBPool)
+		require.Equal(t, uint32(70), cwA.GetWeight().GetValue())
+		require.Equal(t, uint32(30), cwB.GetWeight().GetValue())
+		require.Equal(t, "ns-a", getInferencePoolsByMetadata(cloneA.Metadata)[0].Namespace)
+		require.Equal(t, "ns-b", getInferencePoolsByMetadata(cloneB.Metadata)[0].Namespace)
+		requireExtProcOverride(t, cwA.TypedPerFilterConfig, httpFilterNameForInferencePool(nsBPool))
+		requireExtProcOverride(t, cwB.TypedPerFilterConfig, httpFilterNameForInferencePool(nsAPool))
 	})
 
 	t.Run("a single-pool route is left unmodified", func(t *testing.T) {
 		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
-		route := createMergedInferencePoolRoute("single-route", "default", "weighted-route", "", "merged-cluster", []*gwaiev1.InferencePool{poolA})
+		route := createMergedInferencePoolRoute("default", "weighted-route", 0, "merged-cluster", []*gwaiev1.InferencePool{poolA})
 		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{route}}}}
 
 		_, err = s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, nil)
@@ -3036,23 +3247,50 @@ func TestSplitWeightedInferencePoolRoutes(t *testing.T) {
 		require.Same(t, route, rc.VirtualHosts[0].Routes[0])
 	})
 
-	t.Run("HTTPRoute not found leaves the merged route unmodified", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
-		require.NoError(t, err)
+	for _, tc := range []struct {
+		name      string
+		httpRoute *gwapiv1.HTTPRoute
+		ruleIndex int
+		wantErr   string
+	}{
+		{
+			name:    "HTTPRoute not found",
+			wantErr: "HTTPRoute default/weighted-route not found",
+		},
+		{
+			name: "rule index out of range",
+			httpRoute: newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+				{name: "pool-a", weight: 70}, {name: "pool-b", weight: 30},
+			}),
+			ruleIndex: 1,
+			wantErr:   "rule index 1 out of range",
+		},
+		{
+			name: "all weights zero",
+			httpRoute: newHTTPRouteWithInferencePoolWeights("default", "weighted-route", []poolWeight{
+				{name: "pool-a", weight: 0}, {name: "pool-b", weight: 0},
+			}),
+			wantErr: "has non-zero weight",
+		},
+	} {
+		t.Run(tc.name+" fails the translation", func(t *testing.T) {
+			c := newFakeClientWithInferencePools(t, poolA, poolB)
+			if tc.httpRoute != nil {
+				require.NoError(t, c.Create(t.Context(), tc.httpRoute))
+			}
+			s, err := New(c, logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+			require.NoError(t, err)
 
-		const originalCluster = "merged-cluster"
-		mergedRoute := createMergedInferencePoolRoute("merged-route", "default", "missing-route", "", originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
-		mergedCluster := createMergedInferencePoolCluster(originalCluster, []*gwaiev1.InferencePool{poolA, poolB})
-		rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{mergedRoute}}}}
+			clusterName := fmt.Sprintf("httproute/default/weighted-route/rule/%d", tc.ruleIndex)
+			pools := []*gwaiev1.InferencePool{poolA, poolB}
+			rc := &routev3.RouteConfiguration{VirtualHosts: []*routev3.VirtualHost{{Name: "vh", Routes: []*routev3.Route{
+				createMergedInferencePoolRoute("default", "weighted-route", tc.ruleIndex, clusterName, pools),
+			}}}}
 
-		outClusters, err := s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{mergedCluster})
-		require.NoError(t, err)
-		require.Same(t, mergedRoute, rc.VirtualHosts[0].Routes[0])
-		require.Same(t, mergedCluster, outClusters[0])
-		require.Contains(t, buf.String(), "failed to split weighted InferencePool route")
-	})
+			_, err = s.splitWeightedInferencePoolRoutes(t.Context(), []*routev3.RouteConfiguration{rc}, []*clusterv3.Cluster{createMergedInferencePoolCluster(clusterName, pools)})
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 // TestList tests the List method (health check).

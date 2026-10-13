@@ -105,9 +105,9 @@ func (s *Server) handleInferencePoolCluster(cluster *clusterv3.Cluster, inferenc
 	// Envoy always defaults to HTTP/1.1 and requests to h2c-only backends fail.
 	//
 	// When multiple InferencePools are merged into this single cluster (weighted routing
-	// across pools), the cluster's upstream protocol is necessarily shared, so we derive it
-	// from the first pool. Mixing pools with different appProtocols on the same rule isn't
-	// supported.
+	// across pools), this is derived from the first pool only as a placeholder: PostTranslateModify
+	// (splitWeightedInferencePoolRoutes) replaces the merged cluster with one clone per pool, each
+	// with protocol options derived from its own pool's appProtocol.
 	protocolOptions, err := httpProtocolOptionsForInferencePoolBackend(inferencePools[0])
 	if err != nil {
 		return err
