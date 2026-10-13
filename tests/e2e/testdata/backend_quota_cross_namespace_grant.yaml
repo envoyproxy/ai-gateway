@@ -1,0 +1,21 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+#
+# ReferenceGrant authorizing QuotaPolicy in quota-policy-ns to target
+# AIServiceBackend in quota-backend-ns.
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-quotapolicy-to-aiservicebackend
+  namespace: quota-backend-ns
+spec:
+  from:
+    - group: aigateway.envoyproxy.io
+      kind: QuotaPolicy
+      namespace: quota-policy-ns
+  to:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
