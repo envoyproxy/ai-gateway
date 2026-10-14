@@ -46,14 +46,12 @@ func (s *Server) PostClusterModify(_ context.Context, req *egextension.PostClust
 	// referenced in the AIGatewayRoute's BackendRefs with non-empty Group and Kind fields.
 	// If we found an InferencePool, configure the cluster for ORIGINAL_DST.
 	if inferencePools := s.constructInferencePoolsFrom(req.PostClusterContext.BackendExtensionResources); inferencePools != nil {
-		for _, pool := range inferencePools {
-			if pool.Spec.EndpointPickerRef == nil {
-				// No endpoint picker configured for this InferencePool (spec.endpointPickerRef is
-				// optional as of Gateway API Inference Extension v1.5.0). We don't yet support
-				// routing traffic without one, so leave the cluster as Envoy Gateway generated it
-				// rather than wiring up EPP config that would panic on the nil reference.
-				return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
-			}
+		// Skip pools without an endpoint picker (see poolsWithEndpointPicker). If none is left,
+		// leave the cluster as Envoy Gateway generated it rather than wiring up EPP config that
+		// would panic on the nil reference.
+		inferencePools = poolsWithEndpointPicker(inferencePools)
+		if len(inferencePools) == 0 {
+			return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
 		}
 		if err := s.handleInferencePoolCluster(req.Cluster, inferencePools); err != nil {
 			return nil, err

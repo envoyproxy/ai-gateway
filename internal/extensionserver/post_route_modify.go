@@ -46,14 +46,12 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 			return nil, status.Errorf(codes.FailedPrecondition, "cannot configure InferencePool %s on non-forwarding route %q", strings.Join(names, ","), req.Route.Name)
 		}
 
-		for _, pool := range inferencePools {
-			if pool.Spec.EndpointPickerRef == nil {
-				// No endpoint picker configured for this InferencePool (spec.endpointPickerRef is
-				// optional as of Gateway API Inference Extension v1.5.0). We don't yet support
-				// routing traffic without one, so leave the route unmodified rather than wiring up
-				// EPP config that would panic on the nil reference.
-				return &egextension.PostRouteModifyResponse{Route: req.Route}, nil
-			}
+		// Skip pools without an endpoint picker (see poolsWithEndpointPicker). If none is left,
+		// leave the route unmodified rather than wiring up EPP config that would panic on the nil
+		// reference.
+		inferencePools = poolsWithEndpointPicker(inferencePools)
+		if len(inferencePools) == 0 {
+			return &egextension.PostRouteModifyResponse{Route: req.Route}, nil
 		}
 
 		// Disable auto host rewrite to prevent Envoy from overriding the host header

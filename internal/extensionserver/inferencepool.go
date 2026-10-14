@@ -85,6 +85,21 @@ func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.E
 	return inferencePools
 }
 
+// poolsWithEndpointPicker returns the subset of pools that configure spec.endpointPickerRef, in
+// order. The field is optional as of Gateway API Inference Extension v1.5.0, but we don't yet
+// support routing traffic without an endpoint picker, so such pools are left out of the EPP wiring.
+// Dropping them individually (rather than abandoning every pool they share a rule with) keeps the
+// rule's other pools working, e.g. during a weighted rollout where one pool isn't set up yet.
+func poolsWithEndpointPicker(pools []*gwaiev1.InferencePool) []*gwaiev1.InferencePool {
+	result := make([]*gwaiev1.InferencePool, 0, len(pools))
+	for _, pool := range pools {
+		if pool.Spec.EndpointPickerRef != nil {
+			result = append(result, pool)
+		}
+	}
+	return result
+}
+
 // getInferencePoolsByMetadata returns the InferencePools stored in the given cluster or route
 // metadata. A cluster or route can reference more than one InferencePool: when Envoy Gateway
 // merges a rule's weighted custom-backend (e.g. InferencePool) backendRefs, it emits a single

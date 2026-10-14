@@ -708,8 +708,9 @@ func (s *Server) gatewayConfigForGateway(ctx context.Context, gatewayName, gatew
 // weightedInferencePool pairs an InferencePool with the real weight its backendRef carries on the
 // HTTPRoute rule that referenced it.
 type weightedInferencePool struct {
-	pool   *gwaiev1.InferencePool
-	weight int32
+	pool            *gwaiev1.InferencePool
+	weight          int32
+	backendRefIndex int
 }
 
 // inferencePoolKey returns the namespace/name identity of an InferencePool.
@@ -809,9 +810,6 @@ func (s *Server) splitInferencePoolRoute(
 		return nil, fmt.Errorf("rule index %d out of range for HTTPRoute %s/%s", ruleIndex, key.Namespace, key.Name)
 	}
 	weighted := matchInferencePoolWeights(httpRoute.Namespace, &httpRoute.Spec.Rules[ruleIndex], pools)
-	if len(weighted) == 0 {
-		return nil, fmt.Errorf("no InferencePool backendRef in HTTPRoute %s/%s rule %d has non-zero weight", key.Namespace, key.Name, ruleIndex)
-	}
 	// The pools decoded from route metadata don't carry spec.appProtocol, which each per-pool
 	// cluster needs to pick its upstream protocol, so read it from the InferencePool itself.
 	for _, wp := range weighted {
@@ -821,7 +819,18 @@ func (s *Server) splitInferencePoolRoute(
 		}
 		wp.pool.Spec.AppProtocol = pool.Spec.AppProtocol
 	}
-	return buildWeightedInferencePoolRouteAction(route, weighted, clusterByName, addedByName, addedOrder, removed)
+	// When the rule also has non-InferencePool backends, Envoy Gateway emits a WeightedClusters
+	// route action and, since custom backends have no endpoints, leaves the InferencePool settings
+	// out of it: their merged cluster is still generated per setting, named after the backendRef
+	// index, but nothing references it. Give the rewrite those names to find it by.
+	destName := fmt.Sprintf("httproute/%s/%s/rule/%d", key.Namespace, key.Name, ruleIndex)
+	var perSettingClusterNames []string
+	for i := range httpRoute.Spec.Rules[ruleIndex].BackendRefs {
+		if isInferencePoolBackendRef(&httpRoute.Spec.Rules[ruleIndex].BackendRefs[i]) {
+			perSettingClusterNames = append(perSettingClusterNames, fmt.Sprintf("%s/backend/%d", destName, i))
+		}
+	}
+	return buildWeightedInferencePoolRouteAction(route, weighted, key.Name, ruleIndex, perSettingClusterNames, clusterByName, addedByName, addedOrder, removed)
 }
 
 // parseHTTPRouteRuleFromRouteName extracts the owning HTTPRoute and rule index from a route name
@@ -870,6 +879,7 @@ func isInferencePoolBackendRef(ref *gwapiv1.HTTPBackendRef) bool {
 // dropped and the returned slice can be shorter than `pools`.
 func matchInferencePoolWeights(routeNamespace string, rule *gwapiv1.HTTPRouteRule, pools []*gwaiev1.InferencePool) []weightedInferencePool {
 	weightByKey := make(map[string]int32, len(rule.BackendRefs))
+	firstRefIndexByKey := make(map[string]int, len(rule.BackendRefs))
 	for i := range rule.BackendRefs {
 		ref := &rule.BackendRefs[i]
 		if !isInferencePoolBackendRef(ref) {
@@ -886,14 +896,18 @@ func matchInferencePoolWeights(routeNamespace string, rule *gwapiv1.HTTPRouteRul
 		if ref.Namespace != nil && *ref.Namespace != "" {
 			namespace = string(*ref.Namespace)
 		}
-		weightByKey[inferencePoolKey(namespace, string(ref.Name))] += weight
+		key := inferencePoolKey(namespace, string(ref.Name))
+		weightByKey[key] += weight
+		if _, ok := firstRefIndexByKey[key]; !ok {
+			firstRefIndexByKey[key] = i
+		}
 	}
 
 	result := make([]weightedInferencePool, 0, len(pools))
 	for _, pool := range pools {
 		key := inferencePoolKey(pool.Namespace, pool.Name)
 		if w, ok := weightByKey[key]; ok {
-			result = append(result, weightedInferencePool{pool: pool, weight: w})
+			result = append(result, weightedInferencePool{pool: pool, weight: w, backendRefIndex: firstRefIndexByKey[key]})
 			// Drop the key so a pool listed more than once in the metadata is returned once.
 			delete(weightByKey, key)
 		}
@@ -906,26 +920,32 @@ func matchInferencePoolWeights(routeNamespace string, rule *gwapiv1.HTTPRouteRul
 // objects can be shared/referenced elsewhere in the snapshot being built, so every rewrite here
 // (and in buildInferencePoolWeightedCluster) works on a defensive proto.Clone.
 //
-//  1. The clone's original cluster reference (the single EG-merged cluster) is looked up in
-//     clusterByName and used as the template for step 2.
+//  1. The EG-merged InferencePool cluster is located (findMergedInferencePoolClusters) and the
+//     first one used as the template for step 2. Any other backend the route's WeightedClusters already lists
+//     (e.g. a Service on the same rule) is kept as is.
 //  2. For each weighted pool, buildInferencePoolWeightedCluster clones that template into a
-//     same-shaped cluster named "<originalClusterName>/inferencepool/<namespace>/<name>", scoped
+//     same-shaped cluster named "<templateClusterName>/inferencepool/<namespace>/<name>", scoped
 //     to that pool alone (own metadata, own upstream protocol options). Clones are cached in
 //     addedByName by that deterministic name so a rule reachable from multiple routes produces
 //     exactly one clone per pool.
 //  3. The clone's metadata is narrowed to the weighted pools, so patchVirtualHostWithInferencePool
 //     - which runs after this and disables every pool outside a route's metadata - disables the
 //     EPP filter of every zero-weight pool at the route level.
-//  4. With a single weighted pool, the clone's Cluster specifier points at that pool's cluster.
-//     Otherwise it is switched to a WeightedClusters specifier listing one ClusterWeight per pool,
-//     with Weight set to that pool's raw integer weight, and a TypedPerFilterConfig disabling
+//  4. With a single weighted pool and no other backend, the clone's Cluster specifier points at
+//     that pool's cluster. Otherwise it is switched to a WeightedClusters specifier listing one
+//     ClusterWeight per pool, with Weight set to that pool's raw integer weight (the same raw
+//     backendRef weights EG uses for the other backends), and a TypedPerFilterConfig disabling
 //     every *sibling* pool's EPP ext_proc filter (the ClusterWeight's own pool gets no entry,
-//     since ExtProcPerRoute has no valid "force-enabled" override).
-//  5. The original merged cluster's name is recorded in removed so splitWeightedInferencePoolRoutes
-//     drops it from the final cluster list once every route has been processed.
+//     since ExtProcPerRoute has no valid "force-enabled" override). The kept non-pool
+//     ClusterWeights get every pool's EPP filter disabled.
+//  5. The merged clusters' names are recorded in removed so splitWeightedInferencePoolRoutes
+//     drops them from the final cluster list once every route has been processed.
 func buildWeightedInferencePoolRouteAction(
 	route *routev3.Route,
 	weighted []weightedInferencePool,
+	httpRouteName string,
+	ruleIndex int,
+	perSettingClusterNames []string,
 	clusterByName map[string]*clusterv3.Cluster,
 	addedByName map[string]*clusterv3.Cluster,
 	addedOrder *[]*clusterv3.Cluster,
@@ -939,18 +959,18 @@ func buildWeightedInferencePoolRouteAction(
 	if routeAction == nil {
 		return nil, fmt.Errorf("route %q has no RouteAction to weight", route.Name)
 	}
-	originalClusterName := routeAction.GetCluster()
-	originalCluster, ok := clusterByName[originalClusterName]
-	if !ok {
-		return nil, fmt.Errorf("cluster %q referenced by route %q not found", originalClusterName, route.Name)
+	mergedNames, otherClusterWeights, err := findMergedInferencePoolClusters(routeAction, perSettingClusterNames, clusterByName)
+	if err != nil {
+		return nil, fmt.Errorf("route %q: %w", route.Name, err)
 	}
+	template := clusterByName[mergedNames[0]]
 
 	cloneNames := make([]string, 0, len(weighted))
 	weightedPools := make([]*gwaiev1.InferencePool, 0, len(weighted))
 	for _, wp := range weighted {
-		cloneName := fmt.Sprintf("%s/inferencepool/%s/%s", originalClusterName, wp.pool.Namespace, wp.pool.Name)
+		cloneName := fmt.Sprintf("%s/inferencepool/%s/%s", template.Name, wp.pool.Namespace, wp.pool.Name)
 		if _, ok = addedByName[cloneName]; !ok {
-			poolCluster, err := buildInferencePoolWeightedCluster(originalCluster, cloneName, wp.pool)
+			poolCluster, err := buildInferencePoolWeightedCluster(template, cloneName, wp.pool, httpRouteName, ruleIndex, wp.backendRefIndex)
 			if err != nil {
 				return nil, err
 			}
@@ -964,9 +984,23 @@ func buildWeightedInferencePoolRouteAction(
 	// Narrow the route metadata to the pools that actually receive traffic. buildEPPMetadata
 	// replaces the pool list, so the zero-weight pools are dropped.
 	buildEPPMetadataForRoute(clone, weightedPools)
-	removed[originalClusterName] = struct{}{}
+	for _, name := range mergedNames {
+		removed[name] = struct{}{}
+	}
+	if len(weighted) == 0 {
+		if len(otherClusterWeights) == 0 {
+			return nil, fmt.Errorf("route %q has no non-zero-weight InferencePool backendRef and no other backend to keep", route.Name)
+		}
+		wc := routeAction.GetWeightedClusters()
+		if wc == nil {
+			wc = &routev3.WeightedCluster{}
+		}
+		wc.Clusters = otherClusterWeights
+		routeAction.ClusterSpecifier = &routev3.RouteAction_WeightedClusters{WeightedClusters: wc}
+		return clone, nil
+	}
 
-	if len(weighted) == 1 {
+	if len(weighted) == 1 && len(otherClusterWeights) == 0 {
 		routeAction.ClusterSpecifier = &routev3.RouteAction_Cluster{Cluster: cloneNames[0]}
 		return clone, nil
 	}
@@ -975,7 +1009,17 @@ func buildWeightedInferencePoolRouteAction(
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal disabled ExtProcPerRoute override: %w", err)
 	}
-	clusterWeights := make([]*routev3.WeightedCluster_ClusterWeight, 0, len(weighted))
+	clusterWeights := make([]*routev3.WeightedCluster_ClusterWeight, 0, len(otherClusterWeights)+len(weighted))
+	for _, cw := range otherClusterWeights {
+		// A non-InferencePool backend: no endpoint picker may run for it.
+		if cw.TypedPerFilterConfig == nil {
+			cw.TypedPerFilterConfig = make(map[string]*anypb.Any, len(weighted))
+		}
+		for _, wp := range weighted {
+			cw.TypedPerFilterConfig[httpFilterNameForInferencePool(wp.pool)] = disabledOverride
+		}
+		clusterWeights = append(clusterWeights, cw)
+	}
 	for i, wp := range weighted {
 		filterConfig := make(map[string]*anypb.Any, len(weighted)-1)
 		for j, other := range weighted {
@@ -991,10 +1035,58 @@ func buildWeightedInferencePoolRouteAction(
 			TypedPerFilterConfig: filterConfig,
 		})
 	}
-	routeAction.ClusterSpecifier = &routev3.RouteAction_WeightedClusters{
-		WeightedClusters: &routev3.WeightedCluster{Clusters: clusterWeights},
+	// Reuse EG's WeightedCluster when there is one, so its other settings are kept.
+	wc := routeAction.GetWeightedClusters()
+	if wc == nil {
+		wc = &routev3.WeightedCluster{}
 	}
+	wc.Clusters = clusterWeights
+	routeAction.ClusterSpecifier = &routev3.RouteAction_WeightedClusters{WeightedClusters: wc}
 	return clone, nil
+}
+
+// findMergedInferencePoolClusters locates the EG-merged InferencePool cluster(s) behind
+// routeAction, returning their names (never empty on success) and the ClusterWeights of every
+// other backend routeAction already routes to, which are to be kept as is:
+//   - A Cluster specifier names the single merged cluster, the route's only backend.
+//   - A WeightedClusters specifier means EG generated one cluster per backendRef, e.g. because the
+//     rule mixes InferencePools with other backends. The merged clusters are then the ones named
+//     after the rule's InferencePool backendRefs (perSettingClusterNames). EG normally doesn't list
+//     them in the WeightedClusters at all, since custom backends have no endpoints, but they are
+//     dropped from it if it does. Every other entry, including EG's "invalid-backend-cluster", is
+//     kept. Cluster metadata can't be used to tell them apart: EG hands the route's extension
+//     resources to PostClusterModify for every per-backendRef cluster of the rule.
+func findMergedInferencePoolClusters(
+	routeAction *routev3.RouteAction,
+	perSettingClusterNames []string,
+	clusterByName map[string]*clusterv3.Cluster,
+) (mergedNames []string, others []*routev3.WeightedCluster_ClusterWeight, err error) {
+	if name := routeAction.GetCluster(); name != "" {
+		if _, ok := clusterByName[name]; !ok {
+			return nil, nil, fmt.Errorf("cluster %q referenced by route not found", name)
+		}
+		return []string{name}, nil, nil
+	}
+	wc := routeAction.GetWeightedClusters()
+	if wc == nil {
+		return nil, nil, fmt.Errorf("route has neither a cluster nor weighted clusters to split")
+	}
+	merged := make(map[string]struct{}, len(perSettingClusterNames))
+	for _, name := range perSettingClusterNames {
+		if _, ok := clusterByName[name]; ok {
+			merged[name] = struct{}{}
+			mergedNames = append(mergedNames, name)
+		}
+	}
+	if len(mergedNames) == 0 {
+		return nil, nil, fmt.Errorf("none of the InferencePool clusters %v referenced by route found", perSettingClusterNames)
+	}
+	for _, cw := range wc.Clusters {
+		if _, ok := merged[cw.Name]; !ok {
+			others = append(others, cw)
+		}
+	}
+	return mergedNames, others, nil
 }
 
 // buildInferencePoolWeightedCluster clones original - the single Envoy-Gateway-merged
@@ -1008,13 +1100,14 @@ func buildWeightedInferencePoolRouteAction(
 //     whatever the merged cluster derived from only the first of its pools, so each pool gets its
 //     own correct HTTP/1.1 vs. h2c upstream protocol regardless of what its siblings on the same
 //     rule use. Every other field, such as upstream HTTP filters, is kept as is.
-func buildInferencePoolWeightedCluster(original *clusterv3.Cluster, name string, pool *gwaiev1.InferencePool) (*clusterv3.Cluster, error) {
+func buildInferencePoolWeightedCluster(original *clusterv3.Cluster, name string, pool *gwaiev1.InferencePool, httpRouteName string, routeRuleIndex, backendRefIndex int) (*clusterv3.Cluster, error) {
 	clone, ok := proto.Clone(original).(*clusterv3.Cluster)
 	if !ok {
 		return nil, fmt.Errorf("failed to clone cluster %q", original.Name)
 	}
 	clone.Name = name
 	buildEPPMetadataForCluster(clone, []*gwaiev1.InferencePool{pool})
+	setClusterMetadataBackendName(clone, pool.Namespace, pool.Name, httpRouteName, routeRuleIndex, backendRefIndex)
 	protocolOptions, err := httpProtocolOptionsForInferencePoolBackend(pool)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build protocol options for InferencePool %s/%s: %w", pool.Namespace, pool.Name, err)
