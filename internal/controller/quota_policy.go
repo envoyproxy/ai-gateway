@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
@@ -379,4 +380,16 @@ func (c *QuotaPolicyController) updateQuotaPolicyStatus(ctx context.Context, pol
 		c.logger.Error(err, "failed to update QuotaPolicy status",
 			"namespace", policy.Namespace, "name", policy.Name)
 	}
+}
+
+// TargetNamespace resolves the namespace of a QuotaPolicy target reference.
+// An omitted or empty namespace means the namespace of the QuotaPolicy.
+func TargetNamespace(
+	ref gwapiv1a2.NamespacedPolicyTargetReference,
+	policyNamespace string,
+) string {
+	if ref.Namespace == nil || *ref.Namespace == "" {
+		return policyNamespace
+	}
+	return string(*ref.Namespace)
 }

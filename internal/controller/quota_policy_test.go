@@ -895,6 +895,29 @@ func TestQuotaPolicyController_CrossNamespaceReferenceGrant(t *testing.T) {
 	})
 }
 
+func TestTargetNamespace(t *testing.T) {
+	t.Run("defaults to policy namespace", func(t *testing.T) {
+		ref := gwapiv1a2.NamespacedPolicyTargetReference{Name: "backend"}
+		require.Equal(t, "policy-ns", TargetNamespace(ref, "policy-ns"))
+	})
+
+	t.Run("uses explicit target namespace", func(t *testing.T) {
+		ref := gwapiv1a2.NamespacedPolicyTargetReference{
+			Name:      "backend",
+			Namespace: ptrTo(gwapiv1a2.Namespace("backend-ns")),
+		}
+		require.Equal(t, "backend-ns", TargetNamespace(ref, "policy-ns"))
+	})
+
+	t.Run("treats an empty namespace as omitted", func(t *testing.T) {
+		ref := gwapiv1a2.NamespacedPolicyTargetReference{
+			Name:      "backend",
+			Namespace: ptrTo(gwapiv1a2.Namespace("")),
+		}
+		require.Equal(t, "policy-ns", TargetNamespace(ref, "policy-ns"))
+	})
+}
+
 func ptrTo[T any](v T) *T {
 	return &v
 }
