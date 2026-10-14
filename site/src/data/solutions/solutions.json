@@ -27,7 +27,7 @@
     "name": "Paper Compute Co. Gateways",
     "vendor": "Paper Copute Co.",
     "deployment": "Hosted",
-    "logoUrl": "/img/solutions/papercompute-logo.png",
+    "logoUrl": "/img/solutions/papercompute-logo.svg",
     "url": "https://papercompute.com/",
     "description": "Paper Compute is the AI Gateway for teams that build. Give your organization controlled access to the models they need, get visibility into every request, and optimize token consumption."
   }
