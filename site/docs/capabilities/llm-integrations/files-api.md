@@ -214,7 +214,8 @@ Response:
 ```
 
 The returned `id` is a **gateway-issued** id that encodes the serving backend and model. Use it for
-all subsequent requests.
+all subsequent requests. The id is deterministic: the same file always gets the same id in
+upload, list, retrieve, and delete responses (for the same routing model).
 
 ### List files
 

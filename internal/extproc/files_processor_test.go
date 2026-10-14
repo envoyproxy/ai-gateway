@@ -21,7 +21,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaljson "github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 )
 
 // ---------------------------------------------------------------------------
@@ -29,7 +28,11 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestCodec() idcodec.Codec {
-	return idcodec.NewAESGCMCodec(mcpproxy.NewPBKDF2AesGcmSessionCrypto("proc-test-seed", 4096), nil)
+	c, err := idcodec.NewCodec("proc-test-seed", 4096, "", 0)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 // runtimeConfigWithSchema builds a minimal RuntimeConfig with one backend that has the given schema.
@@ -510,6 +513,34 @@ func TestProcessResponseBody_Upload_ReEncodesID(t *testing.T) {
 	mutatedStr := string(mutated)
 	require.Contains(t, mutatedStr, `"file-`)             // gateway id prefix
 	require.NotContains(t, mutatedStr, "file-native-123") // native id must not be visible
+}
+
+func TestReEncode_StableIDAcrossOperations(t *testing.T) {
+	codec := newTestCodec()
+	newP := func(op filesOperation) *filesProcessor {
+		return &filesProcessor{
+			op: op, codec: codec, logger: slog.Default(),
+			backendKnown: true, backendNamespace: "ns", backendName: "apple", routingModel: "m1",
+		}
+	}
+	idOf := func(resp *extprocv3.ProcessingResponse, path string) string {
+		body := resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody()
+		require.NotEmpty(t, body)
+		var v map[string]any
+		require.NoError(t, internaljson.Unmarshal(body, &v))
+		if path == "list" {
+			return v["data"].([]any)[0].(map[string]any)["id"].(string)
+		}
+		return v["id"].(string)
+	}
+	obj := []byte(`{"id":"file-native-1","object":"file"}`)
+	upload := idOf(newP(filesOpUpload).reEncodeResponse(obj), "")
+	retrieve := idOf(newP(filesOpRetrieve).reEncodeResponse(obj), "")
+	del := idOf(newP(filesOpDelete).reEncodeResponse([]byte(`{"id":"file-native-1","object":"file","deleted":true}`)), "")
+	list := idOf(newP(filesOpList).reEncodeListResponse([]byte(`{"object":"list","data":[{"id":"file-native-1"}],"has_more":false}`)), "list")
+	require.Equal(t, upload, retrieve)
+	require.Equal(t, upload, del)
+	require.Equal(t, upload, list)
 }
 
 func TestReEncodeResponse_RecordsRoutingModel(t *testing.T) {

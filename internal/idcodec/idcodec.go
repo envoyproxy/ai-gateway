@@ -53,14 +53,3 @@ type Codec interface {
 	// ErrInvalidID if the id is unknown, tampered, or malformed.
 	Decode(string) (BackendID, error)
 }
-
-// Crypto is the minimal encryption contract the codec relies on. It is intentionally
-// structurally compatible with mcpproxy.SessionCrypto so the same audited AES-GCM/PBKDF2
-// implementation (and its primary+fallback rotation wrapper) can be reused without an
-// import-level coupling.
-type Crypto interface {
-	// Encrypt encrypts plaintext and returns an opaque (base64) ciphertext string.
-	Encrypt(plaintext string) (string, error)
-	// Decrypt reverses Encrypt, returning the original plaintext.
-	Decrypt(encrypted string) (string, error)
-}

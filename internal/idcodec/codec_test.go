@@ -11,21 +11,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 )
 
 // idCharset matches the OpenAI id charset that gateway ids must stay within.
 var idCharset = regexp.MustCompile(`^(file|batch)-[A-Za-z0-9_-]+$`)
 
-// newCrypto returns a real PBKDF2/AES-GCM Crypto so the authenticated-encryption behavior
-// (tamper rejection, key rotation) is exercised end to end.
-func newCrypto(seed string) Crypto {
-	return mcpproxy.NewPBKDF2AesGcmSessionCrypto(seed, 4096)
+// newCodec returns a real codec with a low PBKDF2 iteration count for fast tests.
+func newCodec(seed, fallbackSeed string) Codec {
+	c, err := NewCodec(seed, 4096, fallbackSeed, 4096)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
-func TestAESGCMCodec_RoundTrip(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_RoundTrip(t *testing.T) {
+	c := newCodec("primary-seed", "")
 
 	for _, tc := range []BackendID{
 		{Namespace: "ns1", Name: "apple", Kind: KindFile, NativeID: "file-abc123"},
@@ -51,8 +52,8 @@ func TestAESGCMCodec_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestAESGCMCodec_EncodeErrors(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_EncodeErrors(t *testing.T) {
+	c := newCodec("primary-seed", "")
 
 	_, err := c.Encode(&BackendID{Namespace: "ns", Name: "b", Kind: "bogus", NativeID: "i"})
 	require.Error(t, err)
@@ -67,8 +68,8 @@ func TestAESGCMCodec_EncodeErrors(t *testing.T) {
 	}
 }
 
-func TestAESGCMCodec_Tamper(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_Tamper(t *testing.T) {
+	c := newCodec("primary-seed", "")
 	id, err := c.Encode(&BackendID{Namespace: "ns1", Name: "apple", Kind: KindFile, NativeID: "file-abc123"})
 	require.NoError(t, err)
 
@@ -82,26 +83,23 @@ func TestAESGCMCodec_Tamper(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidID)
 }
 
-func TestAESGCMCodec_Rotation(t *testing.T) {
-	oldKey := newCrypto("old-seed")
-	newKey := newCrypto("new-seed")
-
-	id, err := NewAESGCMCodec(oldKey, nil).Encode(
+func TestCodec_Rotation(t *testing.T) {
+	id, err := newCodec("old-seed", "").Encode(
 		&BackendID{Namespace: "ns1", Name: "apple", Kind: KindFile, NativeID: "file-abc123"})
 	require.NoError(t, err)
 
 	// New primary with the old key as fallback still decodes ids issued under the old key.
-	out, err := NewAESGCMCodec(newKey, oldKey).Decode(id)
+	out, err := newCodec("new-seed", "old-seed").Decode(id)
 	require.NoError(t, err)
 	require.Equal(t, "file-abc123", out.NativeID)
 
 	// New primary without the old fallback can no longer decode it.
-	_, err = NewAESGCMCodec(newKey, nil).Decode(id)
+	_, err = newCodec("new-seed", "").Decode(id)
 	require.ErrorIs(t, err, ErrInvalidID)
 }
 
-func TestAESGCMCodec_KindPrefixCrossCheck(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_KindPrefixCrossCheck(t *testing.T) {
+	c := newCodec("primary-seed", "")
 	id, err := c.Encode(&BackendID{Namespace: "ns1", Name: "apple", Kind: KindFile, NativeID: "file-abc123"})
 	require.NoError(t, err)
 
@@ -111,8 +109,8 @@ func TestAESGCMCodec_KindPrefixCrossCheck(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidID)
 }
 
-func TestAESGCMCodec_Model(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_Model(t *testing.T) {
+	c := newCodec("primary-seed", "")
 
 	in := BackendID{Namespace: "ns1", Name: "apple", Kind: KindFile, Model: "gpt-4o-mini", NativeID: "file-abc|x"}
 	id, err := c.Encode(&in)
@@ -126,8 +124,8 @@ func TestAESGCMCodec_Model(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestAESGCMCodec_InvalidInputs(t *testing.T) {
-	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+func TestCodec_InvalidInputs(t *testing.T) {
+	c := newCodec("primary-seed", "")
 
 	for _, id := range []string{
 		"",
@@ -148,4 +146,29 @@ func flipChar(b byte) string {
 		return "B"
 	}
 	return "A"
+}
+
+func TestCodec_StableIDs(t *testing.T) {
+	c := newCodec("seed", "")
+	in := &BackendID{Namespace: "ns", Name: "apple", Kind: KindFile, Model: "m", NativeID: "file-1"}
+	a, err := c.Encode(in)
+	require.NoError(t, err)
+	b, err := c.Encode(in)
+	require.NoError(t, err)
+	require.Equal(t, a, b)
+
+	other, err := c.Encode(&BackendID{Namespace: "ns", Name: "apple", Kind: KindFile, Model: "m", NativeID: "file-2"})
+	require.NoError(t, err)
+	require.NotEqual(t, a, other)
+
+	// A different seed cannot decode.
+	_, err = newCodec("other-seed", "").Decode(a)
+	require.ErrorIs(t, err, ErrInvalidID)
+}
+
+func TestNewCodec_EmptySeed(t *testing.T) {
+	_, err := NewCodec("", 1, "", 0)
+	require.Error(t, err)
+	_, err = NewCodec("seed", 1, "", 0)
+	require.NoError(t, err)
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -39,8 +38,11 @@ const filesTestModel = "files-test-model"
 
 // newFilesTestCodec creates the id codec with the default test seed.
 func newFilesTestCodec() idcodec.Codec {
-	return idcodec.NewAESGCMCodec(
-		mcpproxy.NewPBKDF2AesGcmSessionCrypto(filesTestEncryptionSeed, 100_000), nil)
+	c, err := idcodec.NewCodec(filesTestEncryptionSeed, 100_000, "", 0)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 // encodeGatewayID mints a gateway file id encoding the given backend and native id.
@@ -582,4 +584,34 @@ func TestFilesAPI_UpstreamErrorPassThrough(t *testing.T) {
 		return resp.StatusCode == http.StatusBadRequest
 	}, eventuallyTimeout, eventuallyInterval, "expected 400, got %d, body: %s", lastStatus, lastBody)
 	require.JSONEq(t, upstreamErr, string(lastBody))
+}
+
+// TestFilesAPI_StableIDs verifies that the gateway id returned for a file is the same across
+// upload and retrieve.
+func TestFilesAPI_StableIDs(t *testing.T) {
+	env := startTestEnvironment(t, filesTestConfig(), false, false)
+	addr := fmt.Sprintf("http://localhost:%d", env.EnvoyListenerPort())
+	ns1, name1, ok := internalapi.NamespaceAndNameFromBackendName(filesTestBackendName1)
+	require.True(t, ok)
+	nativeID := "file-stable-1"
+	gwID := encodeGatewayID(t, ns1, name1, nativeID)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, addr+"/v1/files/"+gwID, http.NoBody)
+	require.NoError(t, err)
+	req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString(
+		[]byte(fmt.Sprintf(`{"id":%q,"object":"file"}`, nativeID))))
+
+	var lastBody []byte
+	require.Eventually(t, func() bool {
+		resp, doErr := http.DefaultClient.Do(req.Clone(t.Context()))
+		if doErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(resp.Body)
+		lastBody = buf.Bytes()
+		return resp.StatusCode == http.StatusOK
+	}, eventuallyTimeout, eventuallyInterval, "body: %s", lastBody)
+	require.Contains(t, string(lastBody), fmt.Sprintf(`"id":%q`, gwID))
 }
