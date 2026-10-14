@@ -970,7 +970,8 @@ func buildWeightedInferencePoolRouteAction(
 	for _, wp := range weighted {
 		cloneName := fmt.Sprintf("%s/inferencepool/%s/%s", template.Name, wp.pool.Namespace, wp.pool.Name)
 		if _, ok = addedByName[cloneName]; !ok {
-			poolCluster, err := buildInferencePoolWeightedCluster(template, cloneName, wp.pool, httpRouteName, ruleIndex, wp.backendRefIndex)
+			var poolCluster *clusterv3.Cluster
+			poolCluster, err = buildInferencePoolWeightedCluster(template, cloneName, wp.pool, httpRouteName, ruleIndex, wp.backendRefIndex)
 			if err != nil {
 				return nil, err
 			}
