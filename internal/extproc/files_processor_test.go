@@ -438,6 +438,44 @@ func TestProcessResponseBody_UpstreamFilter(t *testing.T) {
 	require.Nil(t, resp.GetResponseBody().GetResponse())
 }
 
+func TestProcessResponseBody_NonSuccessStatus_PassThrough(t *testing.T) {
+	for _, op := range []filesOperation{filesOpUpload, filesOpList, filesOpRetrieve, filesOpDelete} {
+		for _, status := range []string{"400", "401", "404", "502", "503"} {
+			// backendKnown=false mirrors a connect failure, where SetBackend never ran.
+			p := &filesProcessor{
+				op:              op,
+				codec:           newTestCodec(),
+				logger:          slog.Default(),
+				responseHeaders: map[string]string{":status": status},
+			}
+			body := []byte("upstream connect error or disconnect/reset before headers")
+			resp, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{Body: body})
+			require.NoError(t, err)
+			require.Nil(t, resp.GetImmediateResponse(), "op=%d status=%s", op, status)
+			require.Nil(t, resp.GetResponseBody().GetResponse(), "op=%d status=%s", op, status)
+		}
+	}
+}
+
+func TestIsSuccessResponse(t *testing.T) {
+	for _, tc := range []struct {
+		headers map[string]string
+		want    bool
+	}{
+		{nil, true},
+		{map[string]string{}, true},
+		{map[string]string{":status": "200"}, true},
+		{map[string]string{":status": "204"}, true},
+		{map[string]string{":status": "garbage"}, true},
+		{map[string]string{":status": "302"}, false},
+		{map[string]string{":status": "400"}, false},
+		{map[string]string{":status": "502"}, false},
+	} {
+		p := &filesProcessor{responseHeaders: tc.headers}
+		require.Equal(t, tc.want, p.isSuccessResponse(), "headers=%v", tc.headers)
+	}
+}
+
 func TestProcessResponseBody_Content_PassThrough(t *testing.T) {
 	p := &filesProcessor{
 		isUpstreamFilter: false,

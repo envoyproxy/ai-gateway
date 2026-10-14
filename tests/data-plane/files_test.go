@@ -552,3 +552,34 @@ func TestFilesAPI_UploadModelStrippedFromBody(t *testing.T) {
 	}, eventuallyTimeout, eventuallyInterval,
 		"expected 200, got %d", lastStatus)
 }
+
+// TestFilesAPI_UpstreamErrorPassThrough verifies that a non-2xx upstream response is returned to
+// the client with its original status and body, rather than replaced by a re-encode error.
+func TestFilesAPI_UpstreamErrorPassThrough(t *testing.T) {
+	env := startTestEnvironment(t, filesTestConfig(), false, false)
+	addr := fmt.Sprintf("http://localhost:%d", env.EnvoyListenerPort())
+
+	upstreamErr := `{"error":{"message":"Invalid file format","type":"invalid_request_error"}}`
+	body, ct := buildUploadBody(t, filesTestModel)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, addr+"/v1/files", bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", ct)
+	req.Header.Set(testupstreamlib.ResponseStatusKey, "400")
+	req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(upstreamErr)))
+
+	var lastStatus int
+	var lastBody []byte
+	require.Eventually(t, func() bool {
+		resp, doErr := http.DefaultClient.Do(req.Clone(t.Context()))
+		if doErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(resp.Body)
+		lastBody = buf.Bytes()
+		lastStatus = resp.StatusCode
+		return resp.StatusCode == http.StatusBadRequest
+	}, eventuallyTimeout, eventuallyInterval, "expected 400, got %d, body: %s", lastStatus, lastBody)
+	require.JSONEq(t, upstreamErr, string(lastBody))
+}

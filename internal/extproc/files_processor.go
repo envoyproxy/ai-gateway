@@ -319,6 +319,12 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 	if p.isUpstreamFilter {
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
 	}
+	if !p.isSuccessResponse() {
+		// Upstream errors (and Envoy local replies such as "upstream connect error") carry no
+		// file object to re-encode. Pass them through so the client sees the real status and
+		// error body instead of a gateway re-encode failure.
+		return passThroughResponseBody(), nil
+	}
 	switch p.op {
 	case filesOpContent:
 		// File content is raw bytes with no id envelope; pass through unmodified.
@@ -328,6 +334,21 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 	default: // upload, retrieve, delete
 		return p.reEncodeResponse(body.Body), nil
 	}
+}
+
+// isSuccessResponse reports whether the captured upstream response status is 2xx. When the
+// status is unknown (no response headers were captured), the response is treated as successful
+// so the re-encode path still guards against leaking backend-native ids.
+func (p *filesProcessor) isSuccessResponse() bool {
+	status, ok := p.responseHeaders[":status"]
+	if !ok {
+		return true
+	}
+	code, err := strconv.Atoi(status)
+	if err != nil {
+		return true
+	}
+	return code >= 200 && code < 300
 }
 
 // reEncodeResponse rewrites the top-level backend-native "id" in a JSON response into a
