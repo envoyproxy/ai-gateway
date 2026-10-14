@@ -40,7 +40,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/quotapolicy"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -1112,7 +1111,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 		targetsRoute := false
 		authorizedTargets := make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(qp.Spec.TargetRefs))
 		for _, ref := range qp.Spec.TargetRefs {
-			targetNamespace := quotapolicy.TargetNamespace(ref, qp.Namespace)
+			targetNamespace := TargetNamespace(ref, qp.Namespace)
 			if err := c.referenceGrantValidator.validateQuotaPolicyAIServiceBackendReference(
 				ctx, qp.Namespace, targetNamespace, string(ref.Name)); err != nil {
 				continue
@@ -1147,7 +1146,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 			// ext_proc only evaluates the entry matching the serving backend and model,
 			// storing the result under the shared metadata key.
 			for _, ref := range authorizedTargets {
-				backendKey := quotapolicy.TargetNamespace(ref, qp.Namespace) + "/" + string(ref.Name)
+				backendKey := TargetNamespace(ref, qp.Namespace) + "/" + string(ref.Name)
 				dedupeKey := QuotaCostMetadataKey + "\x00" + *pmq.ModelName + "\x00" + backendKey
 				if _, exists := injectedQuotaCosts[dedupeKey]; exists {
 					continue

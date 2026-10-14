@@ -3,8 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package quotapolicy contains shared QuotaPolicy helpers.
-package quotapolicy
+package controller
 
 import gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 

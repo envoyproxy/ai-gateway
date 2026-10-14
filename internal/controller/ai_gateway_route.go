@@ -33,7 +33,6 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/quotapolicy"
 )
 
 const (
@@ -563,7 +562,7 @@ func (c *AIGatewayRouteController) fetchEffectiveQuotaPoliciesForRoute(
 				effective := policy.DeepCopy()
 				effective.Spec.TargetRefs = make([]gwapiv1a2.NamespacedPolicyTargetReference, 0, len(policy.Spec.TargetRefs))
 				for _, target := range policy.Spec.TargetRefs {
-					targetNamespace := quotapolicy.TargetNamespace(target, policy.Namespace)
+					targetNamespace := TargetNamespace(target, policy.Namespace)
 					grantKey := policy.Namespace + "\x00" + targetNamespace + "\x00" + string(target.Name)
 					allowed, ok := grantCache[grantKey]
 					if !ok {

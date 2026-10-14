@@ -18,7 +18,6 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
-	"github.com/envoyproxy/ai-gateway/internal/quotapolicy"
 )
 
 // ReferenceGrantController implements [reconcile.TypedReconciler] for ReferenceGrant.
@@ -187,7 +186,7 @@ func (c *ReferenceGrantController) getAffectedQuotaPolicies(
 			continue
 		}
 		for _, ref := range policy.Spec.TargetRefs {
-			if quotapolicy.TargetNamespace(ref, policy.Namespace) != grantNamespace {
+			if TargetNamespace(ref, policy.Namespace) != grantNamespace {
 				continue
 			}
 			affected = append(affected, policy)

@@ -26,7 +26,6 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
-	"github.com/envoyproxy/ai-gateway/internal/quotapolicy"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
 )
@@ -157,7 +156,7 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	var backends []*aigv1b1.AIServiceBackend
 	var targetErrors []error
 	for _, ref := range policy.Spec.TargetRefs {
-		targetNamespace := quotapolicy.TargetNamespace(ref, policy.Namespace)
+		targetNamespace := TargetNamespace(ref, policy.Namespace)
 		if err := c.referenceGrantValidator.validateQuotaPolicyAIServiceBackendReference(
 			ctx, policy.Namespace, targetNamespace, string(ref.Name)); err != nil {
 			// Validate authorization before reading the remote backend. This
@@ -209,7 +208,7 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	c.configCache[cacheKey] = configs
 	targetKeys := make([]string, 0, len(policy.Spec.TargetRefs))
 	for _, ref := range policy.Spec.TargetRefs {
-		targetKeys = append(targetKeys, fmt.Sprintf("%s.%s", string(ref.Name), quotapolicy.TargetNamespace(ref, policy.Namespace)))
+		targetKeys = append(targetKeys, fmt.Sprintf("%s.%s", string(ref.Name), TargetNamespace(ref, policy.Namespace)))
 	}
 	c.policyBackendKeys[cacheKey] = targetKeys
 	allConfigs := c.getMergedConfigsLocked()
@@ -344,7 +343,7 @@ func (c *QuotaPolicyController) BackendToQuotaPolicy(ctx context.Context, obj cl
 // to re-translate xDS and call PostTranslateModify with the updated QuotaPolicy.
 func (c *QuotaPolicyController) notifyAIGatewayRoutes(ctx context.Context, policy *aigv1a1.QuotaPolicy) {
 	for _, ref := range policy.Spec.TargetRefs {
-		key := namespacedNameIndexKey(string(ref.Name), quotapolicy.TargetNamespace(ref, policy.Namespace))
+		key := namespacedNameIndexKey(string(ref.Name), TargetNamespace(ref, policy.Namespace))
 		var aiGatewayRoutes aigv1b1.AIGatewayRouteList
 		if err := c.client.List(ctx, &aiGatewayRoutes,
 			client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
