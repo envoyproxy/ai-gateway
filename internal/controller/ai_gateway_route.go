@@ -554,7 +554,7 @@ func (c *AIGatewayRouteController) fetchEffectiveQuotaPoliciesForRoute(
 				if !policy.DeletionTimestamp.IsZero() {
 					continue
 				}
-				policyKey := policy.Namespace + "/" + policy.Name
+				policyKey := NamespacedNameKey(policy.Namespace, policy.Name)
 				if _, processed := processedPolicies[policyKey]; processed {
 					continue
 				}

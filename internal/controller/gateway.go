@@ -432,7 +432,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			continue
 		}
 		hasEffectiveRoute = true
-		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
+		routeName := NamespacedNameKey(aiGatewayRoute.Namespace, aiGatewayRoute.Name)
 		hostnames := aiGatewayRoute.Spec.Hostnames
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
@@ -488,7 +488,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 				if !backendRef.IsInferencePool() {
-					b.AIServiceBackendName = backendNamespace + "/" + backendRef.Name
+					b.AIServiceBackendName = NamespacedNameKey(backendNamespace, backendRef.Name)
 				}
 
 				if backendRef.IsCrossNamespace(aiGatewayRoute.Namespace) {
@@ -646,7 +646,7 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 		}
 		hasEffectiveRoute = true
 		mcpRoute := filterapi.MCPRoute{
-			Name:     fmt.Sprintf("%s/%s", route.Namespace, route.Name),
+			Name:     NamespacedNameKey(route.Namespace, route.Name),
 			Backends: []filterapi.MCPBackend{},
 		}
 		for _, b := range route.Spec.BackendRefs {
@@ -1082,7 +1082,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 		if !ok || backendNamespace == "" || backendName == "" {
 			continue
 		}
-		indexKey := backendName + "." + backendNamespace
+		indexKey := namespacedNameIndexKey(backendName, backendNamespace)
 
 		var matches aigv1a1.QuotaPolicyList
 		err := c.client.List(ctx, &matches, client.MatchingFields{
@@ -1096,7 +1096,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 
 		for i := range matches.Items {
 			policy := &matches.Items[i]
-			policyKey := policy.Namespace + "/" + policy.Name
+			policyKey := NamespacedNameKey(policy.Namespace, policy.Name)
 			if _, exists := seenPolicies[policyKey]; exists {
 				continue
 			}
@@ -1146,7 +1146,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 			// ext_proc only evaluates the entry matching the serving backend and model,
 			// storing the result under the shared metadata key.
 			for _, ref := range authorizedTargets {
-				backendKey := TargetNamespace(ref, qp.Namespace) + "/" + string(ref.Name)
+				backendKey := NamespacedNameKey(TargetNamespace(ref, qp.Namespace), string(ref.Name))
 				dedupeKey := QuotaCostMetadataKey + "\x00" + *pmq.ModelName + "\x00" + backendKey
 				if _, exists := injectedQuotaCosts[dedupeKey]; exists {
 					continue

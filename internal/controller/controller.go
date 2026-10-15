@@ -477,6 +477,12 @@ func namespacedNameIndexKey(name, namespace string) string {
 	return fmt.Sprintf("%s.%s", name, namespace)
 }
 
+// NamespacedNameKey returns the "namespace/name" key used for namespaced
+// resource identities.
+func NamespacedNameKey(namespace, name string) string {
+	return fmt.Sprintf("%s/%s", namespace, name)
+}
+
 func aiGatewayRouteIndexFunc(o client.Object) []string {
 	aiGatewayRoute := o.(*aigv1b1.AIGatewayRoute)
 	var ret []string

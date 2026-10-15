@@ -112,7 +112,7 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 		return ctrl.Result{}, nil
 	}
 
-	cacheKey := fmt.Sprintf("%s/%s", quotaPolicy.Namespace, quotaPolicy.Name)
+	cacheKey := NamespacedNameKey(quotaPolicy.Namespace, quotaPolicy.Name)
 	c.mu.RLock()
 	previousTargetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
@@ -203,7 +203,7 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	// Hold the lock across both cache update and UpdateConfigs to prevent
 	// out-of-order execution where a later reconcile's UpdateConfigs could
 	// be overwritten by an earlier one completing after it.
-	cacheKey := fmt.Sprintf("%s/%s", policy.Namespace, policy.Name)
+	cacheKey := NamespacedNameKey(policy.Namespace, policy.Name)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.configCache[cacheKey] = configs
@@ -226,7 +226,7 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 // deleteQuotaPolicyConfig removes a QuotaPolicy's configs from the cache
 // and updates the xDS snapshot.
 func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key client.ObjectKey) error {
-	cacheKey := fmt.Sprintf("%s/%s", key.Namespace, key.Name)
+	cacheKey := NamespacedNameKey(key.Namespace, key.Name)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.configCache, cacheKey)
@@ -241,7 +241,7 @@ func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key
 // notifyQuotaPolicyRoutesOnDeletion uses the last successfully reconciled
 // backend identities so deletion also reaches routes in other namespaces.
 func (c *QuotaPolicyController) notifyQuotaPolicyRoutesOnDeletion(ctx context.Context, key client.ObjectKey) (bool, error) {
-	cacheKey := fmt.Sprintf("%s/%s", key.Namespace, key.Name)
+	cacheKey := NamespacedNameKey(key.Namespace, key.Name)
 	c.mu.RLock()
 	targetKeys := slices.Clone(c.policyBackendKeys[cacheKey])
 	c.mu.RUnlock()
