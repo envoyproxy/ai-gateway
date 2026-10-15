@@ -38,7 +38,7 @@ The following backends support extension fields:
 - **Supported Fields**:
   - `safetySettings`: Configure the safety settings for gemini models that translates to `SafetySetting`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/configure-safety-filters)
   - `thinking`: Configure thinking process for reasoning models that automatically translates to `generationConfig.thinkingConfig`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking)
-  - `generationConfig.thinking_level`: Set the Gemini thinking level (`LOW`, `MEDIUM`, `HIGH`; `MINIMAL` on Flash) directly, translating to `generationConfig.thinkingConfig.thinkingLevel`. It overrides `reasoning_effort` and replaces a `thinking` budget, and it is passed through for any model name, so it also works for models the gateway does not recognize as Gemini 3 or later. Which levels a model accepts is validated by Vertex AI. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking)
+  - `generationConfig.thinking_level`: Set the thinking level (`LOW`, `MEDIUM` or `HIGH`, plus `MINIMAL` on Flash models) that translates to `generationConfig.thinkingConfig.thinkingLevel`. It takes precedence over `reasoning_effort` and a `thinking` budget and is applied for any model name. Vertex AI checks which levels the model supports. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking)
 - **Supported Tools**:
   - `google_search`: Enable Google Search grounding for Gemini models. Configuration options vary by platform: `exclude_domains` and `blocking_confidence` are Vertex AI only, while `time_range_filter` is Gemini API only. [Google Search Grounding Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-google-search)
 
@@ -115,7 +115,7 @@ For more fine-grained control or provider-specific features, you can use the ven
 }
 ```
 
-To set the Gemini thinking level directly, use `generationConfig.thinking_level`:
+To set the Gemini thinking level yourself, use `generationConfig.thinking_level`:
 
 ```json
 {

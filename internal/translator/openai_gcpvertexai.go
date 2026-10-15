@@ -584,8 +584,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 			if gcr.GenerationConfig.ThinkingConfig == nil {
 				gcr.GenerationConfig.ThinkingConfig = &genai.ThinkingConfig{}
 			}
-			// Keep other thinking settings such as IncludeThoughts, but drop a thinking budget:
-			// Gemini rejects requests that set both a budget and a level.
+			// Gemini rejects a request that sets both a thinking budget and a level.
 			gcr.GenerationConfig.ThinkingConfig.ThinkingLevel = vendorGenConfig.ThinkingLevel
 			gcr.GenerationConfig.ThinkingConfig.ThinkingBudget = nil
 		}
