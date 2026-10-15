@@ -2075,6 +2075,12 @@ type GCPVertexAIVendorFields struct {
 type GCPVertexAIGenerationConfig struct {
 	// MediaResolution is to set global media resolution in gemini models: https://ai.google.dev/api/caching#MediaResolution
 	MediaResolution genai.MediaResolution `json:"media_resolution,omitempty"`
+
+	// ThinkingLevel sets generationConfig.thinkingConfig.thinkingLevel directly, e.g. "LOW", "MEDIUM" or "HIGH".
+	// Unlike reasoning_effort it is passed through without model-specific mapping and overrides it,
+	// so it also works for models the gateway does not recognize as Gemini 3+.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking
+	ThinkingLevel genai.ThinkingLevel `json:"thinking_level,omitempty"`
 }
 
 // ReasoningContentUnion content regarding the reasoning that is carried out by the model.
