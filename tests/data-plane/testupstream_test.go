@@ -1298,6 +1298,17 @@ data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCoun
 			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
 		},
 		{
+			name:            "openai - /v1/decisions",
+			backend:         "openai",
+			path:            "/v1/decisions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gpt-6-luna","input":"I was charged twice.","questions":[{"type":"choice","name":"department","instructions":"Route this request.","choices":[{"value":"billing","description":"Billing requests."},{"value":"other","description":"Other requests."}]}]}`,
+			expPath:         "/v1/decisions",
+			responseBody:    `{"answers":[{"type":"choice","name":"department","choice":"billing","probabilities":[{"value":"billing","probability":0.95},{"value":"other","probability":0.05}],"confidence":0.95}],"model":"gpt-6-luna","usage":{"input_tokens":24,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":24}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"answers":[{"type":"choice","name":"department","choice":"billing","probabilities":[{"value":"billing","probability":0.95},{"value":"other","probability":0.05}],"confidence":0.95}],"model":"gpt-6-luna","usage":{"input_tokens":24,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":24}}`,
+		},
+		{
 			name:            "azure-openai - /v1/responses",
 			backend:         "azure-openai",
 			path:            "/v1/responses",
