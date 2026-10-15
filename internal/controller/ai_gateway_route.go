@@ -511,7 +511,7 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 func (c *AIGatewayRouteController) computeQuotaPolicyHash(ctx context.Context, route *aigv1b1.AIGatewayRoute) (string, error) {
 	policies, err := c.fetchEffectiveQuotaPoliciesForRoute(ctx, route)
 	if err != nil {
-		return "", fmt.Errorf("failed to compute QuotaPolicy hash for route %s/%s: %w", route.Namespace, route.Name, err)
+		return "", fmt.Errorf("failed to fetch effective QuotaPolicies for route %s/%s: %w", route.Namespace, route.Name, err)
 	}
 	hash, err := hashQuotaPolicies(policies)
 	if err != nil {

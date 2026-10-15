@@ -29,15 +29,16 @@ import (
 //  2. With a ReferenceGrant the policy is Accepted and per-model quota is enforced.
 func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 	const (
-		redisManifest     = "../../examples/token_ratelimit/redis.yaml"
-		ratelimitManifest = "testdata/ai_gateway_ratelimit.yaml"
-		manifest          = "testdata/backend_quota_cross_namespace.yaml"
-		grantManifest     = "testdata/backend_quota_cross_namespace_grant.yaml"
-		policyNS          = "quota-policy-ns"
-		policyName        = "cross-ns-quota-policy"
-		routeName         = "cross-ns-quota-route"
-		modelName         = "cross-ns-quota-model"
-		egSelector        = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-quota-cross-ns"
+		redisManifest        = "../../examples/token_ratelimit/redis.yaml"
+		rateLimitManifest    = "testdata/ai_gateway_ratelimit.yaml"
+		baseManifest         = "testdata/backend_quota_cross_namespace.yaml"
+		policyNamespace      = "quota-policy-ns"
+		backendNamespace     = "quota-backend-ns"
+		quotaPolicyName      = "cross-ns-quota-policy"
+		quotaPolicyGrantName = "allow-quotapolicy-to-aiservicebackend"
+		routeName            = "cross-ns-quota-route"
+		modelName            = "cross-ns-quota-model"
+		gatewaySelector      = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-quota-cross-ns"
 	)
 
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), redisManifest))
@@ -47,30 +48,26 @@ func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
 
 	// Shared AI Gateway rate limit service (also used by same-namespace QuotaPolicy e2e).
-	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), ratelimitManifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), rateLimitManifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(context.Background(), ratelimitManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), rateLimitManifest)
 	})
 	// Restart so RLS reconnects after Redis is ready (same pattern as token ratelimit e2e).
 	require.NoError(t, e2elib.KubectlRestartDeployment(t.Context(), e2elib.EnvoyGatewayNamespace, "envoy-ai-gateway-ratelimit"))
 	require.NoError(t, e2elib.Kubectl(t.Context(), "rollout", "status",
 		"deployment/envoy-ai-gateway-ratelimit", "-n", e2elib.EnvoyGatewayNamespace, "--timeout=2m").Run())
 
-	// Drop any leftover QuotaPolicy grant from a prior run before applying the base fixture.
-	_ = e2elib.KubectlDeleteManifest(context.Background(), grantManifest)
-
-	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(context.Background(), grantManifest)
-		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), baseManifest)
 	})
 
-	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-	e2elib.RequireWaitForPodReady(t, "quota-backend-ns", "app=cross-ns-quota-testupstream")
+	e2elib.RequireWaitForGatewayPodReady(t, gatewaySelector)
+	e2elib.RequireWaitForPodReady(t, backendNamespace, "app=cross-ns-quota-testupstream")
 
 	doRequest := func(totalTokens int) (int, string) {
 		t.Helper()
-		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, gatewaySelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
@@ -94,51 +91,39 @@ func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 		return resp.StatusCode, string(body)
 	}
 
-	t.Run("without ReferenceGrant policy is NotAccepted and quota is not enforced", func(t *testing.T) {
-		// Re-assert the grant is absent so a prior run cannot leave the policy Accepted.
-		_ = e2elib.KubectlDeleteManifest(context.Background(), grantManifest)
-
+	waitForQuotaPolicy := func(expectedType, expectedReason string) {
+		t.Helper()
 		require.Eventually(t, func() bool {
-			condType, reason := getQuotaPolicyCondition(t, policyNS, policyName)
-			if condType != "NotAccepted" || reason != "RefNotPermitted" {
+			condType, reason := getQuotaPolicyCondition(t, policyNamespace, quotaPolicyName)
+			if condType != expectedType || reason != expectedReason {
 				t.Logf("QuotaPolicy status type=%q reason=%q", condType, reason)
 				return false
 			}
 			return true
 		}, 60*time.Second, 500*time.Millisecond,
-			"expected QuotaPolicy NotAccepted/RefNotPermitted without ReferenceGrant")
+			"expected QuotaPolicy %s/%s", expectedType, expectedReason)
+	}
 
-		// Unauthorized cross-namespace policies must not stamp the generated HTTPRoute.
+	waitForQuotaHash := func(expectedPresent bool) {
+		t.Helper()
 		require.Eventually(t, func() bool {
-			return getHTTPRouteQuotaHash(t, policyNS, routeName) == ""
+			hashPresent := getHTTPRouteQuotaHash(t, policyNamespace, routeName) != ""
+			return hashPresent == expectedPresent
 		}, 30*time.Second, 500*time.Millisecond,
-			"expected no quota-policy-hash annotation without ReferenceGrant")
+			"expected quota-policy-hash present=%t", expectedPresent)
+	}
 
+	assertQuotaNotEnforced := func() {
+		t.Helper()
 		flushQuotaKeys(t)
 		status, body := doRequest(20)
 		require.Equal(t, http.StatusOK, status, "body: %s", body)
 		status, body = doRequest(20)
 		require.Equal(t, http.StatusOK, status, "body: %s", body)
-		// Second request succeeding is the enforcement check; without a grant the
-		// policy must not rate-limit even after consuming more than the limit.
-	})
+	}
 
-	t.Run("with ReferenceGrant policy is Accepted and quota is enforced", func(t *testing.T) {
-		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), grantManifest))
-
-		require.Eventually(t, func() bool {
-			condType, reason := getQuotaPolicyCondition(t, policyNS, policyName)
-			return condType == "Accepted" && reason == "ReconciliationSucceeded"
-		}, 30*time.Second, 500*time.Millisecond,
-			"expected QuotaPolicy Accepted after applying ReferenceGrant")
-
-		require.Eventually(t, func() bool {
-			return getHTTPRouteQuotaHash(t, policyNS, routeName) != ""
-		}, 30*time.Second, 500*time.Millisecond,
-			"expected quota-policy-hash annotation after ReferenceGrant")
-
-		// Envoy/RLS may need a few translate cycles after the hash stamp before
-		// response-path charging is active; retry until Redis reflects usage.
+	assertQuotaEnforced := func() {
+		t.Helper()
 		require.Eventually(t, func() bool {
 			flushQuotaKeys(t)
 			status, body := doRequest(20)
@@ -152,11 +137,48 @@ func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 				return false
 			}
 			return true
-		}, 90*time.Second, 2*time.Second, "quota was not charged after ReferenceGrant")
+		}, 90*time.Second, 2*time.Second, "quota was not charged")
 
 		status, body := doRequest(5)
 		require.Equal(t, http.StatusTooManyRequests, status, "body: %s", body)
 		requireQuotaUsage(t, modelName, 20)
+	}
+
+	deleteQuotaPolicyGrant := func() {
+		t.Helper()
+		require.NoError(t, e2elib.Kubectl(t.Context(), "delete", "referencegrant",
+			quotaPolicyGrantName, "-n", backendNamespace, "--ignore-not-found").Run())
+	}
+
+	t.Run("without QuotaPolicy ReferenceGrant", func(t *testing.T) {
+		deleteQuotaPolicyGrant()
+		waitForQuotaPolicy("NotAccepted", "RefNotPermitted")
+		waitForQuotaHash(false)
+		assertQuotaNotEnforced()
+	})
+
+	t.Run("grant restores enforcement", func(t *testing.T) {
+		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
+		waitForQuotaPolicy("Accepted", "ReconciliationSucceeded")
+		waitForQuotaHash(true)
+		assertQuotaEnforced()
+	})
+
+	t.Run("deleting policy removes enforcement", func(t *testing.T) {
+		require.NoError(t, e2elib.Kubectl(t.Context(), "delete", "quotapolicy",
+			quotaPolicyName, "-n", policyNamespace).Run())
+		require.Eventually(t, func() bool {
+			return !quotaPolicyExists(t, policyNamespace, quotaPolicyName)
+		}, 30*time.Second, 500*time.Millisecond, "QuotaPolicy was not deleted")
+		waitForQuotaHash(false)
+		assertQuotaNotEnforced()
+	})
+
+	t.Run("recreating policy restores enforcement", func(t *testing.T) {
+		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
+		waitForQuotaPolicy("Accepted", "ReconciliationSucceeded")
+		waitForQuotaHash(true)
+		assertQuotaEnforced()
 	})
 }
 
@@ -177,6 +199,12 @@ func getQuotaPolicyCondition(t *testing.T, namespace, name string) (condType, re
 	require.NoError(t, err, "failed to get QuotaPolicy %s/%s condition reason", namespace, name)
 
 	return strings.TrimSpace(string(typeOut)), strings.TrimSpace(string(reasonOut))
+}
+
+func quotaPolicyExists(t *testing.T, namespace, name string) bool {
+	t.Helper()
+	return exec.CommandContext(t.Context(), "kubectl", "get", "quotapolicy", name,
+		"-n", namespace).Run() == nil
 }
 
 // peekQuotaUsage is a non-fatal Redis quota counter read for use inside Eventually polls.

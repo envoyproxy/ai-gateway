@@ -7,7 +7,8 @@
 # - Gateway/AIGatewayRoute/QuotaPolicy live in quota-policy-ns
 # - AIServiceBackend/Backend/testupstream live in quota-backend-ns
 # Route→backend ReferenceGrants are always present so traffic can flow.
-# The QuotaPolicy→AIServiceBackend ReferenceGrant is applied separately by the test.
+# The test deletes and reapplies the QuotaPolicy→AIServiceBackend ReferenceGrant
+# to cover both denied and authorized policy references.
 
 apiVersion: v1
 kind: Namespace
@@ -88,6 +89,22 @@ spec:
   to:
     - group: gateway.envoyproxy.io
       kind: Backend
+---
+# Allow the QuotaPolicy in quota-policy-ns to reference the AIServiceBackend
+# in quota-backend-ns. The test deletes this grant to verify the denied case.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-quotapolicy-to-aiservicebackend
+  namespace: quota-backend-ns
+spec:
+  from:
+    - group: aigateway.envoyproxy.io
+      kind: QuotaPolicy
+      namespace: quota-policy-ns
+  to:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
