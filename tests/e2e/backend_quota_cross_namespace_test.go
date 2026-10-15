@@ -150,21 +150,21 @@ func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 			quotaPolicyGrantName, "-n", backendNamespace, "--ignore-not-found").Run())
 	}
 
-	t.Run("without QuotaPolicy ReferenceGrant", func(t *testing.T) {
+	t.Run("without QuotaPolicy ReferenceGrant", func(_ *testing.T) {
 		deleteQuotaPolicyGrant()
 		waitForQuotaPolicy("NotAccepted", "RefNotPermitted")
 		waitForQuotaHash(false)
 		assertQuotaNotEnforced()
 	})
 
-	t.Run("grant restores enforcement", func(t *testing.T) {
+	t.Run("grant restores enforcement", func(_ *testing.T) {
 		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
 		waitForQuotaPolicy("Accepted", "ReconciliationSucceeded")
 		waitForQuotaHash(true)
 		assertQuotaEnforced()
 	})
 
-	t.Run("deleting policy removes enforcement", func(t *testing.T) {
+	t.Run("deleting policy removes enforcement", func(_ *testing.T) {
 		require.NoError(t, e2elib.Kubectl(t.Context(), "delete", "quotapolicy",
 			quotaPolicyName, "-n", policyNamespace).Run())
 		require.Eventually(t, func() bool {
@@ -174,7 +174,7 @@ func Test_Examples_BackendQuotaCrossNamespace(t *testing.T) {
 		assertQuotaNotEnforced()
 	})
 
-	t.Run("recreating policy restores enforcement", func(t *testing.T) {
+	t.Run("recreating policy restores enforcement", func(_ *testing.T) {
 		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
 		waitForQuotaPolicy("Accepted", "ReconciliationSucceeded")
 		waitForQuotaHash(true)
