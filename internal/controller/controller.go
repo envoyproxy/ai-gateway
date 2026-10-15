@@ -400,7 +400,7 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		if ref.Namespace != nil && *ref.Namespace != "" {
 			namespace = string(*ref.Namespace)
 		}
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
+		ret = append(ret, namespacedNameIndexKey(string(ref.Name), namespace))
 	}
 	return ret
 }
@@ -418,7 +418,7 @@ func mcpRouteToReferencedSecret(o client.Object) []string {
 		if apiKeyRef.Namespace != nil && *apiKeyRef.Namespace != "" {
 			namespace = string(*apiKeyRef.Namespace)
 		}
-		ret = append(ret, fmt.Sprintf("%s.%s", apiKeyRef.Name, namespace))
+		ret = append(ret, namespacedNameIndexKey(string(apiKeyRef.Name), namespace))
 	}
 	return ret
 }
@@ -428,7 +428,7 @@ func httpRouteToOwnerMCPRouteIndexFunc(o client.Object) []string {
 	if owner == nil || owner.Kind != "MCPRoute" {
 		return nil
 	}
-	return []string{fmt.Sprintf("%s.%s", owner.Name, o.GetNamespace())}
+	return []string{namespacedNameIndexKey(owner.Name, o.GetNamespace())}
 }
 
 func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
@@ -450,9 +450,16 @@ func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		if ref.Namespace != nil && *ref.Namespace != "" {
 			namespace = string(*ref.Namespace)
 		}
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
+		ret = append(ret, namespacedNameIndexKey(string(ref.Name), namespace))
 	}
 	return ret
+}
+
+// namespacedNameIndexKey returns the "name.namespace" key used by the controller's field indexes.
+// Both the index producers (the IndexFunc implementations) and the consumers (List calls with
+// MatchingFields) must build the key identically, so they all go through this helper.
+func namespacedNameIndexKey(name, namespace string) string {
+	return fmt.Sprintf("%s.%s", name, namespace)
 }
 
 func aiGatewayRouteIndexFunc(o client.Object) []string {
@@ -462,7 +469,7 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 		for _, backend := range rule.BackendRefs {
 			// Use the namespace from the backend reference, or default to the route's namespace
 			backendNamespace := backend.GetNamespace(aiGatewayRoute.Namespace)
-			key := fmt.Sprintf("%s.%s", backend.Name, backendNamespace)
+			key := namespacedNameIndexKey(backend.Name, backendNamespace)
 			ret = append(ret, key)
 		}
 	}
@@ -473,7 +480,7 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 	backendSecurityPolicy := o.(*aigv1b1.BackendSecurityPolicy)
 	var key string
 	if name, namespace, ok := backendSecurityPolicySecretRef(backendSecurityPolicy); ok {
-		key = fmt.Sprintf("%s.%s", name, namespace)
+		key = namespacedNameIndexKey(name, namespace)
 	} else {
 		switch backendSecurityPolicy.Spec.Type {
 		case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
@@ -529,7 +536,7 @@ func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
 	backendSecurityPolicy := o.(*aigv1b1.BackendSecurityPolicy)
 	var ret []string
 	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
-		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
+		ret = append(ret, namespacedNameIndexKey(string(targetRef.Name), backendSecurityPolicy.Namespace))
 	}
 	return ret
 }
@@ -538,7 +545,7 @@ func quotaPolicyTargetRefsIndexFunc(o client.Object) []string {
 	quotaPolicy := o.(*aigv1a1.QuotaPolicy)
 	var ret []string
 	for _, targetRef := range quotaPolicy.Spec.TargetRefs {
-		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, quotaPolicy.Namespace))
+		ret = append(ret, namespacedNameIndexKey(string(targetRef.Name), quotaPolicy.Namespace))
 	}
 	return ret
 }
