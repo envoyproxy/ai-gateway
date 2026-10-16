@@ -96,13 +96,12 @@ type filesProcessor struct {
 	// processing (which is handled at the router filter level).
 	op filesOperation
 	// backend identifies the owning backend used to (re-)encode response ids; nil means unknown.
-	// It is set only by SetBackend from the LB-selected backend, so a non-nil backend also
-	// implies translator is set.
+	// It is set only by SetBackend from the LB-selected backend.
 	backend *backendKey
 	// decodedBackend is set when the backend was decoded from a request id (retrieve/content/
 	// delete, or a list "after" id). SetBackend verifies the route-selected backend matches it.
 	decodedBackend *backendKey
-	// routingModel is the model used to route the request. It is recorded in the gateway ids
+	// routingModel is the model used to route the request. It is recorded in the file ids
 	// minted for responses so follow-up requests on those ids match the same route.
 	routingModel string
 
@@ -147,8 +146,7 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 
 // handleListRequestHeaders sets up routing for GET /v1/files.
 //
-// A list request carries no model, so it is routed by the "?model=" query parameter (an AI Gateway
-// routing extension mirroring the upload multipart model field). When "after" carries a gateway
+// A list request carries no model, so it is routed by the "?model=" query parameter. When "after" carries a gateway
 // file id (stock SDK pagination passes after=data[-1].id), the model recorded in that id is used
 // when "?model=" is absent, and "after" is rewritten to the backend-native id. The routing-only
 // "model" parameter is never forwarded upstream.
