@@ -20,7 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	internaljson "github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // ---------------------------------------------------------------------------
@@ -523,7 +523,7 @@ func TestReEncode_StableIDAcrossOperations(t *testing.T) {
 		body := resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody()
 		require.NotEmpty(t, body)
 		var v map[string]any
-		require.NoError(t, internaljson.Unmarshal(body, &v))
+		require.NoError(t, json.Unmarshal(body, &v))
 		if path == "list" {
 			return v["data"].([]any)[0].(map[string]any)["id"].(string)
 		}
@@ -550,7 +550,7 @@ func TestReEncodeResponse_RecordsRoutingModel(t *testing.T) {
 	}
 	resp := p.reEncodeResponse([]byte(`{"id":"file-native-1","object":"file"}`))
 	var out openai.FileObject
-	require.NoError(t, internaljson.Unmarshal(resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody(), &out))
+	require.NoError(t, json.Unmarshal(resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody(), &out))
 	decoded, err := codec.Decode(out.ID)
 	require.NoError(t, err)
 	require.Equal(t, idcodec.BackendID{Namespace: "ns", Name: "apple", Kind: idcodec.KindFile, Model: "gpt-4o-mini", NativeID: "file-native-1"}, decoded)
