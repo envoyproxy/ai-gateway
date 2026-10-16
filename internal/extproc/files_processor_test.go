@@ -281,10 +281,8 @@ func TestProcessRequestHeaders_Retrieve_ValidID(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, resp.GetImmediateResponse())
 	require.Equal(t, filesOpRetrieve, p.op)
-	require.True(t, p.backendKnown)
 	require.Equal(t, &backendKey{namespace: "ns", name: "apple"}, p.decodedBackend)
-	require.Equal(t, "ns", p.backendNamespace)
-	require.Equal(t, "apple", p.backendName)
+	require.Nil(t, p.backend) // set only by SetBackend
 
 	// Path rewritten to native id.
 	newPath, ok := responseHeaderValue(resp, ":path")
@@ -444,7 +442,7 @@ func TestProcessResponseBody_UpstreamFilter(t *testing.T) {
 func TestProcessResponseBody_NonSuccessStatus_PassThrough(t *testing.T) {
 	for _, op := range []filesOperation{filesOpUpload, filesOpList, filesOpRetrieve, filesOpDelete} {
 		for _, status := range []string{"400", "401", "404", "502", "503"} {
-			// backendKnown=false mirrors a connect failure, where SetBackend never ran.
+			// backend=nil mirrors a connect failure, where SetBackend never ran.
 			p := &filesProcessor{
 				op:              op,
 				codec:           newTestCodec(),
@@ -498,9 +496,7 @@ func TestProcessResponseBody_Upload_ReEncodesID(t *testing.T) {
 		op:               filesOpUpload,
 		codec:            codec,
 		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		backend:          &backendKey{namespace: "ns", name: "apple"},
 	}
 	body := []byte(`{"id":"file-native-123","object":"file","bytes":100,"purpose":"batch"}`)
 	resp, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{Body: body})
@@ -520,7 +516,7 @@ func TestReEncode_StableIDAcrossOperations(t *testing.T) {
 	newP := func(op filesOperation) *filesProcessor {
 		return &filesProcessor{
 			op: op, codec: codec, logger: slog.Default(),
-			backendKnown: true, backendNamespace: "ns", backendName: "apple", routingModel: "m1",
+			backend: &backendKey{namespace: "ns", name: "apple"}, routingModel: "m1",
 		}
 	}
 	idOf := func(resp *extprocv3.ProcessingResponse, path string) string {
@@ -546,13 +542,11 @@ func TestReEncode_StableIDAcrossOperations(t *testing.T) {
 func TestReEncodeResponse_RecordsRoutingModel(t *testing.T) {
 	codec := newTestCodec()
 	p := &filesProcessor{
-		op:               filesOpUpload,
-		codec:            codec,
-		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
-		routingModel:     "gpt-4o-mini",
+		op:           filesOpUpload,
+		codec:        codec,
+		logger:       slog.Default(),
+		backend:      &backendKey{namespace: "ns", name: "apple"},
+		routingModel: "gpt-4o-mini",
 	}
 	resp := p.reEncodeResponse([]byte(`{"id":"file-native-1","object":"file"}`))
 	var out openai.FileObject
@@ -571,9 +565,7 @@ func TestProcessResponseBody_List_ReEncodes(t *testing.T) {
 		codec:            codec,
 		config:           config,
 		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		backend:          &backendKey{namespace: "ns", name: "apple"},
 	}
 	body := []byte(`{"object":"list","data":[{"id":"nat-1"}],"has_more":false}`)
 	resp, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{Body: body})
@@ -588,13 +580,13 @@ func TestProcessResponseBody_List_ReEncodes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReEncodeResponse_BackendUnknown(t *testing.T) {
-	p := &filesProcessor{logger: slog.Default(), backendKnown: false}
+	p := &filesProcessor{logger: slog.Default()}
 	resp := p.reEncodeResponse([]byte(`{"id":"native-1"}`))
 	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestReEncodeResponse_EmptyBody(t *testing.T) {
-	p := &filesProcessor{logger: slog.Default(), backendKnown: true}
+	p := &filesProcessor{logger: slog.Default(), backend: &backendKey{namespace: "ns", name: "apple"}}
 	resp := p.reEncodeResponse([]byte{})
 	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
@@ -602,11 +594,9 @@ func TestReEncodeResponse_EmptyBody(t *testing.T) {
 func TestReEncodeResponse_NoIDField(t *testing.T) {
 	codec := newTestCodec()
 	p := &filesProcessor{
-		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
-		codec:            codec,
+		logger:  slog.Default(),
+		backend: &backendKey{namespace: "ns", name: "apple"},
+		codec:   codec,
 	}
 	resp := p.reEncodeResponse([]byte(`{"object":"file","bytes":100}`))
 	// No "id" field → 502, not a silent passthrough.
@@ -616,11 +606,9 @@ func TestReEncodeResponse_NoIDField(t *testing.T) {
 func TestReEncodeResponse_Success(t *testing.T) {
 	codec := newTestCodec()
 	p := &filesProcessor{
-		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
-		codec:            codec,
+		logger:  slog.Default(),
+		backend: &backendKey{namespace: "ns", name: "apple"},
+		codec:   codec,
 	}
 	resp := p.reEncodeResponse([]byte(`{"id":"file-nat1","object":"file"}`))
 	mutated := resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody()
@@ -684,12 +672,12 @@ func TestSetBackend_MultipleBackendsInRule_Error(t *testing.T) {
 	backend := config.Backends[internalapi.PerRouteRuleRefBackendName("ns", "apple", "myroute", 0, 0)]
 	err := upstreamProcessor.SetBackend(context.Background(), backend, "myroute", routeProcessor)
 	require.ErrorContains(t, err, "exactly one backend per route rule")
-	require.False(t, routeProcessor.backendKnown)
+	require.Nil(t, routeProcessor.backend)
 
 	// A single-backend rule in the same config is accepted.
 	backend = config.Backends[internalapi.PerRouteRuleRefBackendName("ns", "cherry", "otherroute", 0, 2)]
 	require.NoError(t, upstreamProcessor.SetBackend(context.Background(), backend, "otherroute", routeProcessor))
-	require.Equal(t, "cherry", routeProcessor.backendName)
+	require.Equal(t, "cherry", routeProcessor.backend.name)
 }
 
 func TestRouteRuleKey(t *testing.T) {
@@ -733,9 +721,7 @@ func TestSetBackend_SetsBackend(t *testing.T) {
 	}
 	err := upstreamProcessor.SetBackend(context.Background(), newBackend, "myroute", routeProcessor)
 	require.NoError(t, err)
-	require.Equal(t, "apple", routeProcessor.backendName)
-	require.Equal(t, "ns", routeProcessor.backendNamespace)
-	require.True(t, routeProcessor.backendKnown)
+	require.Equal(t, &backendKey{namespace: "ns", name: "apple"}, routeProcessor.backend)
 }
 
 func TestSetBackend_WrongRouteProcessorType_Panics(t *testing.T) {
@@ -811,13 +797,11 @@ func TestReEncodeResponse_WithResponseHeaders(t *testing.T) {
 	codec := newTestCodec()
 	openAISchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 	p := &filesProcessor{
-		logger:           slog.Default(),
-		op:               filesOpRetrieve,
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
-		codec:            codec,
-		responseHeaders:  map[string]string{"content-type": "application/json"},
+		logger:          slog.Default(),
+		op:              filesOpRetrieve,
+		backend:         &backendKey{namespace: "ns", name: "apple"},
+		codec:           codec,
+		responseHeaders: map[string]string{"content-type": "application/json"},
 	}
 	require.NoError(t, p.resolveTranslator(openAISchema))
 
@@ -840,11 +824,9 @@ func (errEncodeCodec) Decode(string) (idcodec.BackendID, error) {
 
 func TestReEncodeResponse_EncodeFailure_Returns502(t *testing.T) {
 	p := &filesProcessor{
-		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
-		codec:            errEncodeCodec{},
+		logger:  slog.Default(),
+		backend: &backendKey{namespace: "ns", name: "apple"},
+		codec:   errEncodeCodec{},
 	}
 	resp := p.reEncodeResponse([]byte(`{"id":"file-native-secret","object":"file"}`))
 	// A controlled 502 error is returned rather than leaking the native id.
@@ -855,12 +837,10 @@ func TestReEncodeResponse_EncodeFailure_Returns502(t *testing.T) {
 func TestReEncodeListResponse_EncodeFailure_Returns502(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := &filesProcessor{
-		codec:            errEncodeCodec{},
-		config:           config,
-		logger:           slog.Default(),
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		codec:   errEncodeCodec{},
+		config:  config,
+		logger:  slog.Default(),
+		backend: &backendKey{namespace: "ns", name: "apple"},
 	}
 	resp := p.reEncodeListResponse([]byte(`{"object":"list","data":[{"id":"file-native-secret","object":"file"}]}`))
 	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
@@ -875,13 +855,11 @@ func TestReEncodeListResponse_ReencodesFirstID(t *testing.T) {
 	codec := newTestCodec()
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := &filesProcessor{
-		codec:            codec,
-		config:           config,
-		logger:           slog.Default(),
-		op:               filesOpList,
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		codec:   codec,
+		config:  config,
+		logger:  slog.Default(),
+		op:      filesOpList,
+		backend: &backendKey{namespace: "ns", name: "apple"},
 	}
 
 	body := []byte(`{"object":"list","data":[{"id":"nat-1"}],"has_more":false,"first_id":"nat-1","last_id":"nat-1"}`)
@@ -898,13 +876,11 @@ func TestReEncodeListResponse_TerminalPage_ReencodesLastID(t *testing.T) {
 	codec := newTestCodec()
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := &filesProcessor{
-		codec:            codec,
-		config:           config,
-		logger:           slog.Default(),
-		op:               filesOpList,
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		codec:   codec,
+		config:  config,
+		logger:  slog.Default(),
+		op:      filesOpList,
+		backend: &backendKey{namespace: "ns", name: "apple"},
 	}
 	body := []byte(`{"object":"list","data":[{"id":"nat-1"}],"has_more":false,"last_id":"nat-1"}`)
 	resp := p.reEncodeListResponse(body)
@@ -920,13 +896,11 @@ func TestReEncodeListResponse_EmptyData_Passthrough(t *testing.T) {
 	codec := newTestCodec()
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := &filesProcessor{
-		codec:            codec,
-		config:           config,
-		logger:           slog.Default(),
-		op:               filesOpList,
-		backendKnown:     true,
-		backendNamespace: "ns",
-		backendName:      "apple",
+		codec:   codec,
+		config:  config,
+		logger:  slog.Default(),
+		op:      filesOpList,
+		backend: &backendKey{namespace: "ns", name: "apple"},
 	}
 	body := []byte(`{"object":"list","data":[],"has_more":false}`)
 	resp := p.reEncodeListResponse(body)
@@ -956,10 +930,16 @@ func TestStripMultipartField_FieldAbsent(t *testing.T) {
 	require.Contains(t, string(stripped), "purpose")
 }
 
-func TestRewriteAfterParam(t *testing.T) {
-	require.Equal(t, "/v1/files?after=native-1&limit=2", rewriteAfterParam("/v1/files?limit=2", "native-1"))
-	require.Equal(t, "/v1/files?limit=2", rewriteAfterParam("/v1/files?limit=2&after=old", ""))
-	require.Equal(t, "/v1/files", rewriteAfterParam("/v1/files", ""))
+func TestSetQueryParam(t *testing.T) {
+	require.Equal(t, "/v1/files?after=native-1&limit=2", setQueryParam("/v1/files?limit=2", "after", "native-1"))
+	require.Equal(t, "/v1/files?limit=2", setQueryParam("/v1/files?limit=2&after=old", "after", ""))
+	require.Equal(t, "/v1/files", setQueryParam("/v1/files", "after", ""))
+	// Removing an absent parameter leaves the path (and its original encoding) untouched.
+	require.Equal(t, "/v1/files?b=1&a=2", setQueryParam("/v1/files?b=1&a=2", "model", ""))
+	require.Equal(t, "/v1/files?limit=2", setQueryParam("/v1/files?model=m1&limit=2", "model", ""))
+	require.Equal(t, "/v1/files", setQueryParam("/v1/files?model=m1", "model", ""))
+	// A malformed query is returned unchanged.
+	require.Equal(t, "/v1/files?%zz", setQueryParam("/v1/files?%zz", "after", "x"))
 }
 
 // ---------------------------------------------------------------------------

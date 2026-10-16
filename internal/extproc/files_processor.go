@@ -28,7 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	internaljson "github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -56,9 +56,9 @@ const (
 // NewFilesProcessorFactory returns a [ProcessorFactory] for the OpenAI Files API endpoints
 // ("/v1/files", "/v1/files/{id}", "/v1/files/{id}/content"), using the given backend id codec.
 //
-// Files routing currently supports exactly one backend per route: a request is routed by the
-// normal route matching (optionally keyed by the multipart/query `model` routing extension), and
-// it is rejected if the matched route resolves to more than one backend.
+// Requests are routed by model. Uploads must send a `model` form field and list requests a
+// `?model=` query parameter; other requests use the model stored in the file id. Each route
+// must resolve to exactly one backend.
 //
 //   - Upload: the response id is rewritten to a gateway id encoding the serving backend.
 //   - Retrieve/content/delete: the gateway id in the path is decoded and the path rewritten to the
@@ -95,23 +95,16 @@ type filesProcessor struct {
 	// Router-side state, established during request processing and consumed during response
 	// processing (which is handled at the router filter level).
 	op filesOperation
-	// uploadModel is the model extracted from the upload multipart body, used in error messages
-	// when the backend is unknown (e.g. no route matched the model name).
-	uploadModel string
-	// backendNamespace/backendName identify the owning backend used to (re-)encode response ids.
-	// They are set either by decoding the request id (retrieve/content/delete) or, for
-	// upload/list which have no id to decode, by SetBackend from the LB-selected backend.
-	backendNamespace string
-	backendName      string
-	backendKnown     bool
+	// backend identifies the owning backend used to (re-)encode response ids; nil means unknown.
+	// It is set only by SetBackend from the LB-selected backend, so a non-nil backend also
+	// implies translator is set.
+	backend *backendKey
 	// decodedBackend is set when the backend was decoded from a request id (retrieve/content/
 	// delete, or a list "after" id). SetBackend verifies the route-selected backend matches it.
 	decodedBackend *backendKey
 	// routingModel is the model used to route the request. It is recorded in the gateway ids
 	// minted for responses so follow-up requests on those ids match the same route.
 	routingModel string
-	// nativeID is the backend-native id decoded from the request path (retrieve/content/delete).
-	nativeID string
 
 	// translator is the resolved per-operation translator for the backend schema. It is set at
 	// the router filter level by resolveTranslator, called in handleIDBearingRequestHeaders
@@ -144,16 +137,7 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 	switch op {
 	case filesOpUpload:
 		// Routing depends on the multipart body; defer to ProcessRequestBody.
-		// Preserve the original path so the upstream filter resolves this processor.
-		headerMutation := &extprocv3.HeaderMutation{}
-		setHeader(headerMutation, originalPathHeader, path)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_RequestHeaders{
-				RequestHeaders: &extprocv3.HeadersResponse{
-					Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
-				},
-			},
-		}, nil
+		return requestHeadersResponse(p.newRequestHeaderMutation(), false), nil
 	case filesOpList:
 		return p.handleListRequestHeaders()
 	default: // retrieve, content, delete
@@ -170,11 +154,10 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 // "model" parameter is never forwarded upstream.
 func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingResponse, error) {
 	path := p.requestHeaders[":path"]
-	headerMutation := &extprocv3.HeaderMutation{}
-	setHeader(headerMutation, originalPathHeader, path)
+	headerMutation := p.newRequestHeaderMutation()
 
 	model := queryParam(path, "model")
-	upstreamPath := stripQueryParam(path, "model")
+	upstreamPath := setQueryParam(path, "model", "")
 
 	if after := queryParam(path, "after"); after != "" {
 		decoded, err := p.codec.Decode(after)
@@ -186,27 +169,16 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 		if model == "" {
 			model = decoded.Model
 		}
-		upstreamPath = rewriteAfterParam(upstreamPath, decoded.NativeID)
+		upstreamPath = setQueryParam(upstreamPath, "after", decoded.NativeID)
 	}
 
 	if model == "" {
 		p.logger.Error("list files request is missing the required model query parameter", slog.String("path", path))
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "the 'model' query parameter is required"), nil
 	}
-	p.routingModel = model
-	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
-	p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
+	p.routeByModel(headerMutation, model)
 	setHeader(headerMutation, ":path", upstreamPath)
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestHeaders{
-			RequestHeaders: &extprocv3.HeadersResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}, nil
+	return requestHeadersResponse(headerMutation, true), nil
 }
 
 // handleIDBearingRequestHeaders decodes a gateway-issued id in the path, routes the request by
@@ -220,31 +192,46 @@ func (p *filesProcessor) handleIDBearingRequestHeaders(op filesOperation, gatewa
 		return createUserFacingErrorResponse(http.StatusNotFound, "NotFoundError", fmt.Sprintf("No such File object: %s", gatewayID)), nil
 	}
 	p.decodedBackend = &backendKey{namespace: decoded.Namespace, name: decoded.Name}
-	p.backendNamespace = decoded.Namespace
-	p.backendName = decoded.Name
-	p.backendKnown = true
 	p.routingModel = decoded.Model
-	p.nativeID = decoded.NativeID
 
-	headerMutation := &extprocv3.HeaderMutation{}
+	headerMutation := p.newRequestHeaderMutation()
 	setHeader(headerMutation, ":path", p.rewrittenPath(op, decoded.NativeID))
-	// Preserve the original (gateway-id) path so the upstream filter resolves this processor.
-	setHeader(headerMutation, originalPathHeader, p.requestHeaders[":path"])
 	if decoded.Model != "" {
 		// Route by the model the file was created under, so the request matches the same route.
-		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, decoded.Model)
-		p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = decoded.Model
+		p.routeByModel(headerMutation, decoded.Model)
 	}
+	return requestHeadersResponse(headerMutation, true), nil
+}
+
+// newRequestHeaderMutation returns a header mutation that preserves the original (client-facing)
+// request path in originalPathHeader, so the upstream filter resolves this processor. Every
+// request-phase mutation emitted by the router filter starts from it.
+func (p *filesProcessor) newRequestHeaderMutation() *extprocv3.HeaderMutation {
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, originalPathHeader, p.requestHeaders[":path"])
+	return headerMutation
+}
+
+// routeByModel records model as the routing model and sets the model header used for route
+// matching, both on the outgoing mutation and on the locally tracked request headers.
+func (p *filesProcessor) routeByModel(headerMutation *extprocv3.HeaderMutation, model string) {
+	p.routingModel = model
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
+	p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
+}
+
+// requestHeadersResponse wraps a header mutation in a request-headers processing response.
+func requestHeadersResponse(headerMutation *extprocv3.HeaderMutation, clearRouteCache bool) *extprocv3.ProcessingResponse {
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
 				Response: &extprocv3.CommonResponse{
 					HeaderMutation:  headerMutation,
-					ClearRouteCache: true,
+					ClearRouteCache: clearRouteCache,
 				},
 			},
 		},
-	}, nil
+	}
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody]. Only the upload operation has a
@@ -254,9 +241,7 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}, nil
 	}
 
-	headerMutation := &extprocv3.HeaderMutation{}
-	// Preserve the original path so the upstream filter resolves this processor.
-	setHeader(headerMutation, originalPathHeader, p.requestHeaders[":path"])
+	headerMutation := p.newRequestHeaderMutation()
 
 	boundary := multipartBoundary(p.requestHeaders["content-type"])
 	model := ""
@@ -279,12 +264,8 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 
 	// Route by model and strip the routing-only field from the
 	// body before it is forwarded upstream.
-	p.uploadModel = model
-	p.routingModel = model
-	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation}
-	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
-	p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
-	common.ClearRouteCache = true
+	p.routeByModel(headerMutation, model)
+	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation, ClearRouteCache: true}
 	if stripped, err := stripMultipartField(rawBody.Body, boundary, uploadModelFormField); err != nil {
 		p.logger.Warn("failed to strip model field from upload body, forwarding as-is", slog.String("error", err.Error()))
 	} else {
@@ -354,32 +335,9 @@ func (p *filesProcessor) isSuccessResponse() bool {
 // reEncodeResponse rewrites the top-level backend-native "id" in a JSON response into a
 // gateway-encoded id (upload/retrieve/delete). Returns a 502 ImmediateResponse on any failure.
 func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingResponse {
-	if !p.backendKnown {
-		if p.op == filesOpUpload && p.uploadModel != "" {
-			p.logger.Error("no route matched the upload model; backend unknown",
-				slog.String("model", p.uploadModel))
-			return filesReEncodeError(fmt.Sprintf(
-				"no backend route found for model %q", p.uploadModel))
-		}
-		p.logger.Error("backend unknown; cannot re-encode files response id")
-		return filesReEncodeError("backend unknown for upstream files response")
-	}
-	if len(raw) == 0 {
-		p.logger.Error("empty body; cannot re-encode files response id")
-		return filesReEncodeError("empty body in upstream files response")
-	}
-
-	// Invoke ResponseBody translator before re-encoding.
-	workingBody := raw
-	if p.responseHeaders != nil {
-		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
-		if err != nil {
-			p.logger.Error("failed to translate response body", slog.String("error", err.Error()))
-			return filesReEncodeError("failed to process upstream files response")
-		}
-		if mutatedBody != nil {
-			workingBody = mutatedBody
-		}
+	workingBody, errResp := p.translatedResponseBody(raw, "files response")
+	if errResp != nil {
+		return errResp
 	}
 
 	nativeID := gjson.GetBytes(workingBody, "id").String()
@@ -400,11 +358,43 @@ func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingRespo
 	return bodyMutationResponse(newBody)
 }
 
+// translatedResponseBody validates that the response can be re-encoded (backend known, non-empty
+// body) and runs the backend translator over it. kind ("files response" / "files list response")
+// is used in error messages. On failure it returns a 502 ImmediateResponse.
+func (p *filesProcessor) translatedResponseBody(raw []byte, kind string) ([]byte, *extprocv3.ProcessingResponse) {
+	if p.backend == nil {
+		if p.op == filesOpUpload && p.routingModel != "" {
+			p.logger.Error("no route matched the upload model; backend unknown",
+				slog.String("model", p.routingModel))
+			return nil, filesReEncodeError(fmt.Sprintf(
+				"no backend route found for model %q", p.routingModel))
+		}
+		p.logger.Error("backend unknown; cannot re-encode " + kind)
+		return nil, filesReEncodeError("backend unknown for upstream " + kind)
+	}
+	if len(raw) == 0 {
+		p.logger.Error("empty body; cannot re-encode " + kind)
+		return nil, filesReEncodeError("empty body in upstream " + kind)
+	}
+	if p.responseHeaders == nil {
+		return raw, nil
+	}
+	_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
+	if err != nil {
+		p.logger.Error("failed to translate "+kind+" body", slog.String("error", err.Error()))
+		return nil, filesReEncodeError("failed to process upstream " + kind)
+	}
+	if mutatedBody != nil {
+		return mutatedBody, nil
+	}
+	return raw, nil
+}
+
 // encodeFileID encodes a backend-native file id into a gateway file id for the current backend.
 func (p *filesProcessor) encodeFileID(nativeID string) (string, error) {
 	return p.codec.Encode(&idcodec.BackendID{
-		Namespace: p.backendNamespace,
-		Name:      p.backendName,
+		Namespace: p.backend.namespace,
+		Name:      p.backend.name,
 		Kind:      idcodec.KindFile,
 		Model:     p.routingModel,
 		NativeID:  nativeID,
@@ -415,31 +405,15 @@ func (p *filesProcessor) encodeFileID(nativeID string) (string, error) {
 // page into gateway file ids. has_more is passed through unchanged. Returns a 502
 // ImmediateResponse on any failure.
 func (p *filesProcessor) reEncodeListResponse(raw []byte) *extprocv3.ProcessingResponse {
-	if !p.backendKnown {
-		p.logger.Error("backend unknown; cannot re-encode files list response ids")
-		return filesReEncodeError("backend unknown for upstream files list response")
-	}
-	if len(raw) == 0 {
-		p.logger.Error("empty body; cannot re-encode files list response ids")
-		return filesReEncodeError("empty body in upstream files list response")
-	}
-
-	workingBody := raw
-	if p.responseHeaders != nil {
-		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
-		if err != nil {
-			p.logger.Error("failed to translate response body for files list endpoint", slog.String("error", err.Error()))
-			return filesReEncodeError("failed to process upstream files list response")
-		}
-		if mutatedBody != nil {
-			workingBody = mutatedBody
-		}
+	workingBody, errResp := p.translatedResponseBody(raw, "files list response")
+	if errResp != nil {
+		return errResp
 	}
 
 	// An upstream error (or any non-list body) either fails to unmarshal or has no data array;
 	// return an error so the client is not misled by a response that cannot be safely re-encoded.
 	var page openai.FileListResponse
-	if err := internaljson.Unmarshal(workingBody, &page); err != nil || page.Data == nil {
+	if err := json.Unmarshal(workingBody, &page); err != nil || page.Data == nil {
 		p.logger.Error("failed to unmarshal files list response body; cannot re-encode ids")
 		return filesReEncodeError("invalid or non-list body in upstream files list response")
 	}
@@ -468,7 +442,7 @@ func (p *filesProcessor) reEncodeListResponse(raw []byte) *extprocv3.ProcessingR
 		*f = gw
 	}
 
-	newBody, err := internaljson.Marshal(page)
+	newBody, err := json.Marshal(page)
 	if err != nil {
 		p.logger.Error("failed to marshal files list response", slog.String("error", err.Error()))
 		return filesReEncodeError("failed to encode upstream files list response")
@@ -502,9 +476,7 @@ func (p *filesProcessor) SetBackend(_ context.Context, backend *filterapi.Runtim
 			slog.String("id_backend", d.namespace+"/"+d.name), slog.String("selected_backend", ns+"/"+name))
 		return fmt.Errorf("file id belongs to backend %s/%s, but the request was routed to %s/%s", d.namespace, d.name, ns, name)
 	}
-	rp.backendNamespace = ns
-	rp.backendName = name
-	rp.backendKnown = true
+	rp.backend = &backendKey{namespace: ns, name: name}
 
 	if err := rp.resolveTranslator(backend.Backend.Schema); err != nil {
 		rp.logger.Info("unsupported schema for files operation", slog.String("schema", string(backend.Backend.Schema.Name)), slog.Int("op", int(rp.op)))
@@ -631,43 +603,25 @@ func bodyMutationResponse(newBody []byte) *extprocv3.ProcessingResponse {
 	}
 }
 
-// rewriteAfterParam returns path with its "after" query parameter set to nativeAfter, or removed
-// when nativeAfter is empty. All other query parameters (e.g. limit, purpose, order) are
-// preserved. On a malformed query it returns the original path unchanged.
-func rewriteAfterParam(path, nativeAfter string) string {
+// setQueryParam returns path with the named query parameter set to value, or removed when value
+// is empty. All other query parameters are preserved. When removing a parameter that is absent
+// (or when there is no query), path is returned unchanged. On a malformed query path is returned
+// unchanged. It drops the routing-only "model" parameter and rewrites the "after" cursor to the
+// backend-native id before a Files list request is forwarded upstream.
+func setQueryParam(path, name, value string) string {
 	pathOnly, rawQuery := splitQuery(path)
 	values, err := url.ParseQuery(strings.TrimPrefix(rawQuery, "?"))
 	if err != nil {
 		return path
 	}
-	if nativeAfter == "" {
-		values.Del("after")
+	if value == "" {
+		if _, ok := values[name]; !ok {
+			return path
+		}
+		values.Del(name)
 	} else {
-		values.Set("after", nativeAfter)
+		values.Set(name, value)
 	}
-	if encoded := values.Encode(); encoded != "" {
-		return pathOnly + "?" + encoded
-	}
-	return pathOnly
-}
-
-// stripQueryParam returns path with the named query parameter removed, preserving all others.
-// It returns path unchanged when there is no query, when the parameter is absent, or when the
-// query is malformed. This is used to drop the routing-only "model"
-// query parameter before a Files list request is forwarded upstream.
-func stripQueryParam(path, name string) string {
-	pathOnly, rawQuery := splitQuery(path)
-	if rawQuery == "" {
-		return path
-	}
-	values, err := url.ParseQuery(strings.TrimPrefix(rawQuery, "?"))
-	if err != nil {
-		return path
-	}
-	if _, ok := values[name]; !ok {
-		return path
-	}
-	values.Del(name)
 	if encoded := values.Encode(); encoded != "" {
 		return pathOnly + "?" + encoded
 	}
