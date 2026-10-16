@@ -266,6 +266,54 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		require.Equal(t, "gpt-4", reqTime.Actions[1].GetGenericKey().DescriptorValue)
 	})
 
+	t.Run("dynamic metadata override is present on request and stream-done entries", func(t *testing.T) {
+		namespace := "envoy.filters.http.ext_authz"
+		key := "total_limit"
+		policy := newTestQuotaPolicyWithMetadata("policy", "policy", "gpt-4", namespace, key, 100)
+		policies := []aigv1a1.QuotaPolicy{policy}
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, policies, nil))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+		require.Len(t, perRoute.RateLimits, 2)
+		for _, rateLimit := range perRoute.RateLimits {
+			override := rateLimit.Limit.GetDynamicMetadata()
+			require.NotNil(t, override)
+			require.Equal(t, namespace, override.MetadataKey.Key)
+			require.Equal(t, key, override.MetadataKey.Path[0].GetKey())
+		}
+	})
+
+	t.Run("different fromMetadata sources keep separate stream-done entries", func(t *testing.T) {
+		policies := []aigv1a1.QuotaPolicy{
+			newTestQuotaPolicyWithMetadata("policy-a", "policy-a", "gpt-4", "envoy.filters.http.ext_authz", "total_limit_a", 100),
+			newTestQuotaPolicyWithMetadata("policy-b", "policy-b", "gpt-4", "envoy.filters.http.ext_authz", "total_limit_b", 200),
+		}
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, policies, nil))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+		// Two request-time entries and one stream-done entry per distinct limit source.
+		require.Len(t, perRoute.RateLimits, 4)
+		var streamDoneCount int
+		streamDoneKeys := make(map[string]struct{})
+		for _, rateLimit := range perRoute.RateLimits {
+			if rateLimit.ApplyOnStreamDone {
+				streamDoneCount++
+				override := rateLimit.Limit.GetDynamicMetadata()
+				require.NotNil(t, override)
+				streamDoneKeys[override.MetadataKey.Path[0].GetKey()] = struct{}{}
+			}
+		}
+		require.Equal(t, 2, streamDoneCount)
+		require.Equal(t, map[string]struct{}{
+			"total_limit_a": {},
+			"total_limit_b": {},
+		}, streamDoneKeys)
+	})
+
 	t.Run("preserves existing TypedPerFilterConfig entries", func(t *testing.T) {
 		route := &routev3.Route{
 			Name: "test-route",
@@ -2330,6 +2378,87 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 	})
 }
 
+// TestPatchRoutesWithQuotaRateLimits_MarshalErrorContinues covers the continue
+// after enableQuotaRateLimitOnRoute fails. That function's only error is
+// anypb.New rejecting a RateLimitPerRoute, which happens when a descriptor
+// string is invalid UTF-8. The loop must skip that route and still patch later
+// routes.
+func TestPatchRoutesWithQuotaRateLimits_MarshalErrorContinues(t *testing.T) {
+	aigwRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "gpt-4", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-bad"},
+					},
+				},
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-ok"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, aigwRoute)
+
+	// No ModelNameOverride, so route model info is empty and the policy model
+	// name is copied into the request-time descriptor value.
+	invalidModel := "bad\xff"
+	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
+		"default/backend-bad": {{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{Name: "backend-bad"}},
+				PerModelQuotas: []aigv1a1.PerModelQuota{{
+					ModelName: &invalidModel,
+					Quota: aigv1a1.QuotaDefinition{
+						DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+					},
+				}},
+			},
+		}},
+		"default/backend-ok": {{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{Name: "backend-ok"}},
+				PerModelQuotas: []aigv1a1.PerModelQuota{{
+					ModelName: ptr.To("gpt-4"),
+					Quota: aigv1a1.QuotaDefinition{
+						DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+					},
+				}},
+			},
+		}},
+	}
+
+	route := func(name, cluster string) *routev3.Route {
+		return &routev3.Route{
+			Name:     name,
+			Metadata: aiGatewayRouteMetadata(t),
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: cluster},
+				},
+			},
+		}
+	}
+	routeConfig := &routev3.RouteConfiguration{
+		VirtualHosts: []*routev3.VirtualHost{{
+			Routes: []*routev3.Route{
+				route("bad-route", "httproute/default/gpt-4/rule/0"),
+				route("ok-route", "httproute/default/gpt-4/rule/1"),
+			},
+		}},
+	}
+
+	patched := s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+	require.True(t, patched)
+	require.Nil(t, routeConfig.VirtualHosts[0].Routes[0].TypedPerFilterConfig)
+	require.Contains(t, routeConfig.VirtualHosts[0].Routes[1].TypedPerFilterConfig, quotaRateLimitFilterName)
+}
+
 func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 	// buildTestListenerWithRDS creates a listener whose HCM references the given
 	// route config name via RDS, so findListenerRouteConfigs can resolve it.
@@ -2592,4 +2721,30 @@ func TestListQuotaPolicies(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, policies, 2)
 	})
+}
+
+func newTestQuotaPolicyWithMetadata(name, uid, model, namespace, key string, limit uint) aigv1a1.QuotaPolicy {
+	return aigv1a1.QuotaPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+			UID:       types.UID(uid),
+		},
+		Spec: aigv1a1.QuotaPolicySpec{
+			TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{Name: "be"}},
+			PerModelQuotas: []aigv1a1.PerModelQuota{{
+				ModelName: ptr.To(model),
+				Quota: aigv1a1.QuotaDefinition{
+					DefaultBucket: aigv1a1.QuotaValue{
+						Limit:    limit,
+						Duration: "1h",
+						FromMetadata: &aigv1a1.QuotaLimitFromMetadata{
+							Namespace: namespace,
+							Key:       key,
+						},
+					},
+				},
+			}},
+		},
+	}
 }

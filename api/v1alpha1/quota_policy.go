@@ -170,11 +170,46 @@ type QuotaRule struct {
 // QuotaValue defines the quota limits using sliding window.
 type QuotaValue struct {
 	// The limit alloted for a specified time window.
+	//
+	// This is the static baseline used by the rate limit service when
+	// FromMetadata is absent or cannot be resolved.
+	//
+	// +kubebuilder:validation:Required
 	Limit uint `json:"limit"`
 	// Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "1d" (1 day), "1w" (1 week), "1mo" (1 month), or "1y" (1 year).
 	//
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum="1s";"1m";"1h";"1d";"1w";"1mo";"1y"
 	Duration string `json:"duration"`
+	// FromMetadata optionally overrides Limit and Duration for a request using
+	// a struct written to Envoy dynamic metadata by an earlier HTTP filter.
+	//
+	// The value must contain requests_per_unit and unit, where unit is an
+	// Envoy rate limit unit such as SECOND, MINUTE, HOUR, or DAY.
+	//
+	// +optional
+	FromMetadata *QuotaLimitFromMetadata `json:"fromMetadata,omitempty"`
+}
+
+// QuotaLimitFromMetadata identifies the dynamic metadata value used to
+// override a QuotaValue for an individual request.
+type QuotaLimitFromMetadata struct {
+	// Namespace is the dynamic metadata namespace written by the producer
+	// filter, for example "envoy.filters.http.ext_authz".
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._:-]+$`
+	Namespace string `json:"namespace"`
+	// Key is the dynamic metadata field key within the namespace that
+	// contains the Envoy rate limit override struct (requests_per_unit and unit).
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._:-]+$`
+	Key string `json:"key"`
 }
 
 // QuotaPolicyList contains a list of QuotaPolicy
