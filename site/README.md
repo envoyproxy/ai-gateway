@@ -23,11 +23,12 @@ npm run check:brand  # rename-safety assertions (see AGENTS.md)
 
 ## Where things live
 
-- `docs/` — current ("Next") docs; `versioned_docs/` + `versions.json` — released versions (1.1 renders at `/docs/`)
+- `docs/` — current ("Next") docs; `versioned_docs/` + `versions.json` — released versions (the latest, first in `versions.json`, renders at `/docs/`)
 - `blog/` — posts under `blog/YYYY/`; authors in `blog/authors.yml`
 - `src/data/home/` — **all homepage copy** (hero, capabilities, quickstart, community, providers)
+- `static/img/providers/` — provider logos; its README is the checklist for adding a supported provider
 - `src/components/home/` — homepage section components (one directory per section, CSS modules)
-- `src/data/` — adopters, talks, release-notes data (JSON)
+- `src/data/` — adopters, solutions, talks, release-notes data (JSON)
 - `src/css/brand/` — vendored brand tokens + A-pattern (do not edit; see its README)
 - `src/css/custom.css` — brand → Infima mapping layer and site chrome
 - `static/img/brand/` — logo cuts, favicons, og cards
