@@ -398,7 +398,7 @@ func TestQuotaPolicyController_Reconcile_Deletion_ClearedFinalizer_CleansConfig(
 	rateLimitRunner := newTestRunner(t)
 	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	const namespace, name = "default", "qp-cleared"
-	cacheKey := namespace + "/" + name
+	cacheKey := NamespacedNameKey(namespace, name)
 
 	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "backend-cleared", Namespace: namespace},

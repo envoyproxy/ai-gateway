@@ -209,7 +209,8 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	c.configCache[cacheKey] = configs
 	targetKeys := make([]string, 0, len(policy.Spec.TargetRefs))
 	for _, ref := range policy.Spec.TargetRefs {
-		targetKeys = append(targetKeys, fmt.Sprintf("%s.%s", string(ref.Name), TargetNamespace(ref, policy.Namespace)))
+		targetKeys = append(targetKeys, namespacedNameIndexKey(
+			string(ref.Name), TargetNamespace(ref, policy.Namespace)))
 	}
 	c.policyBackendKeys[cacheKey] = targetKeys
 	allConfigs := c.getMergedConfigsLocked()

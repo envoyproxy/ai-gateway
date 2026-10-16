@@ -283,7 +283,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		for j := range rule.BackendRefs {
 			br := &rule.BackendRefs[j]
 			backendNamespace := br.GetNamespace(aiGatewayRoute.Namespace)
-			dstName := fmt.Sprintf("%s.%s", br.Name, backendNamespace)
+			dstName := namespacedNameIndexKey(br.Name, backendNamespace)
 
 			if br.IsInferencePool() {
 				// Handle InferencePool backend reference, honoring the (optionally cross-namespace)
