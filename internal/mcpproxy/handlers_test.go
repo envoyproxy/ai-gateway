@@ -280,6 +280,15 @@ func TestOnError(t *testing.T) {
 	require.Contains(t, rr.Body.String(), `"code":-32600`)
 }
 
+func TestOnLegacyError(t *testing.T) {
+	rr := httptest.NewRecorder()
+	onLegacyErrorResponse(rr, http.StatusBadRequest, "test error")
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "test error", rr.Body.String())
+}
+
 func Test_downstreamName(t *testing.T) {
 	require.Equal(t, "learn-microsoft__resource",
 		downstreamResourceName("resource", "learn-microsoft"))
@@ -951,6 +960,38 @@ func TestServePOST_EarlyReturnErrorMetrics(t *testing.T) {
 			},
 			wantStatus:  http.StatusBadRequest,
 			wantErrType: metrics.MCPErrorInvalidJSONRPC,
+		},
+		{
+			name: "unsupported protocol version",
+			setup: func(*mcpRequestContext) *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/list","id":"1"}`))
+				req.Header.Set(mcpProtocolVersionHeader, "2099-01-01")
+				return req
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrType:    metrics.MCPErrorUnsupportedProtocolVersion,
+			wantMethodName: "tools/list",
+		},
+		{
+			name: "modern header mismatch",
+			setup: func(*mcpRequestContext) *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/list","id":"1"}`))
+				req.Header.Set(mcpProtocolVersionHeader, protocolVersion20260728)
+				req.Header.Set(mcpMethodHeader, "tools/call")
+				return req
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrType:    metrics.MCPErrorInvalidJSONRPC,
+			wantMethodName: "tools/list",
+		},
+		{
+			name: "server/discover on legacy path",
+			setup: func(*mcpRequestContext) *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"server/discover","id":"1"}`))
+			},
+			wantStatus:     http.StatusOK,
+			wantErrType:    metrics.MCPErrorUnsupportedMethod,
+			wantMethodName: "server/discover",
 		},
 	}
 

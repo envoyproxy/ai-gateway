@@ -3,10 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
-//
-//nolint:unused // TODO: remove this once full era dispatch wiring is enabled.
 package mcpproxy
 
 import (
@@ -18,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +62,9 @@ type subscriptionListenIntent struct {
 // rather than being stringified into a text/plain 500 response.
 type backendJSONRPCError struct {
 	raw json.RawMessage
+	// status is the backend's HTTP status when it was not 200 (e.g. a
+	// 2026-07-28 server rejecting a request with 400). Zero means 200.
+	status int
 }
 
 // backendStatusError is a non-200 HTTP reply from a backend.
@@ -118,32 +118,6 @@ func (m *mcpRequestContext) serveModernPOST(w http.ResponseWriter, r *http.Reque
 		errType = metrics.MCPErrorInternal
 		err = errors.New("missing route header")
 		onRequestError(w, http.StatusInternalServerError, -32603, "missing route header", req.ID)
-		return
-	}
-
-	headerMethod := r.Header.Get(mcpMethodHeader)
-	if headerMethod != req.Method {
-		errType = metrics.MCPErrorInvalidJSONRPC
-		err = fmt.Errorf("Mcp-Method header mismatch")
-		onRequestError(w, http.StatusBadRequest, errCodeHeaderMismatch, fmt.Sprintf("Mcp-Method header '%s' does not match body method '%s'", headerMethod, req.Method), req.ID)
-		return
-	}
-
-	switch req.Method {
-	case "initialize", "notifications/initialized":
-		errType = metrics.MCPErrorUnsupportedMethod
-		err = fmt.Errorf("method removed in 2026-07-28: %s", req.Method)
-		onRequestError(w, http.StatusNotFound, errCodeMethodNotFound, "method removed in 2026-07-28: use server/discover", req.ID)
-		return
-	case "ping":
-		errType = metrics.MCPErrorUnsupportedMethod
-		err = errors.New("ping removed in 2026-07-28")
-		onRequestError(w, http.StatusNotFound, errCodeMethodNotFound, "ping removed in 2026-07-28", req.ID)
-		return
-	case "logging/setLevel":
-		errType = metrics.MCPErrorUnsupportedMethod
-		err = errors.New("logging/setLevel removed in 2026-07-28")
-		onRequestError(w, http.StatusNotFound, errCodeMethodNotFound, "logging/setLevel removed in 2026-07-28; use _meta logLevel", req.ID)
 		return
 	}
 
@@ -947,27 +921,18 @@ func (m *mcpRequestContext) handleSubscriptionsListen(ctx context.Context, w htt
 
 	wantListChanged := intent.toolsListChanged || intent.promptsListChanged || intent.resourcesListChanged
 
-	// Set SSE response headers only after params are validated — a 400 cannot
-	// follow a started event-stream.
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	flusher, _ := w.(http.Flusher)
-	if flusher != nil {
-		flusher.Flush()
-	}
-
 	// Fan out a per-backend listen request: only backends that own a subscribed
 	// URI (or that must receive list_changed opt-ins) are contacted, and each
 	// sees bare upstream URIs rather than gateway-namespaced ones.
 	events := make(chan *sseEvent)
 	var wg sync.WaitGroup
+	var attempted, established int
 	for _, backend := range selected {
 		uris := perBackendURIs[backend.Name]
 		if len(uris) == 0 && !wantListChanged {
 			continue
 		}
+		attempted++
 		backendParams := buildBackendListenParams(&params, uris)
 		paramsBytes, marshalErr := json.Marshal(backendParams)
 		if marshalErr != nil {
@@ -986,6 +951,10 @@ func (m *mcpRequestContext) handleSubscriptionsListen(ctx context.Context, w htt
 		if reqErr != nil {
 			continue
 		}
+		addMCPHeaders(httpReq, backendReq, modernParamsForHeaderMetadata(backendReq), route, backend.Name)
+		m.applyLogHeaderMappings(httpReq, backendReq)
+		m.applyOriginalPathHeaders(httpReq)
+		m.applyForwardHeaders(httpReq, route, backend)
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Accept", "text/event-stream")
 		httpReq.Header.Set(mcpProtocolVersionHeader, protocolVersion20260728)
@@ -999,9 +968,11 @@ func (m *mcpRequestContext) handleSubscriptionsListen(ctx context.Context, w htt
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
+			m.l.Warn("subscriptions/listen rejected by backend", slog.String("backend", backend.Name), slog.Int("status", resp.StatusCode))
 			_ = resp.Body.Close()
 			continue
 		}
+		established++
 		if span != nil {
 			span.RecordRouteToBackend(backend.Name, "", true)
 		}
@@ -1033,6 +1004,23 @@ func (m *mcpRequestContext) handleSubscriptionsListen(ctx context.Context, w htt
 		wg.Wait()
 		close(events)
 	}()
+
+	if attempted > 0 && established == 0 {
+		err := fmt.Errorf("subscriptions/listen: all %d backend(s) failed", attempted)
+		onRequestError(w, http.StatusBadGateway, int(jsonrpc.CodeInternalError), err.Error(), req.ID)
+		return handlerResult{}, err
+	}
+
+	// SSE headers are written only once at least one backend stream is open,
+	// so a total fan-out failure can still be reported as a JSON-RPC error.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	if flusher != nil {
+		flusher.Flush()
+	}
 
 	// Merge loop: forward rewritten, intent-filtered events to the client,
 	// sending periodic keep-alives while idle. When all backends close
@@ -1395,11 +1383,32 @@ func (m *mcpRequestContext) sendModernRequestAndProxy(
 		// client as a proper JSON-RPC error response instead of stringifying it
 		// into a text/plain 500.
 		var bjErr *backendJSONRPCError
-		if errors.As(err, &bjErr) {
+		if errors.As(err, &bjErr) && bjErr.status == 0 {
 			writeBackendJSONRPCError(w, req.ID, bjErr.raw)
 			return result, err
 		}
-		onRequestError(w, http.StatusInternalServerError, -32603, fmt.Sprintf("call to %s failed: %v", backend.Name, err), req.ID)
+		// A 4xx without a 2026-07-28 error code means a legacy (stateful)
+		// backend rejected the modern request; report it as an unsupported
+		// protocol version so the client can fall back instead of seeing a
+		// server error.
+		if isLegacyDiscoverRejection(err) {
+			writeProtocolError(w, &protocolError{
+				Code:    errCodeUnsupportedProtocolVersion,
+				Message: fmt.Sprintf("Unsupported protocol version: %q is not supported by backend %s", protocolVersion20260728, backend.Name),
+				Data: &mcp.UnsupportedProtocolVersionData{
+					Supported: legacyProtocolVersions,
+					Requested: protocolVersion20260728,
+				},
+				HTTPStatus: http.StatusBadRequest,
+			}, &req.ID)
+			return result, err
+		}
+		if bjErr != nil {
+			writeBackendJSONRPCErrorWithStatus(w, req.ID, bjErr.raw, bjErr.status)
+			return result, err
+		}
+		m.l.Error("modern backend request failed", slog.String("backend", backend.Name), slog.String("method", req.Method), slog.String("error", err.Error()))
+		onRequestError(w, http.StatusInternalServerError, -32603, fmt.Sprintf("call to %s failed", backend.Name), req.ID)
 		return result, err
 	}
 
@@ -1447,6 +1456,16 @@ func (m *mcpRequestContext) sendModernRequest(ctx context.Context, req *jsonrpc.
 	} else if req.Method == "tools/call" {
 		return nil, fmt.Errorf("invalid tools/call params: missing required name")
 	}
+	// Backends validate Mcp-Param-* against x-mcp-header tool arguments
+	// (SEP-2243). The gateway rewrites only the tool name, never arguments, so
+	// the client's values still match the forwarded body.
+	if req.Method == "tools/call" {
+		for key, values := range m.requestHeaders {
+			if strings.HasPrefix(http.CanonicalHeaderKey(key), mcpParamHeaderPrefix) {
+				httpReq.Header[http.CanonicalHeaderKey(key)] = slices.Clone(values)
+			}
+		}
+	}
 
 	resp, err := m.client.Do(httpReq)
 	if err != nil {
@@ -1455,6 +1474,14 @@ func (m *mcpRequestContext) sendModernRequest(ctx context.Context, req *jsonrpc.
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			var errBody struct {
+				Error json.RawMessage `json:"error"`
+			}
+			if json.Unmarshal(respBody, &errBody) == nil && jsonRPCErrorCode(errBody.Error) != 0 {
+				return nil, &backendJSONRPCError{raw: errBody.Error, status: resp.StatusCode}
+			}
+		}
 		return nil, &backendStatusError{status: resp.StatusCode, body: respBody}
 	}
 
@@ -1724,6 +1751,12 @@ func (e *backendJSONRPCError) Error() string {
 // JSON-RPC error response to the client, preserving the original error code,
 // message, and data. The HTTP status is 200 so the JSON-RPC layer can parse it.
 func writeBackendJSONRPCError(w http.ResponseWriter, id jsonrpc.ID, raw json.RawMessage) {
+	writeBackendJSONRPCErrorWithStatus(w, id, raw, http.StatusOK)
+}
+
+// writeBackendJSONRPCErrorWithStatus is writeBackendJSONRPCError with an
+// explicit HTTP status, used to preserve a backend's 4xx protocol rejection.
+func writeBackendJSONRPCErrorWithStatus(w http.ResponseWriter, id jsonrpc.ID, raw json.RawMessage, status int) {
 	resp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id.Raw(),
@@ -1731,6 +1764,6 @@ func writeBackendJSONRPCError(w http.ResponseWriter, id jsonrpc.ID, raw json.Raw
 	}
 	encoded, _ := json.Marshal(resp)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	_, _ = w.Write(encoded)
 }

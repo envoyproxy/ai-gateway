@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -102,11 +101,11 @@ func TestModernMCP(t *testing.T) {
 	})
 
 	t.Run("ReadResourceNotFound", func(t *testing.T) {
-		// Gateway currently surfaces backend JSON-RPC errors as plain-text HTTP 500
-		// ("call to <backend> failed: backend error: ..."), so accept either a
-		// JSON-RPC error body or that plain-text gateway error.
+		// The backend returns -32002 as an HTTP 200 JSON-RPC error; the gateway
+		// must forward it unchanged with the client's request id.
 		id := cli.reqIDSeq.Add(1)
-		params := map[string]any{"uri": defaultMCPBackendResourceURIPrefix + "file:///notfound.txt"}
+		uri := defaultMCPBackendResourceURIPrefix + "file:///notfound.txt"
+		params := map[string]any{"uri": uri}
 		paramsRaw, err := json.Marshal(params)
 		require.NoError(t, err)
 		paramsRaw = injectModernMeta(paramsRaw)
@@ -124,15 +123,25 @@ func TestModernMCP(t *testing.T) {
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set(modernVersionHeader, modernProtocolVersion)
 		req.Header.Set(modernMethodHeader, "resources/read")
+		req.Header.Set(modernNameHeader, uri)
 		resp, err := cli.httpClient.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		msg := string(respBody)
-		require.True(t,
-			strings.Contains(msg, "Resource not found") || strings.Contains(msg, "call to") && strings.Contains(msg, "failed"),
-			"expected not-found error, got: %s", msg)
+
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", respBody)
+		var rpcResp struct {
+			ID    int64 `json:"id"`
+			Error *struct {
+				Code    int64  `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(respBody, &rpcResp), "body: %s", respBody)
+		require.Equal(t, id, rpcResp.ID)
+		require.NotNil(t, rpcResp.Error, "expected JSON-RPC error, got: %s", respBody)
+		require.Equal(t, int64(-32002), rpcResp.Error.Code)
 	})
 
 	t.Run("ListResourceTemplates", func(t *testing.T) {
@@ -229,15 +238,25 @@ func TestModernMCP(t *testing.T) {
 	})
 }
 
-// TestModernMCP_RejectedLegacyMethods verifies the gateway rejects legacy-only
-// methods (initialize, ping, logging/setLevel) on the modern path.
+// TestModernMCP_RejectedLegacyMethods verifies the gateway rejects every
+// legacy-only method on the modern path with 404 / -32601.
 func TestModernMCP_RejectedLegacyMethods(t *testing.T) {
 	env := requireNewModernMCPEnv(t, 60*time.Second, defaultMCPPath)
 	cli := env.modernCli
 
-	for _, method := range []string{"initialize", "ping", "logging/setLevel"} {
+	// Mirrors legacyOnlyMethods in internal/mcpproxy/era.go.
+	legacyOnlyMethods := []string{
+		"initialize",
+		"notifications/initialized",
+		"logging/setLevel",
+		"resources/subscribe",
+		"resources/unsubscribe",
+		"roots/list",
+		"notifications/roots/list_changed",
+		"ping",
+	}
+	for _, method := range legacyOnlyMethods {
 		t.Run(fmt.Sprintf("rejected/%s", method), func(t *testing.T) {
-			// The gateway should return an HTTP error (not 200) for legacy methods on modern path.
 			id := cli.reqIDSeq.Add(1)
 			paramsRaw := injectModernMeta([]byte(`{}`))
 			body := map[string]any{
@@ -246,7 +265,7 @@ func TestModernMCP_RejectedLegacyMethods(t *testing.T) {
 				"method":  method,
 				"params":  paramsRaw,
 			}
-			encoded, err := jsonMarshal(body)
+			encoded, err := json.Marshal(body)
 			require.NoError(t, err)
 
 			req, err := newModernHTTPRequest(cli.endpoint, method, encoded)
@@ -254,18 +273,22 @@ func TestModernMCP_RejectedLegacyMethods(t *testing.T) {
 			resp, err := cli.httpClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
+			respBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
 
-			// Modern path rejects legacy methods with non-200 status.
-			require.NotEqual(t, 200, resp.StatusCode, "expected rejection for %s on modern path", method)
+			require.Equal(t, http.StatusNotFound, resp.StatusCode, "body: %s", respBody)
+			var rpcResp struct {
+				ID    int64 `json:"id"`
+				Error *struct {
+					Code int64 `json:"code"`
+				} `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(respBody, &rpcResp), "body: %s", respBody)
+			require.Equal(t, id, rpcResp.ID)
+			require.NotNil(t, rpcResp.Error, "expected JSON-RPC error, got: %s", respBody)
+			require.Equal(t, int64(-32601), rpcResp.Error.Code)
 		})
 	}
-}
-
-// jsonMarshal is a local alias to avoid import cycle issues.
-var jsonMarshal = jsonMarshalImpl
-
-func jsonMarshalImpl(v any) ([]byte, error) {
-	return json.Marshal(v)
 }
 
 func newModernHTTPRequest(endpoint, method string, body []byte) (*http.Request, error) {

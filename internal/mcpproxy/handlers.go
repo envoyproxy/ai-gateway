@@ -58,6 +58,15 @@ func onErrorResponse(w http.ResponseWriter, status int, msg string) {
 	writeJSONRPCError(w, status, errCodeFromStatus(status), msg, nil)
 }
 
+// onLegacyErrorResponse writes a plain-text error response. Legacy-era
+// handlers keep this wire format for backward compatibility with existing
+// clients.
+func onLegacyErrorResponse(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(msg))
+}
+
 // onRequestError writes a JSON-RPC error response echoing the request's id.
 // Use this instead of onErrorResponse whenever the parsed request is available.
 func onRequestError(w http.ResponseWriter, status int, code int, msg string, id jsonrpc.ID) {
@@ -181,10 +190,30 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 	if detection.err != nil {
 		// Extract the request ID (if any) so the JSON-RPC error carries it.
 		var requestID *jsonrpc.ID
-		if req, ok := rawMsg.(*jsonrpc.Request); ok && req != nil && req.ID.IsValid() {
-			requestID = &req.ID
+		var method string
+		if req, ok := rawMsg.(*jsonrpc.Request); ok && req != nil {
+			method = req.Method
+			if req.ID.IsValid() {
+				requestID = &req.ID
+			}
 		}
 		writeProtocolError(w, detection.err, requestID)
+		var errType metrics.MCPErrorType
+		switch detection.err.Code {
+		case errCodeUnsupportedProtocolVersion:
+			errType = metrics.MCPErrorUnsupportedProtocolVersion
+		case errCodeMethodNotFound:
+			errType = metrics.MCPErrorUnsupportedMethod
+		default:
+			errType = metrics.MCPErrorInvalidJSONRPC
+		}
+		m.recordPOSTCompletion(&postCompletion{
+			ctx:     r.Context(),
+			method:  method,
+			errType: errType,
+			err:     detection.err,
+			startAt: startAt,
+		})
 		return
 	}
 
@@ -193,6 +222,12 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		req, ok := rawMsg.(*jsonrpc.Request)
 		if !ok || req == nil {
 			onErrorResponse(w, http.StatusBadRequest, "invalid JSON-RPC message: expected request")
+			m.recordPOSTCompletion(&postCompletion{
+				ctx:     r.Context(),
+				errType: metrics.MCPErrorInvalidJSONRPC,
+				err:     errors.New("expected JSON-RPC request"),
+				startAt: startAt,
+			})
 			return
 		}
 		m.serveModernPOST(w, r, req, startAt)

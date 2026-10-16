@@ -123,33 +123,6 @@ func TestServeModernPOST_MissingRouteHeader(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "missing route header")
 }
 
-func TestServeModernPOST_MethodHeaderMismatch(t *testing.T) {
-	proxy := newTestMCPProxy()
-	r := newModernRequest("tools/call")
-	rr := httptest.NewRecorder()
-	req := modernReq(t, "tools/list", nil)
-
-	proxy.serveModernPOST(rr, r, req, time.Now())
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "does not match body method")
-}
-
-func TestServeModernPOST_RemovedMethods(t *testing.T) {
-	for _, method := range []string{"initialize", "notifications/initialized", "ping", "logging/setLevel"} {
-		t.Run(method, func(t *testing.T) {
-			proxy := newTestMCPProxy()
-			r := newModernRequest(method)
-			rr := httptest.NewRecorder()
-			req := modernReq(t, method, nil)
-
-			proxy.serveModernPOST(rr, r, req, time.Now())
-
-			require.Equal(t, http.StatusNotFound, rr.Code)
-		})
-	}
-}
-
 func TestServeModernPOST_UnknownMethod(t *testing.T) {
 	proxy := newTestMCPProxy()
 	r := newModernRequest("tools/frobnicate")
@@ -1674,6 +1647,33 @@ func TestHandleSubscriptionsListen_RejectsBareResourceURI(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "invalid resource subscription URI")
 }
 
+func TestHandleSubscriptionsListen_AllBackendsFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	params, err := json.Marshal(map[string]any{
+		"notifications": map[string]any{
+			"resourceSubscriptions": []string{downstreamResourceURI("file:///watched-backend1", "backend1")},
+		},
+	})
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req := modernReq(t, "subscriptions/listen", params)
+	_, err = proxy.handleSubscriptionsListen(context.Background(), rr, newModernRequest("subscriptions/listen"), req, "test-route", nil)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	require.Contains(t, rr.Body.String(), `"code":-32603`)
+	require.NotContains(t, rr.Body.String(), "complete")
+}
+
 func TestHandleSubscriptionsListen_GracefulClosure(t *testing.T) {
 	// Backends send notifications then close their streams. The gateway must
 	// forward notifications and, once all backends are done, write a
@@ -2721,6 +2721,102 @@ func TestSendModernRequestAndProxy_BackendFailure(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.Contains(t, rr.Body.String(), "call to backend1 failed")
+	require.NotContains(t, rr.Body.String(), "upstream boom", "backend response body must not leak to the client")
+}
+
+func TestSendModernRequest_ForwardsMcpParamHeaders(t *testing.T) {
+	for _, method := range []string{"tools/call", "tools/list"} {
+		t.Run(method, func(t *testing.T) {
+			var got http.Header
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.Header.Clone()
+				var body struct {
+					ID json.RawMessage `json:"id"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(body.ID) + `,"result":{}}`))
+			}))
+			defer server.Close()
+
+			proxy := newTestMCPProxy()
+			proxy.backendListenerAddr = server.URL
+			proxy.requestHeaders = http.Header{
+				"Mcp-Param-Region": {"us-east-1"},
+				"Mcp-Param-Tenant": {"acme"},
+				"X-Unrelated":      {"nope"},
+			}
+
+			req := modernReq(t, method, []byte(`{"name":"do-it","arguments":{"region":"us-east-1","tenant":"acme"}}`))
+			backend := proxy.routes["test-route"].backends["backend1"]
+			_, err := proxy.sendModernRequest(context.Background(), req, "test-route", backend)
+			require.NoError(t, err)
+
+			if method == "tools/call" {
+				require.Equal(t, "us-east-1", got.Get("Mcp-Param-Region"))
+				require.Equal(t, "acme", got.Get("Mcp-Param-Tenant"))
+			} else {
+				require.Empty(t, got.Get("Mcp-Param-Region"))
+				require.Empty(t, got.Get("Mcp-Param-Tenant"))
+			}
+			require.Empty(t, got.Get("X-Unrelated"))
+		})
+	}
+}
+
+func TestSendModernRequestAndProxy_Backend4xx(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "modern protocol error is forwarded with backend status",
+			status:     http.StatusBadRequest,
+			body:       `{"jsonrpc":"2.0","id":"1","error":{"code":-32020,"message":"Header mismatch"}}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   `"code":-32020`,
+		},
+		{
+			name:       "legacy plain-text rejection maps to unsupported protocol version",
+			status:     http.StatusBadRequest,
+			body:       "Bad Request: missing session ID",
+			wantStatus: http.StatusBadRequest,
+			wantCode:   `"code":-32022`,
+		},
+		{
+			name:       "legacy JSON-RPC rejection maps to unsupported protocol version",
+			status:     http.StatusBadRequest,
+			body:       `{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"Bad Request: Server not initialized"}}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   `"code":-32022`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			proxy := newTestMCPProxy()
+			proxy.backendListenerAddr = server.URL
+			proxy.requestHeaders = http.Header{}
+
+			rr := httptest.NewRecorder()
+			req := modernReq(t, "tools/call", []byte(`{"name":"do-it"}`))
+			backend := proxy.routes["test-route"].backends["backend1"]
+			_, err := proxy.sendModernRequestAndProxy(context.Background(), rr, req, "test-route", backend, handlerResult{}, nil, nil)
+
+			require.Error(t, err)
+			require.Equal(t, tt.wantStatus, rr.Code)
+			require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+			require.Contains(t, rr.Body.String(), tt.wantCode)
+		})
+	}
 }
 
 // -----------------------------------------------------------------------------

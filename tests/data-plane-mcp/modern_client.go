@@ -195,7 +195,7 @@ type modernReadResourceResult struct {
 
 func (c *modernClient) readResource(t *testing.T, uri string) modernReadResourceResult {
 	t.Helper()
-	res := c.callMethod(t, "resources/read", "", map[string]any{"uri": uri})
+	res := c.callMethod(t, "resources/read", uri, map[string]any{"uri": uri})
 	var out modernReadResourceResult
 	require.NoError(t, res.unmarshal(&out))
 	return out
