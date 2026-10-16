@@ -32,9 +32,12 @@ var errExtensionServerNotInvoked = errors.New("the AI Gateway extension server h
 // external processor comes up healthy, every AI Gateway resource is reported as Accepted, and requests
 // silently reach the upstream without credential injection or model extraction.
 //
-// Note that the check observes the extension server running in this process only. Envoy Gateway keeps a
-// single connection to the extension server service, so with more than one controller replica the
-// replicas Envoy Gateway is not connected to also report the wiring as missing.
+// Note that the check observes the extension server running in this process only, and as a leader
+// election runnable it only runs on the elected leader. Every replica serves the extension server, but
+// Envoy Gateway keeps a single connection to the extension server service, so with more than one
+// controller replica Envoy Gateway can be connected to a replica other than the leader. The leader then
+// keeps reporting the wiring as missing on a correctly configured install. The check is only reliable
+// with a single controller replica, which is the chart default.
 type extensionServerCheck struct {
 	client   client.Client
 	logger   logr.Logger
