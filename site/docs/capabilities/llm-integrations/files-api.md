@@ -146,15 +146,38 @@ external processor:
 | `--fileIDFallbackEncryptionSeed`       | _(empty)_               | Optional fallback seed, tried on decode when the primary fails. Enables seed rotation. |
 | `--fileIDFallbackEncryptionIterations` | `100000`                | PBKDF2 iterations for the fallback seed.                                               |
 
-:::caution Change the encryption seed in production
+:::danger Never use the well-known default seed
 
-The default seed (`default-insecure-seed`) is insecure and shared. If it is not changed, file ids
-issued by one deployment can be decoded by any other deployment using the default. Always set
-`fileIDEncryptionSeed` to a strong, secret value in production.
+If `--fileIDEncryptionSeed` is left at the well-known default (`default-insecure-seed`), **anyone who
+knows this public default can decrypt and forge file and batch ids**. The external processor logs a
+warning at startup when it detects the default. Set the seed to a secret, randomly generated value
+before exposing the gateway to untrusted or multi-tenant clients.
 
-To rotate the seed without invalidating existing file ids, set the new value as
-`fileIDEncryptionSeed` and the old value as `fileIDFallbackEncryptionSeed`. Ids issued under the old
-seed continue to decode while new ids use the new seed.
+:::
+
+#### Kubernetes (Helm)
+
+When deployed with the Helm chart, the controller passes the seed to every external processor it
+manages. Configure it with the `controller.fileIDEncryption` values:
+
+| Helm value                                        | Default  | Description                                                                                                                                                                                                                    |
+| ------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `controller.fileIDEncryption.seed`                | `""`     | Seed for the id encryption key. When empty, the chart generates a random seed on install, stores it in the Secret `<controller fullname>-file-id-encryption`, and reuses it on upgrades.                                       |
+| `controller.fileIDEncryption.existingSecret`      | `""`     | Name of an existing Secret (in the release namespace) holding the seed under the `seed` key. Takes precedence over `seed`. Recommended for `helm template` / GitOps tooling, which cannot look up a previously generated seed. |
+| `controller.fileIDEncryption.iterations`          | `100000` | PBKDF2 iterations.                                                                                                                                                                                                             |
+| `controller.fileIDEncryption.fallback.seed`       | `""`     | Previous seed, for rotation.                                                                                                                                                                                                   |
+| `controller.fileIDEncryption.fallback.iterations` | `100000` | PBKDF2 iterations for the fallback seed.                                                                                                                                                                                       |
+
+:::caution Keep the seed stable
+
+File ids embed the owning backend and the provider-native id, so the seed must stay stable. Changing
+it without setting the fallback to the previous value invalidates every previously issued file and
+batch id.
+
+To rotate the seed without invalidating existing ids, set the new value as the seed
+(`--fileIDEncryptionSeed` / `controller.fileIDEncryption.seed`) and the old value as the fallback
+(`--fileIDFallbackEncryptionSeed` / `controller.fileIDEncryption.fallback.seed`). Ids issued under
+the old seed continue to decode while new ids use the new seed.
 
 :::
 
@@ -356,6 +379,7 @@ Response:
 | `400 Bad Request` | Upload without a `model` field, list without a `?model=` query parameter, or an invalid `after` id.                                                               |
 | `404 Not Found`   | A file id that cannot be decoded (unknown, tampered, or forged), or an unsupported method/path.                                                                   |
 | `500`             | The matched route rule has more than one backend, the file id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI. |
+| `502 Bad Gateway` | The upstream response contained a file id the gateway could not safely re-encode (returned instead of leaking provider-native ids).                               |
 
 ## Caveats and limitations
 
@@ -369,8 +393,9 @@ Response:
 - **Same model on multiple routes.** Both upload and list route by the `x-ai-eg-model` header. If two
   `AIGatewayRoute`s declare the **same** model, Envoy's first-match-wins selects one of them and the
   other route's files are not reachable via list. Use **distinct models per route**.
-- **Change the encryption seed.** The default `fileIDEncryptionSeed` is insecure; set a strong secret
-  value in production (see [Encryption of file ids](#encryption-of-file-ids)).
+- **Change the encryption seed.** With the well-known default `fileIDEncryptionSeed`, anyone can
+  decrypt and forge file ids. Set a secret, random value (the Helm chart generates one automatically
+  when `controller.fileIDEncryption.seed` is empty). See [Encryption of file ids](#encryption-of-file-ids).
 - **File ids are gateway-issued.** Client-visible ids are encrypted and are not the provider's native
   ids. Store and reuse exactly what the gateway returns.
 

@@ -643,23 +643,32 @@ curl $GATEWAY_URL/v1/models
 **Status:** ✅ Supported (OpenAI schema only)
 
 **Description:** Upload, list, retrieve, download, and delete files. Files are backend-scoped
-objects; the gateway routes every id-bearing request back to the backend that created the file and
-presents a single list stitched across a route's backends.
+objects; the gateway routes every id-bearing request back to the backend that created the file.
 
 **Features:**
 
 - ✅ Multipart/form-data upload (OpenAI-compatible)
 - ✅ Backend-sticky routing via gateway-issued, encrypted file ids
-- ✅ Cross-backend list pagination
+- ✅ List pagination (`after` cursors are gateway-issued ids)
 - ✅ Model selection via the `model` form field (upload) or `?model=` query parameter (list) — **required**
-- ✅ Provider fallback and load balancing
+- ⚠️ Exactly **one backend per route rule** — rules with multiple `backendRefs` are rejected, so
+  provider fallback and load balancing are not supported for Files
 
 **Supported Providers:**
 
 - OpenAI
 - Any OpenAI-compatible provider that supports the Files API
 
-Non-OpenAI backend schemas are not supported and return `501 Not Implemented`.
+Non-OpenAI backend schemas are not supported and the request fails with an error.
+
+:::danger Set a secret file id encryption seed
+
+If the file id encryption seed is left at the well-known default, anyone can decrypt and forge file
+and batch ids. Set `--fileIDEncryptionSeed` (or the Helm value `controller.fileIDEncryption.seed`) to
+a secret, randomly generated value. See
+[Encryption of file ids](./files-api.md#encryption-of-file-ids).
+
+:::
 
 **Example:**
 
