@@ -72,10 +72,26 @@ No Batch-specific resource is required. Use the same `AIGatewayRoute` and `AISer
 the [Files API](./files-api.md#configuration): batches are served by the route that matches the model
 used to upload the input file.
 
-Batch ids are encrypted with the same key as file ids, configured by `--fileIDEncryptionSeed` (Helm:
-`controller.fileIDEncryption.seed`). See
-[Encryption of file ids](./files-api.md#encryption-of-file-ids); **change the default seed in
-production.**
+Batch ids are encrypted with the same key as file ids. There is no separate Batch setting: configure
+`--fileIDEncryptionSeed`, or the Helm values under `controller.fileIDEncryption`, as described in
+[Encryption of file ids](./files-api.md#encryption-of-file-ids). With Helm, the chart generates a
+random seed on install when `controller.fileIDEncryption.seed` is empty and reuses it on upgrades.
+
+:::danger Never use the well-known default seed
+
+If `--fileIDEncryptionSeed` is left at the well-known default (`default-insecure-seed`), **anyone who
+knows this public default can decrypt and forge batch and file ids**. Set the seed to a secret,
+randomly generated value before exposing the gateway to untrusted or multi-tenant clients.
+
+:::
+
+:::caution Keep the seed stable
+
+Changing the seed without setting the fallback to the previous value invalidates every previously
+issued batch id, including the ids of batches that are still running. To rotate it, set the old value
+as the fallback seed; see [Encryption of file ids](./files-api.md#encryption-of-file-ids).
+
+:::
 
 ## Usage
 
@@ -124,17 +140,17 @@ if batch.output_file_id:
     print(client.files.content(batch.output_file_id).text)
 ```
 
-SDK auto-pagination works without `extra_query` on later pages, because the `after` cursor is a
-gateway batch id that carries the model.
+`model` is only needed for the first page. Later pages work whether or not `model` is sent again,
+because the `after` cursor is a gateway batch id that carries the model.
 
 ## Error responses
 
-| Status            | When                                                                                                                                                         |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `400 Bad Request` | Create with a missing or non-gateway `input_file_id` or an unsupported `endpoint`; list without `?model=`; an `after` cursor that is not a gateway batch id. |
-| `404 Not Found`   | A batch id that cannot be decoded (unknown, tampered, forged, or a file id), or an unsupported method/path.                                                  |
-| `500`             | The matched route rule has more than one backend, the id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI. |
-| `502 Bad Gateway` | A successful upstream response whose ids could not be safely re-encoded. Upstream error responses are passed through unchanged.                              |
+| Status            | When                                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400 Bad Request` | Create with a body that is not valid JSON, a missing or non-gateway `input_file_id`, or an unsupported `endpoint`; list without `?model=`; an `after` cursor that is not a gateway batch id. |
+| `404 Not Found`   | A batch id that cannot be decoded (unknown, tampered, forged, or a file id), or an unsupported method/path.                                                                                  |
+| `500`             | The matched route rule has more than one backend, the id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI.                                 |
+| `502 Bad Gateway` | A successful upstream response whose ids could not be safely re-encoded. Upstream error responses are passed through unchanged.                                                              |
 
 ## Caveats and limitations
 
@@ -142,6 +158,8 @@ gateway batch id that carries the model.
 - **Token usage is not metered.** Batch work runs asynchronously on the provider, so the gateway
   does not record token usage for batch requests.
 - **JSONL contents are not inspected.** The `model` in each input line is sent upstream as written.
+- **Change the encryption seed.** With the well-known default `fileIDEncryptionSeed`, anyone can
+  decrypt and forge batch ids. See [Configuration](#configuration).
 - **Ids are gateway-issued.** Store and reuse exactly what the gateway returns.
 
 ## What's Next

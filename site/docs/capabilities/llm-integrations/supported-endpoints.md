@@ -694,10 +694,29 @@ See the [Files API](./files-api.md) guide for full usage, configuration, and cav
 - `GET /v1/batches/{batch_id}` (retrieve)
 - `POST /v1/batches/{batch_id}/cancel` (cancel)
 
-**Status:** ✅ Supported (OpenAI schema only, one backend per route rule)
+**Status:** ✅ Supported (OpenAI schema only)
 
 **Description:** Create and manage asynchronous batch jobs. A batch is routed to the backend that
 holds its input file; batch output and error files are downloadable via the Files API.
+
+**Features:**
+
+- ✅ Backend-sticky routing via gateway-issued, encrypted batch ids
+- ✅ No `model` needed on create: the backend is taken from the gateway `input_file_id`
+- ✅ List pagination (`?model=` on the first page; `after` cursors are gateway-issued ids)
+- ✅ Output and error file ids are gateway file ids, downloadable via `/v1/files/{id}/content`
+- ⚠️ Exactly **one backend per route rule** — rules with multiple `backendRefs` are rejected, so
+  provider fallback and load balancing are not supported for Batches
+- ❌ Token usage of batch work is not metered
+
+**Supported Providers:**
+
+- OpenAI
+- Any OpenAI-compatible provider that supports the Batch API
+
+Non-OpenAI backend schemas are not supported and the request fails with an error.
+
+Batch ids use the same encryption seed as file ids; see the warning in [Files](#files).
 
 **Example:**
 
