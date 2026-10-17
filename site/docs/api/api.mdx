@@ -2577,7 +2577,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   name="shadowMode"
   type="boolean"
   required="false"
-  description="ShadowMode indicates whether this quota rule runs in shadow mode.<br />When enabled, all quota checks are performed (cache lookups,<br />counter updates, telemetry generation), but the outcome is never enforced.<br />The request always succeeds, even if the configured quota is exceeded."
+  description="ShadowMode indicates whether this quota rule runs in shadow mode.<br />When enabled, all quota checks are performed (cache lookups,<br />counter updates, telemetry generation), but the outcome is never enforced.<br />If Quota.FromMetadata is set, it still selects the effective limit and<br />duration; ShadowMode only controls enforcement of that result.<br />The request always succeeds, even if the configured quota is exceeded."
 />
 
 
@@ -2631,7 +2631,7 @@ QuotaValue defines the quota limits using sliding window.
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
+  description="ServiceQuota is not currently enforced by the extension server. This<br />includes FromMetadata on Quota; it is accepted for API consistency with<br />per-model quotas but has no effect until service-quota enforcement lands.<br />CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
