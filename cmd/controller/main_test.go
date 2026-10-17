@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -23,10 +24,13 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -329,6 +333,49 @@ func Test_maybePatchAdmissionWebhook(t *testing.T) {
 	err = c.Get(t.Context(), client.ObjectKey{Name: w.Name}, updated)
 	require.NoError(t, err)
 	require.Equal(t, updated.Webhooks[0].ClientConfig.CABundle, []byte("somebundle"))
+
+	t.Run("another replica wins the update race", func(t *testing.T) {
+		const bundle = "newbundle"
+		p := t.TempDir() + "/bundle"
+		require.NoError(t, os.WriteFile(p, []byte(bundle), 0o600))
+
+		webhook := &admissionregistrationv1.MutatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: mutatingWebhookConfigurationName + "." + ns},
+			Webhooks: []admissionregistrationv1.MutatingWebhook{{
+				ClientConfig: admissionregistrationv1.WebhookClientConfig{},
+			}},
+		}
+		inner := fake.NewClientBuilder().WithObjects(webhook).Build()
+		getCalls, updateCalls := 0, 0
+		cli := interceptor.NewClient(inner, interceptor.Funcs{
+			Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				getCalls++
+				return cl.Get(ctx, key, obj, opts...)
+			},
+			Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				updateCalls++
+				if updateCalls == 1 {
+					winner := &admissionregistrationv1.MutatingWebhookConfiguration{}
+					require.NoError(t, cl.Get(ctx, client.ObjectKeyFromObject(obj), winner))
+					winner.Webhooks[0].ClientConfig.CABundle = []byte(bundle)
+					require.NoError(t, cl.Update(ctx, winner))
+					return apierrors.NewConflict(
+						schema.GroupResource{Group: admissionregistrationv1.GroupName, Resource: "mutatingwebhookconfigurations"},
+						obj.GetName(), errors.New("simulated concurrent update"),
+					)
+				}
+				return cl.Update(ctx, obj, opts...)
+			},
+		})
+
+		require.NoError(t, maybePatchAdmissionWebhook(t.Context(), cli, p))
+		require.Equal(t, 2, getCalls)
+		require.Equal(t, 1, updateCalls)
+
+		updated := &admissionregistrationv1.MutatingWebhookConfiguration{}
+		require.NoError(t, inner.Get(t.Context(), client.ObjectKeyFromObject(webhook), updated))
+		require.Equal(t, []byte(bundle), updated.Webhooks[0].ClientConfig.CABundle)
+	})
 }
 
 func Test_parseAndValidateFlags_extProcImagePullSecrets(t *testing.T) {
