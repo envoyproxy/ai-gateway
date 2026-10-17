@@ -685,6 +685,29 @@ curl "$GATEWAY_URL/v1/files?model=gpt-4o-mini&limit=20"
 
 See the [Files API](./files-api.md) guide for full usage, configuration, and caveats.
 
+### Batches
+
+**Endpoints:**
+
+- `POST /v1/batches` (create)
+- `GET /v1/batches` (list)
+- `GET /v1/batches/{batch_id}` (retrieve)
+- `POST /v1/batches/{batch_id}/cancel` (cancel)
+
+**Status:** ✅ Supported (OpenAI schema only, one backend per route rule)
+
+**Description:** Create and manage asynchronous batch jobs. A batch is routed to the backend that
+holds its input file; batch output and error files are downloadable via the Files API.
+
+**Example:**
+
+```bash
+curl $GATEWAY_URL/v1/batches -H "Content-Type: application/json" \
+  -d '{"input_file_id":"file-<gateway-id>","endpoint":"/v1/chat/completions","completion_window":"24h"}'
+```
+
+See the [Batch API](./batch-api.md) guide for full usage and caveats.
+
 ## Provider-Endpoint Compatibility Table
 
 The following table summarizes which providers support which endpoints:
