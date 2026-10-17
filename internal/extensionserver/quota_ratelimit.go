@@ -582,10 +582,10 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 
 	// streamDoneActions collects the stream-done RateLimit entries built inline during
 	// the policy loop. They are appended to rateLimitActions at the end so all
-	// request-time entries come first. seenStreamDoneKeys deduplicates entries that
-	// have the same descriptor path and dynamic limit source.
+	// request-time entries come first. Stream-done actions are deduplicated by
+	// descriptor path because they read the actual backend/model from metadata.
 	var streamDoneActions []*routev3.RateLimit
-	seenStreamDoneKeys := make(map[string]bool)
+	seenStreamDoneActions := make(map[string]*routev3.RateLimit)
 
 	var backendModels map[string][]string
 	if modelInfo != nil {
@@ -629,27 +629,32 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 				entries := buildSimpleModelEntries(modelName, policy.Namespace, policy.Spec.TargetRefs, backendModels, &pmq.Quota.DefaultBucket)
 				rateLimitActions = append(rateLimitActions, entries...)
 				// Simple case: 2-level stream-done (backend_name + model_name_override).
-				// Deduplicate identical descriptor paths only when their limit sources
-				// are also identical. Different dynamic limit sources represent
-				// different quotas and must each receive the response cost.
-				simpleStreamDoneKey := "_simple_\x00" +
-					quotaLimitOverrideKey(&pmq.Quota.DefaultBucket)
-				if !seenStreamDoneKeys[simpleStreamDoneKey] {
-					seenStreamDoneKeys[simpleStreamDoneKey] = true
-					streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
-						Actions:           baseDescriptorActions(),
-						HitsAddend:        quotaHitsAddend(),
-						Limit:             buildQuotaLimitOverride(&pmq.Quota.DefaultBucket),
-						ApplyOnStreamDone: true,
-					})
+				const simpleStreamDoneKey = "_simple_"
+				limitOverride := buildQuotaLimitOverride(&pmq.Quota.DefaultBucket)
+				if existing := seenStreamDoneActions[simpleStreamDoneKey]; existing != nil {
+					// A static model can share this action with a dynamic model:
+					// missing metadata makes Envoy use the static RLS baseline.
+					if existing.Limit == nil && limitOverride != nil {
+						existing.Limit = limitOverride
+					}
+					continue
 				}
+				action := &routev3.RateLimit{
+					Actions:           baseDescriptorActions(),
+					HitsAddend:        quotaHitsAddend(),
+					Limit:             limitOverride,
+					ApplyOnStreamDone: true,
+				}
+				seenStreamDoneActions[simpleStreamDoneKey] = action
+				streamDoneActions = append(streamDoneActions, action)
 			} else if len(pmq.Quota.BucketRules) > 0 {
 				bucketActions := buildBucketRuleLimitEntries(modelName, policy.Namespace, &pmq.Quota, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, bucketActions...)
 				// Bucket rules: one stream-done per unique rule/header structure.
 				// Stream-done actions read backend/model from dynamic metadata and
-				// hits_addend uses a single quota_cost key. Deduplicate identical
-				// descriptor paths only when their limit sources are also identical.
+				// hits_addend uses a single quota_cost key. Deduplicate by descriptor
+				// path so a response is charged once. A dynamic override is preferred
+				// over the static baseline when the same path is shared.
 				for rIdx, rule := range pmq.Quota.BucketRules {
 					headers := flattenAndSortClientSelectorHeaders(rule.ClientSelectors)
 					var dupKey string
@@ -659,26 +664,33 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 					if len(headers) == 0 {
 						dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, 0, "", "")
 					}
-					dupKey += "\x00" + quotaLimitOverrideKey(&rule.Quota)
-					if !seenStreamDoneKeys[dupKey] {
-						seenStreamDoneKeys[dupKey] = true
+					limitOverride := buildQuotaLimitOverride(&rule.Quota)
+					if existing := seenStreamDoneActions[dupKey]; existing != nil {
+						if existing.Limit == nil && limitOverride != nil {
+							existing.Limit = limitOverride
+						}
+					} else {
 						clientActions := buildClientSelectorStreamDoneActions(rIdx, rule.ClientSelectors)
-						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+						action := &routev3.RateLimit{
 							Actions:           append(baseDescriptorActions(), clientActions...),
 							HitsAddend:        quotaHitsAddend(),
-							Limit:             buildQuotaLimitOverride(&rule.Quota),
+							Limit:             limitOverride,
 							ApplyOnStreamDone: true,
-						})
+						}
+						seenStreamDoneActions[dupKey] = action
+						streamDoneActions = append(streamDoneActions, action)
 					}
 				}
 				// Default bucket: 3-level stream-done with GenericKey (always fires).
 				if pmq.Quota.DefaultBucket.Limit > 0 {
 					defaultKey := translator.DefaultBucketDescriptorKey(len(pmq.Quota.BucketRules))
-					streamDoneKey := defaultKey + "\x00" +
-						quotaLimitOverrideKey(&pmq.Quota.DefaultBucket)
-					if !seenStreamDoneKeys[streamDoneKey] {
-						seenStreamDoneKeys[streamDoneKey] = true
-						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+					limitOverride := buildQuotaLimitOverride(&pmq.Quota.DefaultBucket)
+					if existing := seenStreamDoneActions[defaultKey]; existing != nil {
+						if existing.Limit == nil && limitOverride != nil {
+							existing.Limit = limitOverride
+						}
+					} else {
+						action := &routev3.RateLimit{
 							Actions: append(baseDescriptorActions(), &routev3.RateLimit_Action{
 								ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
 									GenericKey: &routev3.RateLimit_Action_GenericKey{
@@ -688,9 +700,11 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 								},
 							}),
 							HitsAddend:        quotaHitsAddend(),
-							Limit:             buildQuotaLimitOverride(&pmq.Quota.DefaultBucket),
+							Limit:             limitOverride,
 							ApplyOnStreamDone: true,
-						})
+						}
+						seenStreamDoneActions[defaultKey] = action
+						streamDoneActions = append(streamDoneActions, action)
 					}
 				}
 			}
@@ -807,13 +821,6 @@ func buildQuotaLimitOverride(quota *aigv1a1.QuotaValue) *routev3.RateLimit_Overr
 			},
 		},
 	}
-}
-
-func quotaLimitOverrideKey(quota *aigv1a1.QuotaValue) string {
-	if quota == nil || quota.FromMetadata == nil {
-		return ""
-	}
-	return quota.FromMetadata.Namespace + "\x00" + quota.FromMetadata.Key
 }
 
 // quotaHitsAddend returns the HitsAddend that reads the quota cost from dynamic

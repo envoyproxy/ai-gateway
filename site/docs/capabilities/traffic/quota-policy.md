@@ -350,6 +350,12 @@ case-sensitive: lowercase values such as `hour` are ignored and the static
 baseline applies. Keep the static `limit` a conservative ceiling; missing or
 malformed metadata fails open to that baseline.
 
+When multiple quotas contribute to the same route-level descriptor, their
+dynamic metadata references must use the same namespace and key. Static quotas
+may share that descriptor with a dynamic quota; requests without the dynamic
+metadata use the static baseline. Different routes or descriptors may use
+different metadata references.
+
 With token charging, a suspended tenant (`requests_per_unit: 0`) can still
 complete one already-admitted request before subsequent matching requests are
 denied. Request-count charging (no response cost) denies immediately.

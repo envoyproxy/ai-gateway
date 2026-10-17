@@ -66,6 +66,9 @@ type QuotaPolicySpec struct {
 }
 
 type ServiceQuotaDefinition struct {
+	// ServiceQuota is not currently enforced by the extension server. This
+	// includes FromMetadata on Quota; it is accepted for API consistency with
+	// per-model quotas but has no effect until service-quota enforcement lands.
 	// CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
@@ -161,6 +164,8 @@ type QuotaRule struct {
 	// ShadowMode indicates whether this quota rule runs in shadow mode.
 	// When enabled, all quota checks are performed (cache lookups,
 	// counter updates, telemetry generation), but the outcome is never enforced.
+	// If Quota.FromMetadata is set, it still selects the effective limit and
+	// duration; ShadowMode only controls enforcement of that result.
 	// The request always succeeds, even if the configured quota is exceeded.
 	//
 	// +optional

@@ -285,7 +285,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		}
 	})
 
-	t.Run("different fromMetadata sources keep separate stream-done entries", func(t *testing.T) {
+	t.Run("different fromMetadata sources share one stream-done entry", func(t *testing.T) {
 		policies := []aigv1a1.QuotaPolicy{
 			newTestQuotaPolicyWithMetadata("policy-a", "policy-a", "gpt-4", "envoy.filters.http.ext_authz", "total_limit_a", 100),
 			newTestQuotaPolicyWithMetadata("policy-b", "policy-b", "gpt-4", "envoy.filters.http.ext_authz", "total_limit_b", 200),
@@ -295,8 +295,9 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
-		// Two request-time entries and one stream-done entry per distinct limit source.
-		require.Len(t, perRoute.RateLimits, 4)
+		// Two request-time entries and one stream-done entry. A response must not
+		// be charged twice merely because policies use different metadata sources.
+		require.Len(t, perRoute.RateLimits, 3)
 		var streamDoneCount int
 		streamDoneKeys := make(map[string]struct{})
 		for _, rateLimit := range perRoute.RateLimits {
@@ -307,11 +308,53 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 				streamDoneKeys[override.MetadataKey.Path[0].GetKey()] = struct{}{}
 			}
 		}
-		require.Equal(t, 2, streamDoneCount)
+		require.Equal(t, 1, streamDoneCount)
 		require.Equal(t, map[string]struct{}{
 			"total_limit_a": {},
-			"total_limit_b": {},
 		}, streamDoneKeys)
+	})
+
+	t.Run("dynamic and static models share one stream-done entry", func(t *testing.T) {
+		dynamicPolicy := newTestQuotaPolicyWithMetadata(
+			"dynamic-policy",
+			"dynamic-policy",
+			"dynamic-model",
+			"envoy.filters.http.ext_authz",
+			"total_limit",
+			100,
+		)
+		staticPolicy := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "static-policy", Namespace: "static-policy"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{Name: "static-policy"}},
+				PerModelQuotas: []aigv1a1.PerModelQuota{{
+					ModelName: ptr.To("static-model"),
+					Quota: aigv1a1.QuotaDefinition{
+						DefaultBucket: aigv1a1.QuotaValue{Limit: 200, Duration: "1m"},
+					},
+				}},
+			},
+		}
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(
+			logr.Discard(),
+			route,
+			[]aigv1a1.QuotaPolicy{dynamicPolicy, staticPolicy},
+			nil,
+		))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+		// Each model gets a request-time descriptor. The shared stream-done
+		// action uses the dynamic override; static-model requests have no such
+		// metadata and therefore use their static RLS baseline.
+		require.Len(t, perRoute.RateLimits, 3)
+		require.Equal(t, "dynamic-model", perRoute.RateLimits[0].Actions[1].GetGenericKey().DescriptorValue)
+		require.Equal(t, "static-model", perRoute.RateLimits[1].Actions[1].GetGenericKey().DescriptorValue)
+		require.True(t, perRoute.RateLimits[2].ApplyOnStreamDone)
+		override := perRoute.RateLimits[2].Limit.GetDynamicMetadata()
+		require.NotNil(t, override)
+		require.Equal(t, "total_limit", override.MetadataKey.Path[0].GetKey())
 	})
 
 	t.Run("preserves existing TypedPerFilterConfig entries", func(t *testing.T) {
