@@ -42,6 +42,17 @@ Name of the Secret that holds the MCP session encryption seed.
 {{- end }}
 
 {{/*
+Name of the Secret that holds the Files/Batch API id encryption seed.
+*/}}
+{{- define "ai-gateway-helm.controller.fileIDEncryptionSecretName" -}}
+{{- if .Values.controller.fileIDEncryption.existingSecret }}
+{{- .Values.controller.fileIDEncryption.existingSecret }}
+{{- else }}
+{{- printf "%s-file-id-encryption" (include "ai-gateway-helm.controller.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "ai-gateway-helm.chart" -}}

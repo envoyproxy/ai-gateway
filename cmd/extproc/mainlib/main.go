@@ -178,7 +178,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
-	fs.StringVar(&flags.fileIDEncryptionSeed, "fileIDEncryptionSeed", "default-insecure-seed",
+	fs.StringVar(&flags.fileIDEncryptionSeed, "fileIDEncryptionSeed", defaultInsecureMCPSessionEncryptionSeed,
 		"Seed used to derive the Files/Batch API id encryption key. This should be changed and set to a secure value.")
 	fs.IntVar(&flags.fileIDEncryptionIterations, "fileIDEncryptionIterations", 100_000,
 		"Number of iterations to use for PBKDF2 key derivation for Files/Batch API id encryption.")
@@ -386,6 +386,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	// Register the OpenAI Files API endpoints (/v1/files, /v1/files/{id}, /v1/files/{id}/content)
 	// under a single prefix processor that routes by encoded backend id.
+	if flags.fileIDEncryptionSeed == defaultInsecureMCPSessionEncryptionSeed {
+		l.Warn("Files/Batch API id encryption seed is set to the well-known default value; " +
+			"this allows anyone who knows this public default to decrypt and forge file and batch ids. " +
+			"Set --fileIDEncryptionSeed (or the Helm value controller.fileIDEncryption.seed) to a secret, " +
+			"randomly-generated value before exposing this gateway to untrusted or multi-tenant clients.")
+	}
 	fileIDCodec, err := newFileIDCodec(&flags)
 	if err != nil {
 		return err

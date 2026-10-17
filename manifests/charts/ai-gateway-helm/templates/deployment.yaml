@@ -122,6 +122,12 @@ spec:
             - --mcpFallbackSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.fallback.seed }}
             - --mcpFallbackSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.fallback.iterations }}
             {{- end }}
+            - --fileIDEncryptionSeed=$(FILE_ID_ENCRYPTION_SEED)
+            - --fileIDEncryptionIterations={{ .Values.controller.fileIDEncryption.iterations }}
+            {{- if .Values.controller.fileIDEncryption.fallback.seed }}
+            - --fileIDFallbackEncryptionSeed={{ .Values.controller.fileIDEncryption.fallback.seed }}
+            - --fileIDFallbackEncryptionIterations={{ .Values.controller.fileIDEncryption.fallback.iterations }}
+            {{- end }}
           # Allow the default two-minute cache sync timeout plus startup overhead.
           startupProbe:
             grpc:
@@ -142,6 +148,11 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "ai-gateway-helm.controller.mcpSessionEncryptionSecretName" . }}
+                  key: seed
+            - name: FILE_ID_ENCRYPTION_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-gateway-helm.controller.fileIDEncryptionSecretName" . }}
                   key: seed
           {{- if .Values.controller.podEnv }}
           {{- range $key, $val := .Values.controller.podEnv }}

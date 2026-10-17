@@ -75,6 +75,10 @@ func newExtProcBuilder(options *Options, extProcAsSideCar bool, logger logr.Logg
 		mcpSessionEncryptionIterations:         options.MCPSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionSeed:       options.MCPFallbackSessionEncryptionSeed,
 		mcpFallbackSessionEncryptionIterations: options.MCPFallbackSessionEncryptionIterations,
+		fileIDEncryptionSeed:                   options.FileIDEncryptionSeed,
+		fileIDEncryptionIterations:             options.FileIDEncryptionIterations,
+		fileIDFallbackEncryptionSeed:           options.FileIDFallbackEncryptionSeed,
+		fileIDFallbackEncryptionIterations:     options.FileIDFallbackEncryptionIterations,
 	}
 }
 
@@ -105,6 +109,11 @@ type extProcBuilder struct {
 	mcpSessionEncryptionIterations         int
 	mcpFallbackSessionEncryptionSeed       string
 	mcpFallbackSessionEncryptionIterations int
+
+	fileIDEncryptionSeed               string
+	fileIDEncryptionIterations         int
+	fileIDFallbackEncryptionSeed       string
+	fileIDFallbackEncryptionIterations int
 }
 
 // extProcContainerInput is the per-gateway input for extproc injection.
@@ -227,6 +236,10 @@ type extProcConfigDigest struct {
 	MCPSessionEncryptionIterations         int
 	MCPFallbackSessionEncryptionSeed       string
 	MCPFallbackSessionEncryptionIterations int
+	FileIDEncryptionSeed                   string
+	FileIDEncryptionIterations             int
+	FileIDFallbackEncryptionSeed           string
+	FileIDFallbackEncryptionIterations     int
 	NeedMCP                                bool
 	GatewayConfigExtProc                   *aigv1b1.GatewayConfigExtProc
 }
@@ -254,6 +267,10 @@ func (b *extProcBuilder) extProcContainerHash(input extProcContainerInput) strin
 		MCPSessionEncryptionIterations:         b.mcpSessionEncryptionIterations,
 		MCPFallbackSessionEncryptionSeed:       b.mcpFallbackSessionEncryptionSeed,
 		MCPFallbackSessionEncryptionIterations: b.mcpFallbackSessionEncryptionIterations,
+		FileIDEncryptionSeed:                   b.fileIDEncryptionSeed,
+		FileIDEncryptionIterations:             b.fileIDEncryptionIterations,
+		FileIDFallbackEncryptionSeed:           b.fileIDFallbackEncryptionSeed,
+		FileIDFallbackEncryptionIterations:     b.fileIDFallbackEncryptionIterations,
 		NeedMCP:                                input.needMCP,
 		GatewayConfigExtProc:                   extProcSpecFromInput(input),
 	}
@@ -294,6 +311,18 @@ func (b *extProcBuilder) buildExtProcBaseArgs(needMCP bool) []string {
 		"-adminPort", fmt.Sprintf("%d", extProcAdminPort),
 		"-rootPrefix", b.rootPrefix,
 		"-maxRecvMsgSize", fmt.Sprintf("%d", b.maxRecvMsgSize),
+	}
+	if b.fileIDEncryptionSeed != "" {
+		args = append(args,
+			"-fileIDEncryptionSeed", b.fileIDEncryptionSeed,
+			"-fileIDEncryptionIterations", strconv.Itoa(b.fileIDEncryptionIterations),
+		)
+		if b.fileIDFallbackEncryptionSeed != "" {
+			args = append(args,
+				"-fileIDFallbackEncryptionSeed", b.fileIDFallbackEncryptionSeed,
+				"-fileIDFallbackEncryptionIterations", strconv.Itoa(b.fileIDFallbackEncryptionIterations),
+			)
+		}
 	}
 	if f := b.nonDefaultLogFormat(); f != "" {
 		args = append(args, "-logFormat", f)
