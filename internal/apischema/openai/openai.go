@@ -9442,3 +9442,128 @@ type FileDeleted struct {
 	Deleted bool   `json:"deleted"`
 	Object  string `json:"object"`
 }
+
+// Batch API
+
+// BatchEndpoint is the OpenAI endpoint that every request in a batch targets.
+type BatchEndpoint string
+
+const (
+	BatchEndpointChatCompletions BatchEndpoint = "/v1/chat/completions"
+	BatchEndpointEmbeddings      BatchEndpoint = "/v1/embeddings"
+	BatchEndpointCompletions     BatchEndpoint = "/v1/completions"
+	BatchEndpointResponses       BatchEndpoint = "/v1/responses"
+)
+
+// BatchNewParams is the request body of POST /v1/batches.
+type BatchNewParams struct {
+	// InputFileID is the id of an uploaded file with purpose "batch".
+	InputFileID string `json:"input_file_id"`
+	// Endpoint is the endpoint used for every request in the batch.
+	Endpoint BatchEndpoint `json:"endpoint"`
+	// CompletionWindow is the time frame within which the batch should be processed. Currently only "24h".
+	CompletionWindow string `json:"completion_window"`
+	// Metadata is an optional set of up to 16 key-value pairs.
+	Metadata map[string]string `json:"metadata,omitempty"`
+	// OutputExpiresAfter is the optional expiration policy for the output and error files.
+	OutputExpiresAfter *BatchNewParamsOutputExpiresAfter `json:"output_expires_after,omitempty"`
+}
+
+// BatchNewParamsOutputExpiresAfter is the expiration policy for batch output files.
+type BatchNewParamsOutputExpiresAfter struct {
+	// Anchor is always "created_at".
+	Anchor string `json:"anchor"`
+	// Seconds is the number of seconds after the anchor time that the file expires.
+	Seconds int64 `json:"seconds"`
+}
+
+// BatchStatus is the lifecycle status of a batch.
+type BatchStatus string
+
+const (
+	BatchStatusValidating BatchStatus = "validating"
+	BatchStatusFailed     BatchStatus = "failed"
+	BatchStatusInProgress BatchStatus = "in_progress"
+	BatchStatusFinalizing BatchStatus = "finalizing"
+	BatchStatusCompleted  BatchStatus = "completed"
+	BatchStatusExpired    BatchStatus = "expired"
+	BatchStatusCancelling BatchStatus = "cancelling"
+	BatchStatusCancelled  BatchStatus = "cancelled"
+)
+
+// Batch is the batch object returned by the Batch API.
+type Batch struct {
+	ID               string        `json:"id"`
+	Object           string        `json:"object"`
+	Endpoint         BatchEndpoint `json:"endpoint"`
+	Model            string        `json:"model,omitempty"`
+	Errors           *BatchErrors  `json:"errors,omitempty"`
+	InputFileID      string        `json:"input_file_id"`
+	CompletionWindow string        `json:"completion_window"`
+	Status           BatchStatus   `json:"status"`
+	// OutputFileID is the id of the file containing successful results, if any.
+	OutputFileID *string `json:"output_file_id,omitempty"`
+	// ErrorFileID is the id of the file containing failed requests, if any.
+	ErrorFileID   *string             `json:"error_file_id,omitempty"`
+	CreatedAt     int64               `json:"created_at"`
+	InProgressAt  *int64              `json:"in_progress_at,omitempty"`
+	ExpiresAt     *int64              `json:"expires_at,omitempty"`
+	FinalizingAt  *int64              `json:"finalizing_at,omitempty"`
+	CompletedAt   *int64              `json:"completed_at,omitempty"`
+	FailedAt      *int64              `json:"failed_at,omitempty"`
+	ExpiredAt     *int64              `json:"expired_at,omitempty"`
+	CancellingAt  *int64              `json:"cancelling_at,omitempty"`
+	CancelledAt   *int64              `json:"cancelled_at,omitempty"`
+	RequestCounts *BatchRequestCounts `json:"request_counts,omitempty"`
+	Usage         *BatchUsage         `json:"usage,omitempty"`
+	Metadata      map[string]string   `json:"metadata,omitempty"`
+}
+
+// BatchErrors is the list of validation errors of a batch.
+type BatchErrors struct {
+	Object string       `json:"object,omitempty"`
+	Data   []BatchError `json:"data,omitempty"`
+}
+
+// BatchError is a single batch validation error.
+type BatchError struct {
+	Code    string  `json:"code,omitempty"`
+	Message string  `json:"message,omitempty"`
+	Param   *string `json:"param,omitempty"`
+	Line    *int64  `json:"line,omitempty"`
+}
+
+// BatchRequestCounts is the request counts for different statuses within the batch.
+type BatchRequestCounts struct {
+	Total     int64 `json:"total"`
+	Completed int64 `json:"completed"`
+	Failed    int64 `json:"failed"`
+}
+
+// BatchUsage is the aggregated token usage of a batch.
+type BatchUsage struct {
+	InputTokens         int64                     `json:"input_tokens"`
+	InputTokensDetails  *BatchInputTokensDetails  `json:"input_tokens_details,omitempty"`
+	OutputTokens        int64                     `json:"output_tokens"`
+	OutputTokensDetails *BatchOutputTokensDetails `json:"output_tokens_details,omitempty"`
+	TotalTokens         int64                     `json:"total_tokens"`
+}
+
+// BatchInputTokensDetails is the breakdown of input tokens of a batch.
+type BatchInputTokensDetails struct {
+	CachedTokens int64 `json:"cached_tokens"`
+}
+
+// BatchOutputTokensDetails is the breakdown of output tokens of a batch.
+type BatchOutputTokensDetails struct {
+	ReasoningTokens int64 `json:"reasoning_tokens"`
+}
+
+// BatchListResponse is the paginated list response returned by GET /v1/batches.
+type BatchListResponse struct {
+	Data    []Batch `json:"data"`
+	Object  string  `json:"object"`
+	HasMore bool    `json:"has_more"`
+	FirstID string  `json:"first_id,omitempty"`
+	LastID  string  `json:"last_id,omitempty"`
+}
