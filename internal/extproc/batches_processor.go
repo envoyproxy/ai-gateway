@@ -36,11 +36,11 @@ const batchesPathMarker = "/v1/batches"
 var batchFileIDFields = []string{"input_file_id", "output_file_id", "error_file_id"}
 
 // supportedBatchEndpoints are the batch "endpoint" values the gateway accepts on create.
-var supportedBatchEndpoints = map[openai.BatchEndpoint]struct{}{
-	openai.BatchEndpointChatCompletions: {},
-	openai.BatchEndpointEmbeddings:      {},
-	openai.BatchEndpointCompletions:     {},
-	openai.BatchEndpointResponses:       {},
+var supportedBatchEndpoints = map[openai.BatchNewParamsEndpoint]struct{}{
+	openai.BatchNewParamsEndpointV1ChatCompletions: {},
+	openai.BatchNewParamsEndpointV1Embeddings:      {},
+	openai.BatchNewParamsEndpointV1Completions:     {},
+	openai.BatchNewParamsEndpointV1Responses:       {},
 }
 
 // batchesOperation identifies which Batch API endpoint a request targets.
@@ -206,7 +206,7 @@ func (p *batchesProcessor) ProcessRequestBody(_ context.Context, rawBody *extpro
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "request body must be a JSON object"), nil
 	}
 
-	endpoint := openai.BatchEndpoint(gjson.GetBytes(body, "endpoint").String())
+	endpoint := openai.BatchNewParamsEndpoint(gjson.GetBytes(body, "endpoint").String())
 	if _, ok := supportedBatchEndpoints[endpoint]; !ok {
 		p.logger.Info("rejecting batch create with unsupported endpoint", slog.String("endpoint", string(endpoint)))
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error",

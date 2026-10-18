@@ -19,8 +19,8 @@ func TestBatchNewParams_JSON(t *testing.T) {
 	var p BatchNewParams
 	require.NoError(t, json.Unmarshal([]byte(in), &p))
 	require.Equal(t, "file-abc", p.InputFileID)
-	require.Equal(t, BatchEndpointChatCompletions, p.Endpoint)
-	require.Equal(t, "24h", p.CompletionWindow)
+	require.Equal(t, BatchNewParamsEndpointV1ChatCompletions, p.Endpoint)
+	require.Equal(t, BatchNewParamsCompletionWindow24h, p.CompletionWindow)
 	require.Equal(t, map[string]string{"k": "v"}, p.Metadata)
 	require.Nil(t, p.OutputExpiresAfter)
 
@@ -33,7 +33,7 @@ func TestBatch_JSONRoundTrip(t *testing.T) {
 	b := Batch{
 		ID:               "batch_123",
 		Object:           "batch",
-		Endpoint:         BatchEndpointEmbeddings,
+		Endpoint:         BatchNewParamsEndpointV1Embeddings,
 		InputFileID:      "file-in",
 		CompletionWindow: "24h",
 		Status:           BatchStatusCompleted,
@@ -45,8 +45,8 @@ func TestBatch_JSONRoundTrip(t *testing.T) {
 			InputTokens:         10,
 			OutputTokens:        5,
 			TotalTokens:         15,
-			InputTokensDetails:  &BatchInputTokensDetails{CachedTokens: 2},
-			OutputTokensDetails: &BatchOutputTokensDetails{ReasoningTokens: 1},
+			InputTokensDetails:  &BatchUsageInputTokensDetails{CachedTokens: 2},
+			OutputTokensDetails: &BatchUsageOutputTokensDetails{ReasoningTokens: 1},
 		},
 	}
 	data, err := json.Marshal(b)
@@ -70,7 +70,7 @@ func TestBatchListResponse_JSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(in), &l))
 	require.Len(t, l.Data, 1)
 	require.Equal(t, BatchStatusInProgress, l.Data[0].Status)
-	require.Equal(t, BatchEndpointResponses, l.Data[0].Endpoint)
+	require.Equal(t, BatchNewParamsEndpointV1Responses, l.Data[0].Endpoint)
 	require.True(t, l.HasMore)
 	require.Equal(t, "batch_1", l.LastID)
 }
