@@ -83,8 +83,7 @@ func NewFileListTranslator(schema filterapi.VersionedAPISchema) (FilesTranslator
 	}
 }
 
-// errUnsupportedFilesSchema is the selection error returned when a Files route points at a
-// backend whose file translation does not yet exist. The processor fails the request with it.
+// errUnsupportedFilesSchema is returned for backend schemas without a Files translator.
 func errUnsupportedFilesSchema(schema filterapi.VersionedAPISchema) error {
 	return fmt.Errorf("unsupported API schema for files: backend=%s", schema)
 }

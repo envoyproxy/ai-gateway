@@ -1000,23 +1000,23 @@ func (f *fakeFilesTranslator) ResponseError(_ map[string]string, body io.Reader)
 	return nil, f.errBody, nil
 }
 
-func upstreamWithParent(parent *filesProcessor) *filesProcessor {
-	return &filesProcessor{isUpstreamFilter: true, logger: slog.Default(), parent: parent}
+func upstreamWithRouteProcessor(rp *filesProcessor) *filesProcessor {
+	return &filesProcessor{isUpstreamFilter: true, logger: slog.Default(), routeProcessor: rp}
 }
 
 func TestUpstreamRequest_NoParent_PassThrough(t *testing.T) {
-	resp, err := upstreamWithParent(nil).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	resp, err := upstreamWithRouteProcessor(nil).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
 	require.NoError(t, err)
 	require.Nil(t, resp.GetRequestHeaders().GetResponse())
 }
 
 func TestUpstreamRequest_HeadersOnly(t *testing.T) {
 	ft := &fakeFilesTranslator{reqHeaders: []internalapi.Header{{":path", "/provider/files/native-1"}}}
-	parent := &filesProcessor{
-		translator:   ft,
-		filesRequest: translator.FilesRequest{NativeID: "native-1", Path: "/v1/files/native-1", Method: http.MethodGet},
+	rp := &filesProcessor{
+		translator:           ft,
+		filesRequestMetadata: translator.FilesRequest{NativeID: "native-1", Path: "/v1/files/native-1", Method: http.MethodGet},
 	}
-	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	resp, err := upstreamWithRouteProcessor(rp).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
 	require.NoError(t, err)
 	common := resp.GetRequestHeaders().GetResponse()
 	require.Equal(t, extprocv3.CommonResponse_CONTINUE, common.Status)
@@ -1030,12 +1030,12 @@ func TestUpstreamRequest_HeadersOnly(t *testing.T) {
 
 func TestUpstreamRequest_ReplacesBody(t *testing.T) {
 	ft := &fakeFilesTranslator{reqBody: []byte("translated")}
-	parent := &filesProcessor{
-		translator:   ft,
-		requestBody:  []byte("stripped-multipart"),
-		filesRequest: translator.FilesRequest{Model: "m1", Method: http.MethodPost},
+	rp := &filesProcessor{
+		translator:           ft,
+		requestBody:          []byte("stripped-multipart"),
+		filesRequestMetadata: translator.FilesRequest{Model: "m1", Method: http.MethodPost},
 	}
-	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	resp, err := upstreamWithRouteProcessor(rp).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
 	require.NoError(t, err)
 	common := resp.GetRequestHeaders().GetResponse()
 	require.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, common.Status)
@@ -1048,12 +1048,12 @@ func TestUpstreamRequest_ReplacesBody(t *testing.T) {
 }
 
 func TestUpstreamRequest_Errors(t *testing.T) {
-	parent := &filesProcessor{translator: &fakeFilesTranslator{reqErr: errors.New("boom")}}
-	_, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	rp := &filesProcessor{translator: &fakeFilesTranslator{reqErr: errors.New("boom")}}
+	_, err := upstreamWithRouteProcessor(rp).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
 	require.ErrorContains(t, err, "boom")
 
-	parent = &filesProcessor{translator: &fakeFilesTranslator{reqErr: fmt.Errorf("%w: bad purpose", internalapi.ErrInvalidRequestBody)}}
-	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	rp = &filesProcessor{translator: &fakeFilesTranslator{reqErr: fmt.Errorf("%w: bad purpose", internalapi.ErrInvalidRequestBody)}}
+	resp, err := upstreamWithRouteProcessor(rp).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
 	require.NoError(t, err)
 	require.Equal(t, int32(http.StatusUnprocessableEntity), int32(resp.GetImmediateResponse().Status.Code))
 }
@@ -1065,7 +1065,7 @@ func TestSetBackend_LinksParent(t *testing.T) {
 	for _, rb := range b.Backends {
 		require.NoError(t, up.SetBackend(context.Background(), rb, "r", routeProcessor))
 	}
-	require.Same(t, routeProcessor, up.parent)
+	require.Same(t, routeProcessor, up.routeProcessor)
 }
 
 func TestRouterRecordsFilesRequest(t *testing.T) {
@@ -1075,15 +1075,15 @@ func TestRouterRecordsFilesRequest(t *testing.T) {
 	p.codec = codec
 	_, err := p.ProcessRequestHeaders(context.Background(), nil)
 	require.NoError(t, err)
-	require.Equal(t, "native-9", p.filesRequest.NativeID)
-	require.Equal(t, "/v1/files/native-9", p.filesRequest.Path)
-	require.Equal(t, http.MethodDelete, p.filesRequest.Method)
+	require.Equal(t, "native-9", p.filesRequestMetadata.NativeID)
+	require.Equal(t, "/v1/files/native-9", p.filesRequestMetadata.Path)
+	require.Equal(t, http.MethodDelete, p.filesRequestMetadata.Method)
 
 	p = newProcessorForPath(http.MethodGet, "/v1/files?model=m1&limit=2", nil)
 	_, err = p.ProcessRequestHeaders(context.Background(), nil)
 	require.NoError(t, err)
-	require.Equal(t, "?limit=2", p.filesRequest.Query)
-	require.Equal(t, "/v1/files?limit=2", p.filesRequest.Path)
+	require.Equal(t, "?limit=2", p.filesRequestMetadata.Query)
+	require.Equal(t, "/v1/files?limit=2", p.filesRequestMetadata.Path)
 }
 
 func TestResponseHeaders_Translated(t *testing.T) {
