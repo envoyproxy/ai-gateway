@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
@@ -99,5 +100,26 @@ func TestNewBatchTranslators(t *testing.T) {
 				require.Contains(t, err.Error(), "unsupported API schema for batches")
 			})
 		}
+	}
+}
+
+func TestOpenAIBatchCreateTranslator_AcceptsAllEndpoints(t *testing.T) {
+	tr, err := NewBatchCreateTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI})
+	require.NoError(t, err)
+	for _, ep := range []openai.BatchNewParamsEndpoint{
+		openai.BatchNewParamsEndpointV1ChatCompletions,
+		openai.BatchNewParamsEndpointV1Embeddings,
+		openai.BatchNewParamsEndpointV1Completions,
+		openai.BatchNewParamsEndpointV1Responses,
+		openai.BatchNewParamsEndpointV1Moderations,
+		openai.BatchNewParamsEndpointV1ImagesGenerations,
+		openai.BatchNewParamsEndpointV1ImagesEdits,
+		openai.BatchNewParamsEndpointV1Videos,
+		"/v1/not-yet-known",
+	} {
+		hdrs, body, err := tr.RequestBody([]byte(`{}`), &BatchesRequest{Endpoint: ep}, false)
+		require.NoError(t, err, ep)
+		require.Nil(t, hdrs)
+		require.Nil(t, body)
 	}
 }

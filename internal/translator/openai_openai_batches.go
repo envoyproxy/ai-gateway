@@ -34,7 +34,8 @@ var (
 
 // RequestBody implements [Translator.RequestBody]. Returning a nil body keeps the processor's
 // canonical (native-id-substituted) request unchanged; returning nil headers leaves :path/:method
-// as the processor set them.
+// as the processor set them. For create, every batch endpoint is accepted, including ones the
+// gateway does not know yet: an OpenAI-compatible upstream validates the endpoint itself.
 func (openAIBatchPassthrough) RequestBody(_ []byte, _ *BatchesRequest, _ bool) (
 	newHeaders []internalapi.Header, mutatedBody []byte, err error,
 ) {

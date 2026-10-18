@@ -225,10 +225,6 @@ func TestBatchAPI_Rejections(t *testing.T) {
 			method: http.MethodPost, path: "/v1/batches",
 			body: `{"input_file_id":"` + batchID + `","endpoint":"/v1/chat/completions","completion_window":"24h"}`,
 		}, http.StatusBadRequest},
-		{"create - unsupported endpoint", batchRequest{
-			method: http.MethodPost, path: "/v1/batches",
-			body: `{"input_file_id":"` + fileID + `","endpoint":"/v1/images/generations","completion_window":"24h"}`,
-		}, http.StatusBadRequest},
 		{"list - missing model", batchRequest{method: http.MethodGet, path: "/v1/batches"}, http.StatusBadRequest},
 		{"list - file id as cursor", batchRequest{method: http.MethodGet, path: "/v1/batches?model=" + filesTestModel + "&after=" + fileID}, http.StatusBadRequest},
 		{"retrieve - forged id", batchRequest{method: http.MethodGet, path: "/v1/batches/batch-forged"}, http.StatusNotFound},
@@ -243,6 +239,30 @@ func TestBatchAPI_Rejections(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body := doBatchRequest(t, addr, &tc.req, tc.expStatus)
 			require.Contains(t, string(body), "error")
+		})
+	}
+}
+
+// TestBatchAPI_OpenAIAcceptsAnyEndpoint verifies that endpoint support is decided by the backend's
+// translator: the OpenAI translator forwards every batch endpoint, with the native input file id.
+func TestBatchAPI_OpenAIAcceptsAnyEndpoint(t *testing.T) {
+	env := startTestEnvironment(t, filesTestConfig(), true, false)
+	addr := fmt.Sprintf("http://localhost:%d", env.EnvoyListenerPort())
+	fileID := encodeGatewayID(t, "test-ns", "files-backend", "file-native-abc")
+
+	for _, endpoint := range []string{"/v1/images/generations", "/v1/moderations"} {
+		t.Run(endpoint, func(t *testing.T) {
+			created := doBatchRequest(t, addr, &batchRequest{
+				method:  http.MethodPost,
+				path:    "/v1/batches",
+				body:    `{"input_file_id":"` + fileID + `","endpoint":"` + endpoint + `","completion_window":"24h"}`,
+				expPath: "/v1/batches",
+				expBody: `{"input_file_id":"file-native-abc","endpoint":"` + endpoint + `","completion_window":"24h"}`,
+				responseBody: `{"id":"batch_native_2","object":"batch","endpoint":"` + endpoint +
+					`","input_file_id":"file-native-abc","completion_window":"24h","status":"validating","created_at":1}`,
+			}, http.StatusOK)
+			requireDecodes(t, gjson.GetBytes(created, "id").String(), idcodec.KindBatch, "batch_native_2")
+			require.Equal(t, endpoint, gjson.GetBytes(created, "endpoint").String())
 		})
 	}
 }

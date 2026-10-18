@@ -43,8 +43,9 @@ ids. Always use the ids the gateway returns.
 | Retrieve  | `GET /v1/batches/{batch_id}`         | model recorded in the batch id                            |
 | Cancel    | `POST /v1/batches/{batch_id}/cancel` | model recorded in the batch id                            |
 
-The batch `endpoint` must be one of `/v1/chat/completions`, `/v1/embeddings`, `/v1/completions`, or
-`/v1/responses`.
+Which batch `endpoint` values are accepted depends on the backend's provider. For OpenAI and
+OpenAI-compatible backends the gateway forwards any `endpoint` unchanged, and the provider validates
+it. Translators for other providers will reject the endpoints that provider cannot run.
 
 :::warning Provider support
 
@@ -145,12 +146,12 @@ because the `after` cursor is a gateway batch id that carries the model.
 
 ## Error responses
 
-| Status            | When                                                                                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `400 Bad Request` | Create with a body that is not valid JSON, a missing or non-gateway `input_file_id`, or an unsupported `endpoint`; list without `?model=`; an `after` cursor that is not a gateway batch id. |
-| `404 Not Found`   | A batch id that cannot be decoded (unknown, tampered, forged, or a file id), or an unsupported method/path.                                                                                  |
-| `500`             | The matched route rule has more than one backend, the id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI.                                 |
-| `502 Bad Gateway` | A successful upstream response whose ids could not be safely re-encoded. Upstream error responses are passed through unchanged.                                                              |
+| Status            | When                                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `400 Bad Request` | Create with a body that is not valid JSON, a missing or non-gateway `input_file_id`, or an `endpoint` the backend's provider does not support; list without `?model=`; an `after` cursor that is not a gateway batch id. |
+| `404 Not Found`   | A batch id that cannot be decoded (unknown, tampered, forged, or a file id), or an unsupported method/path.                                                                                                              |
+| `500`             | The matched route rule has more than one backend, the id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI.                                                             |
+| `502 Bad Gateway` | A successful upstream response whose ids could not be safely re-encoded. Upstream error responses are passed through unchanged.                                                                                          |
 
 ## Caveats and limitations
 

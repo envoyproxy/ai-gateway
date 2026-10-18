@@ -7,6 +7,8 @@ package extproc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -16,9 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func encodeGatewayID(t *testing.T, codec idcodec.Codec, kind, ns, name, model, nativeID string) string {
@@ -134,13 +138,10 @@ func TestBatches_Create_RoutesByInputFile(t *testing.T) {
 
 func TestBatches_Create_Rejections(t *testing.T) {
 	codec := newTestCodec()
-	fileID := encodeGatewayID(t, codec, idcodec.KindFile, "ns", "apple", "m1", "file-native")
 	batchID := encodeGatewayID(t, codec, idcodec.KindBatch, "ns", "apple", "m1", "batch_native")
 	noModel := encodeGatewayID(t, codec, idcodec.KindFile, "ns", "apple", "", "file-native")
 	tests := map[string]string{
 		"not json":              `nope`,
-		"unsupported endpoint":  `{"input_file_id":"` + fileID + `","endpoint":"/v1/images/generations"}`,
-		"missing endpoint":      `{"input_file_id":"` + fileID + `"}`,
 		"missing input file":    `{"endpoint":"/v1/embeddings"}`,
 		"native file id":        `{"input_file_id":"file-abc","endpoint":"/v1/embeddings"}`,
 		"batch id as file":      `{"input_file_id":"` + batchID + `","endpoint":"/v1/embeddings"}`,
@@ -392,4 +393,134 @@ func TestNewBatchesProcessorFactory(t *testing.T) {
 	bp, ok := proc.(*batchesProcessor)
 	require.True(t, ok)
 	require.True(t, bp.isUpstreamFilter)
+}
+
+// fakeBatchCreateTranslator is a create translator that rejects one endpoint, fails on another, and
+// optionally rewrites the body, to exercise the processor's handling of translator results.
+type fakeBatchCreateTranslator struct {
+	translator.BatchesTranslator
+	rejectEndpoint, failEndpoint openai.BatchNewParamsEndpoint
+	newBody                      []byte
+	got                          *translator.BatchesRequest
+}
+
+func (f *fakeBatchCreateTranslator) RequestBody(_ []byte, req *translator.BatchesRequest, _ bool) ([]internalapi.Header, []byte, error) {
+	f.got = req
+	switch req.Endpoint {
+	case f.rejectEndpoint:
+		return nil, nil, fmt.Errorf("provider X: %w: %s", translator.ErrUnsupportedBatchEndpoint, req.Endpoint)
+	case f.failEndpoint:
+		return nil, nil, errors.New("boom")
+	}
+	return nil, f.newBody, nil
+}
+
+// newCreateUpstreamPair returns an upstream batches processor linked to a router processor that has
+// already processed a create body for the given endpoint.
+func newCreateUpstreamPair(t *testing.T, tr translator.BatchesTranslator, endpoint string) *batchesProcessor {
+	t.Helper()
+	codec := newTestCodec()
+	fileID := encodeGatewayID(t, codec, idcodec.KindFile, "ns", "apple", "m1", "file-native")
+	rp := newBatchesProcessorForPath(codec, http.MethodPost, "/v1/batches")
+	_, err := rp.ProcessRequestHeaders(context.Background(), nil)
+	require.NoError(t, err)
+	resp, err := rp.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body: []byte(`{"input_file_id":"` + fileID + `","endpoint":"` + endpoint + `","completion_window":"24h"}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp.GetImmediateResponse(), "router must not reject on endpoint")
+	rp.translator = tr
+	return &batchesProcessor{isUpstreamFilter: true, logger: slog.Default(), routeProcessor: rp}
+}
+
+func TestBatches_Upstream_EndpointCheckedByTranslator(t *testing.T) {
+	fake := func() *fakeBatchCreateTranslator {
+		return &fakeBatchCreateTranslator{
+			rejectEndpoint: openai.BatchNewParamsEndpointV1Videos,
+			failEndpoint:   openai.BatchNewParamsEndpointV1ImagesEdits,
+		}
+	}
+
+	t.Run("unsupported endpoint is 400", func(t *testing.T) {
+		up := newCreateUpstreamPair(t, fake(), "/v1/videos")
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, immediateStatus(resp))
+		require.Contains(t, string(resp.GetImmediateResponse().GetBody()), "unsupported batch endpoint")
+	})
+	t.Run("other translator error fails the request", func(t *testing.T) {
+		up := newCreateUpstreamPair(t, fake(), "/v1/images/edits")
+		_, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.ErrorContains(t, err, "failed to transform batches request")
+	})
+	t.Run("user-facing translator error is 422", func(t *testing.T) {
+		tr := fake()
+		tr.failEndpoint = ""
+		up := newCreateUpstreamPair(t, &userFacingErrTranslator{tr}, "/v1/embeddings")
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusUnprocessableEntity, immediateStatus(resp))
+	})
+	t.Run("supported endpoint passes request context", func(t *testing.T) {
+		tr := fake()
+		up := newCreateUpstreamPair(t, tr, "/v1/embeddings")
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		require.Nil(t, resp.GetImmediateResponse())
+		require.Nil(t, resp.GetRequestHeaders().GetResponse().GetBodyMutation())
+		require.Equal(t, openai.BatchNewParamsEndpointV1Embeddings, tr.got.Endpoint)
+		require.Equal(t, "m1", tr.got.Model)
+	})
+	t.Run("translator body replaces request body", func(t *testing.T) {
+		tr := fake()
+		tr.newBody = []byte(`{"translated":true}`)
+		up := newCreateUpstreamPair(t, tr, "/v1/embeddings")
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		common := resp.GetRequestHeaders().GetResponse()
+		require.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, common.Status)
+		require.JSONEq(t, `{"translated":true}`, string(common.BodyMutation.GetBody()))
+		require.NotNil(t, resp.DynamicMetadata)
+	})
+	t.Run("openai accepts every endpoint", func(t *testing.T) {
+		tr, err := translator.NewBatchCreateTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI})
+		require.NoError(t, err)
+		for _, ep := range []string{"/v1/moderations", "/v1/images/generations", "/v1/videos", "/v1/not-yet-known"} {
+			up := newCreateUpstreamPair(t, tr, ep)
+			resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+			require.NoError(t, err)
+			require.Nil(t, resp.GetImmediateResponse(), ep)
+		}
+	})
+	t.Run("non-create operations reach the translator without a body", func(t *testing.T) {
+		codec := newTestCodec()
+		id := encodeGatewayID(t, codec, idcodec.KindBatch, "ns", "apple", "m1", "batch_native")
+		rp := newBatchesProcessorForPath(codec, http.MethodPost, "/v1/batches/"+id+"/cancel")
+		_, err := rp.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		tr := fake()
+		rp.translator = tr
+		up := &batchesProcessor{isUpstreamFilter: true, logger: slog.Default(), routeProcessor: rp}
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		require.Nil(t, resp.GetImmediateResponse())
+		require.Nil(t, resp.GetRequestHeaders().GetResponse().GetBodyMutation())
+		require.Equal(t, "batch_native", tr.got.NativeID)
+		require.Equal(t, "/v1/batches/batch_native/cancel", tr.got.Path)
+		require.Equal(t, "m1", tr.got.Model)
+	})
+	t.Run("no backend resolved is a no-op", func(t *testing.T) {
+		up := &batchesProcessor{isUpstreamFilter: true, logger: slog.Default()}
+		resp, err := up.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+		require.Nil(t, resp.GetRequestHeaders().GetResponse())
+	})
+}
+
+// userFacingErrTranslator wraps a fake translator and fails RequestBody with a user-facing error.
+type userFacingErrTranslator struct{ *fakeBatchCreateTranslator }
+
+func (u *userFacingErrTranslator) RequestBody(_ []byte, req *translator.BatchesRequest, _ bool) ([]internalapi.Header, []byte, error) {
+	u.got = req
+	return nil, nil, fmt.Errorf("%w: bad field", internalapi.ErrInvalidRequestBody)
 }

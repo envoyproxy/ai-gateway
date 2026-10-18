@@ -6,10 +6,17 @@
 package translator
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
+
+// ErrUnsupportedBatchEndpoint is returned (wrapped) by a create translator's RequestBody when the
+// backend's provider cannot run batches for the requested endpoint. The processor answers it with
+// a 400 invalid_request_error. Which endpoints are supported is decided per provider translator.
+var ErrUnsupportedBatchEndpoint = errors.New("unsupported batch endpoint")
 
 // BatchesRequest is the OpenAI-shaped request context passed to a Batches translator
 // as the reused generic Translator's ReqT.
@@ -25,6 +32,8 @@ type BatchesRequest struct {
 	Model string
 	// Query is the list query with the native "after" cursor already substituted; "" otherwise.
 	Query string
+	// Endpoint is the batch "endpoint" from the create request body; "" for other operations.
+	Endpoint openai.BatchNewParamsEndpoint
 }
 
 // BatchesTranslator maps the OpenAI Batch API request/response shapes to a provider's batch API.
@@ -32,6 +41,11 @@ type BatchesRequest struct {
 type BatchesTranslator = Translator[BatchesRequest, any]
 
 // NewBatchCreateTranslator selects the POST /v1/batches translator.
+//
+// The create translator owns endpoint support: its RequestBody receives the requested endpoint in
+// [BatchesRequest.Endpoint] and returns an error wrapping [ErrUnsupportedBatchEndpoint] when the
+// provider cannot run batches for it. The OpenAI translator accepts every endpoint and leaves
+// validation to the upstream.
 func NewBatchCreateTranslator(schema filterapi.VersionedAPISchema) (BatchesTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:

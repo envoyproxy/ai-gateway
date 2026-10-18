@@ -8,6 +8,7 @@ package extproc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,14 +35,6 @@ const batchesPathMarker = "/v1/batches"
 // batchFileIDFields are the batch object fields that carry file ids. They are rewritten between
 // gateway file ids and backend-native file ids.
 var batchFileIDFields = []string{"input_file_id", "output_file_id", "error_file_id"}
-
-// supportedBatchEndpoints are the batch "endpoint" values the gateway accepts on create.
-var supportedBatchEndpoints = map[openai.BatchNewParamsEndpoint]struct{}{
-	openai.BatchNewParamsEndpointV1ChatCompletions: {},
-	openai.BatchNewParamsEndpointV1Embeddings:      {},
-	openai.BatchNewParamsEndpointV1Completions:     {},
-	openai.BatchNewParamsEndpointV1Responses:       {},
-}
 
 // batchesOperation identifies which Batch API endpoint a request targets.
 type batchesOperation int
@@ -98,6 +91,14 @@ type batchesProcessor struct {
 
 	translator      translator.BatchesTranslator
 	responseHeaders map[string]string
+
+	// batchesRequestMetadata is the upstream request (without body) for translator.RequestBody.
+	batchesRequestMetadata translator.BatchesRequest
+	// requestBody is the native-id-substituted create body for translator.RequestBody.
+	requestBody []byte
+
+	// routeProcessor is the router processor, set by SetBackend on the upstream filter.
+	routeProcessor *batchesProcessor
 }
 
 var _ Processor = (*batchesProcessor)(nil)
@@ -105,7 +106,7 @@ var _ Processor = (*batchesProcessor)(nil)
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (p *batchesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	if p.isUpstreamFilter {
-		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+		return p.translateUpstreamRequest()
 	}
 
 	method := p.requestHeaders[":method"]
@@ -116,6 +117,7 @@ func (p *batchesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.He
 		return createUserFacingErrorResponse(http.StatusNotFound, "NotFoundError", "unsupported Batch API request"), nil
 	}
 	p.op = op
+	p.batchesRequestMetadata = translator.BatchesRequest{Path: path, Method: method}
 
 	switch op {
 	case batchesOpCreate:
@@ -126,6 +128,57 @@ func (p *batchesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.He
 	default: // retrieve, cancel
 		return p.handleIDBearingRequestHeaders(op, id)
 	}
+}
+
+// translateUpstreamRequest runs translator.RequestBody at the upstream filter, after SetBackend,
+// and applies the returned headers and body. It mirrors filesProcessor.translateUpstreamRequest.
+// The create translator owns provider-specific endpoint support: an error wrapping
+// [translator.ErrUnsupportedBatchEndpoint] becomes a 400.
+func (p *batchesProcessor) translateUpstreamRequest() (*extprocv3.ProcessingResponse, error) {
+	rp := p.routeProcessor
+	if rp == nil || rp.translator == nil {
+		// No backend resolved.
+		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+	}
+	newHeaders, newBody, err := rp.translator.RequestBody(rp.requestBody, &rp.batchesRequestMetadata, false)
+	if err != nil {
+		if errors.Is(err, translator.ErrUnsupportedBatchEndpoint) {
+			p.logger.Info("rejecting batch create with endpoint unsupported by backend",
+				slog.String("endpoint", string(rp.batchesRequestMetadata.Endpoint)), slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", err.Error()), nil
+		}
+		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
+			p.logger.Info("returning user-facing error for invalid batches request", slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(http.StatusUnprocessableEntity, "UnprocessableEntity", userFacingErr.Error()), nil
+		}
+		return nil, fmt.Errorf("failed to transform batches request: %w", err)
+	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+	if bodyMutation == nil {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						Status:         extprocv3.CommonResponse_CONTINUE,
+					},
+				},
+			},
+		}, nil
+	}
+	setHeader(headerMutation, "content-length", strconv.Itoa(len(newBody)))
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+					Status:         extprocv3.CommonResponse_CONTINUE_AND_REPLACE,
+				},
+			},
+		},
+		DynamicMetadata: buildContentLengthDynamicMetadataOnRequest(len(newBody)),
+	}, nil
 }
 
 // handleListRequestHeaders sets up routing for GET /v1/batches. It is routed by "?model=", falling
@@ -157,6 +210,9 @@ func (p *batchesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingResp
 	}
 	p.routeByModel(headerMutation, model)
 	setHeader(headerMutation, ":path", upstreamPath)
+	p.batchesRequestMetadata.Path = upstreamPath
+	p.batchesRequestMetadata.Model = model
+	_, p.batchesRequestMetadata.Query = splitQuery(upstreamPath)
 	return requestHeadersResponse(headerMutation, true), nil
 }
 
@@ -173,7 +229,11 @@ func (p *batchesProcessor) handleIDBearingRequestHeaders(op batchesOperation, ga
 	p.routingModel = decoded.Model
 
 	headerMutation := p.newRequestHeaderMutation()
-	setHeader(headerMutation, ":path", p.rewrittenPath(op, decoded.NativeID))
+	nativePath := p.rewrittenPath(op, decoded.NativeID)
+	setHeader(headerMutation, ":path", nativePath)
+	p.batchesRequestMetadata.NativeID = decoded.NativeID
+	p.batchesRequestMetadata.Path = nativePath
+	p.batchesRequestMetadata.Model = decoded.Model
 	if decoded.Model != "" {
 		p.routeByModel(headerMutation, decoded.Model)
 	}
@@ -206,12 +266,9 @@ func (p *batchesProcessor) ProcessRequestBody(_ context.Context, rawBody *extpro
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "request body must be a JSON object"), nil
 	}
 
-	endpoint := openai.BatchNewParamsEndpoint(gjson.GetBytes(body, "endpoint").String())
-	if _, ok := supportedBatchEndpoints[endpoint]; !ok {
-		p.logger.Info("rejecting batch create with unsupported endpoint", slog.String("endpoint", string(endpoint)))
-		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("unsupported batch endpoint %q", endpoint)), nil
-	}
+	// Endpoint support is provider-specific, so it is checked by the create translator in the
+	// upstream filter once the backend is known (see translateUpstreamRequest).
+	p.batchesRequestMetadata.Endpoint = openai.BatchNewParamsEndpoint(gjson.GetBytes(body, "endpoint").String())
 
 	inputFileID := gjson.GetBytes(body, "input_file_id").String()
 	if inputFileID == "" {
@@ -234,9 +291,11 @@ func (p *batchesProcessor) ProcessRequestBody(_ context.Context, rawBody *extpro
 		p.logger.Error("failed to rewrite batch input_file_id", slog.String("error", err.Error()))
 		return createUserFacingErrorResponse(http.StatusInternalServerError, "internal_error", "failed to rewrite input_file_id"), nil
 	}
+	p.requestBody = newBody
 
 	headerMutation := p.newRequestHeaderMutation()
 	p.routeByModel(headerMutation, decoded.Model)
+	p.batchesRequestMetadata.Model = decoded.Model
 	setHeader(headerMutation, "content-length", strconv.Itoa(len(newBody)))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{RequestBody: &extprocv3.BodyResponse{
@@ -407,6 +466,7 @@ func (p *batchesProcessor) SetBackend(_ context.Context, backend *filterapi.Runt
 		return fmt.Errorf("id belongs to backend %s/%s, but the request was routed to %s/%s", d.namespace, d.name, ns, name)
 	}
 	rp.backend = &backendKey{namespace: ns, name: name}
+	p.routeProcessor = rp
 
 	if err := rp.resolveTranslator(backend.Backend.Schema); err != nil {
 		return fmt.Errorf("batch API not supported for schema %s: %w", backend.Backend.Schema.Name, err)
