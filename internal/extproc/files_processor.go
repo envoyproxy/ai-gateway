@@ -105,13 +105,24 @@ type filesProcessor struct {
 	// minted for responses so follow-up requests on those ids match the same route.
 	routingModel string
 
-	// translator is the resolved per-operation translator for the backend schema. It is set at
-	// the router filter level by resolveTranslator, called in handleIDBearingRequestHeaders
-	// (retrieve/content/delete) or SetBackend (upload/list).
+	// translator is the resolved per-operation translator for the backend schema. It is set on
+	// the router instance by resolveTranslator, called from SetBackend once the backend is known,
+	// and is used by both the upstream filter (request) and the router filter (response).
 	translator translator.FilesTranslator
 	// responseHeaders captures the upstream response headers for ResponseBody calls. Populated
 	// by ProcessResponseHeaders at the router filter level.
 	responseHeaders map[string]string
+
+	// filesRequest is the OpenAI-shaped request context handed to translator.RequestBody by the
+	// upstream filter. It is populated by the router filter during request processing.
+	filesRequest translator.FilesRequest
+	// requestBody is the (model-stripped) upload body kept by the router filter so the upstream
+	// filter, which receives no body, can pass it to translator.RequestBody once the backend (and
+	// hence the translator) is known. It is nil for operations without a body.
+	requestBody []byte
+
+	// parent is the router-level processor, set on the upstream filter instance by SetBackend.
+	parent *filesProcessor
 }
 
 var _ Processor = (*filesProcessor)(nil)
@@ -119,9 +130,7 @@ var _ Processor = (*filesProcessor)(nil)
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	if p.isUpstreamFilter {
-		// The upstream filter has nothing to do at the headers phase; the backend is captured
-		// via SetBackend. Continue without modification.
-		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+		return p.translateUpstreamRequest()
 	}
 
 	method := p.requestHeaders[":method"]
@@ -132,6 +141,11 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 		return createUserFacingErrorResponse(http.StatusNotFound, "NotFoundError", "unsupported Files API request"), nil
 	}
 	p.op = op
+	p.filesRequest = translator.FilesRequest{
+		Path:        path,
+		Method:      method,
+		ContentType: p.requestHeaders["content-type"],
+	}
 
 	switch op {
 	case filesOpUpload:
@@ -176,6 +190,8 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	}
 	p.routeByModel(headerMutation, model)
 	setHeader(headerMutation, ":path", upstreamPath)
+	p.filesRequest.Path = upstreamPath
+	_, p.filesRequest.Query = splitQuery(upstreamPath)
 	return requestHeadersResponse(headerMutation, true), nil
 }
 
@@ -193,7 +209,10 @@ func (p *filesProcessor) handleIDBearingRequestHeaders(op filesOperation, gatewa
 	p.routingModel = decoded.Model
 
 	headerMutation := p.newRequestHeaderMutation()
-	setHeader(headerMutation, ":path", p.rewrittenPath(op, decoded.NativeID))
+	nativePath := p.rewrittenPath(op, decoded.NativeID)
+	setHeader(headerMutation, ":path", nativePath)
+	p.filesRequest.NativeID = decoded.NativeID
+	p.filesRequest.Path = nativePath
 	if decoded.Model != "" {
 		// Route by the model the file was created under, so the request matches the same route.
 		p.routeByModel(headerMutation, decoded.Model)
@@ -263,12 +282,15 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 	// Route by model and strip the routing-only field from the
 	// body before it is forwarded upstream.
 	p.routeByModel(headerMutation, model)
+	p.filesRequest.Model = model
 	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation, ClearRouteCache: true}
 	if stripped, err := stripMultipartField(rawBody.Body, boundary, uploadModelFormField); err != nil {
 		p.logger.Warn("failed to strip model field from upload body, forwarding as-is", slog.String("error", err.Error()))
+		p.requestBody = rawBody.Body
 	} else {
 		setHeader(headerMutation, "content-length", strconv.Itoa(len(stripped)))
 		common.BodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: stripped}}
+		p.requestBody = stripped
 	}
 
 	return &extprocv3.ProcessingResponse{
@@ -287,8 +309,25 @@ func (p *filesProcessor) ProcessResponseHeaders(_ context.Context, headers *core
 	for _, h := range headers.GetHeaders() {
 		p.responseHeaders[h.Key] = string(h.GetRawValue())
 	}
-	// Pass through unchanged.
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+	if p.translator == nil {
+		// No backend was selected (e.g. an Envoy local reply); pass through unchanged.
+		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+	}
+	newHeaders, err := p.translator.ResponseHeaders(p.responseHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform files response headers: %w", err)
+	}
+	if len(newHeaders) == 0 {
+		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+	}
+	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
+			ResponseHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
+			},
+		},
+	}, nil
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody]. Response bodies are processed
@@ -300,18 +339,65 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 	}
 	if !p.isSuccessResponse() {
 		// Upstream errors (and Envoy local replies such as "upstream connect error") carry no
-		// file object to re-encode. Pass them through so the client sees the real status and
-		// error body instead of a gateway re-encode failure.
-		return passThroughResponseBody(), nil
+		// file object to re-encode. Give the translator a chance to convert a provider error
+		// into an OpenAI-shaped one; local replies (no translator) pass through unchanged.
+		return p.translateResponseError(body.Body)
 	}
 	switch p.op {
 	case filesOpContent:
-		// File content is raw bytes with no id envelope; pass through unmodified.
-		return passThroughResponseBody(), nil
+		// File content is raw bytes with no id envelope; only the translator may rewrite it.
+		return p.translateContentResponse(body.Body)
 	case filesOpList:
 		return p.reEncodeListResponse(body.Body), nil
 	default: // upload, retrieve, delete
 		return p.reEncodeResponse(body.Body), nil
+	}
+}
+
+// translateResponseError runs translator.ResponseError over a non-2xx upstream body. Without a
+// translator (no backend selected, e.g. an Envoy local reply) or with no mutation, the body
+// passes through unchanged.
+func (p *filesProcessor) translateResponseError(raw []byte) (*extprocv3.ProcessingResponse, error) {
+	if p.translator == nil {
+		return passThroughResponseBody(), nil
+	}
+	newHeaders, newBody, err := p.translator.ResponseError(p.responseHeaders, bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform files response error: %w", err)
+	}
+	return translatedBodyResponse(newHeaders, newBody), nil
+}
+
+// translateContentResponse runs translator.ResponseBody over a file content download. OpenAI
+// returns raw bytes, so its translator returns no mutation and the content passes through.
+func (p *filesProcessor) translateContentResponse(raw []byte) (*extprocv3.ProcessingResponse, error) {
+	if p.translator == nil || p.responseHeaders == nil {
+		return passThroughResponseBody(), nil
+	}
+	newHeaders, newBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
+	if err != nil {
+		p.logger.Error("failed to translate files content body", slog.String("error", err.Error()))
+		return filesReEncodeError("failed to process upstream files content response"), nil
+	}
+	return translatedBodyResponse(newHeaders, newBody), nil
+}
+
+// translatedBodyResponse converts a translator result into a response-body processing result,
+// restamping content-length when the body is replaced. A nil result passes through unchanged.
+func translatedBodyResponse(newHeaders []internalapi.Header, newBody []byte) *extprocv3.ProcessingResponse {
+	if len(newHeaders) == 0 && newBody == nil {
+		return passThroughResponseBody()
+	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+	if newBody != nil {
+		setHeader(headerMutation, "content-length", strconv.Itoa(len(newBody)))
+	}
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation, BodyMutation: bodyMutation},
+			},
+		},
 	}
 }
 
@@ -480,7 +566,57 @@ func (p *filesProcessor) SetBackend(_ context.Context, backend *filterapi.Runtim
 		rp.logger.Info("unsupported schema for files operation", slog.String("schema", string(backend.Backend.Schema.Name)), slog.Int("op", int(rp.op)))
 		return fmt.Errorf("files API not supported for schema %s: %w", backend.Backend.Schema.Name, err)
 	}
+	p.parent = rp
 	return nil
+}
+
+// translateUpstreamRequest runs at the upstream filter's request-headers phase, once SetBackend
+// has resolved the backend and its translator. It hands the OpenAI-shaped request (and, for
+// uploads, the model-stripped body kept by the router filter) to translator.RequestBody and
+// applies the returned header and body mutations. When the translator returns a body, the
+// request body is replaced via CONTINUE_AND_REPLACE (the upstream filter receives no body of its
+// own); otherwise only header mutations are applied and the body forwarded by the router filter
+// is left untouched.
+func (p *filesProcessor) translateUpstreamRequest() (*extprocv3.ProcessingResponse, error) {
+	rp := p.parent
+	if rp == nil || rp.translator == nil {
+		// No backend was resolved for this attempt; nothing to translate.
+		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+	}
+	newHeaders, newBody, err := rp.translator.RequestBody(rp.requestBody, &rp.filesRequest, false)
+	if err != nil {
+		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
+			p.logger.Info("returning user-facing error for invalid files request", slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(http.StatusUnprocessableEntity, "UnprocessableEntity", userFacingErr.Error()), nil
+		}
+		return nil, fmt.Errorf("failed to transform files request: %w", err)
+	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+	if bodyMutation == nil {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						Status:         extprocv3.CommonResponse_CONTINUE,
+					},
+				},
+			},
+		}, nil
+	}
+	setHeader(headerMutation, "content-length", strconv.Itoa(len(newBody)))
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+					Status:         extprocv3.CommonResponse_CONTINUE_AND_REPLACE,
+				},
+			},
+		},
+		DynamicMetadata: buildContentLengthDynamicMetadataOnRequest(len(newBody)),
+	}, nil
 }
 
 // backendKey identifies a backend by its AIServiceBackend namespace/name.

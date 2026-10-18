@@ -8,6 +8,8 @@ package extproc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -21,6 +23,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 // ---------------------------------------------------------------------------
@@ -956,4 +960,157 @@ func TestNewFilesProcessorFactory(t *testing.T) {
 	proc, err := factory(config, headers, slog.Default(), false, false)
 	require.NoError(t, err)
 	require.NotNil(t, proc)
+}
+
+// ---------------------------------------------------------------------------
+// Translator wiring (fake translator)
+// ---------------------------------------------------------------------------
+
+// fakeFilesTranslator records calls and returns configured mutations.
+type fakeFilesTranslator struct {
+	gotRaw []byte
+	gotReq *translator.FilesRequest
+
+	reqHeaders  []internalapi.Header
+	reqBody     []byte
+	reqErr      error
+	respHeaders []internalapi.Header
+	respBody    []byte
+	errBody     []byte
+	gotErrBody  []byte
+}
+
+func (f *fakeFilesTranslator) RequestBody(raw []byte, req *translator.FilesRequest, _ bool) ([]internalapi.Header, []byte, error) {
+	f.gotRaw, f.gotReq = raw, req
+	return f.reqHeaders, f.reqBody, f.reqErr
+}
+
+func (f *fakeFilesTranslator) ResponseHeaders(map[string]string) ([]internalapi.Header, error) {
+	return f.respHeaders, nil
+}
+
+func (f *fakeFilesTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) (
+	[]internalapi.Header, []byte, metrics.TokenUsage, internalapi.ResponseModel, error,
+) {
+	return nil, f.respBody, metrics.TokenUsage{}, "", nil
+}
+
+func (f *fakeFilesTranslator) ResponseError(_ map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
+	f.gotErrBody, _ = io.ReadAll(body)
+	return nil, f.errBody, nil
+}
+
+func upstreamWithParent(parent *filesProcessor) *filesProcessor {
+	return &filesProcessor{isUpstreamFilter: true, logger: slog.Default(), parent: parent}
+}
+
+func TestUpstreamRequest_NoParent_PassThrough(t *testing.T) {
+	resp, err := upstreamWithParent(nil).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	require.NoError(t, err)
+	require.Nil(t, resp.GetRequestHeaders().GetResponse())
+}
+
+func TestUpstreamRequest_HeadersOnly(t *testing.T) {
+	ft := &fakeFilesTranslator{reqHeaders: []internalapi.Header{{":path", "/provider/files/native-1"}}}
+	parent := &filesProcessor{
+		translator:   ft,
+		filesRequest: translator.FilesRequest{NativeID: "native-1", Path: "/v1/files/native-1", Method: http.MethodGet},
+	}
+	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	require.NoError(t, err)
+	common := resp.GetRequestHeaders().GetResponse()
+	require.Equal(t, extprocv3.CommonResponse_CONTINUE, common.Status)
+	require.Nil(t, common.BodyMutation)
+	path, ok := responseHeaderValue(resp, ":path")
+	require.True(t, ok)
+	require.Equal(t, "/provider/files/native-1", path)
+	require.Equal(t, "native-1", ft.gotReq.NativeID)
+	require.Nil(t, ft.gotRaw)
+}
+
+func TestUpstreamRequest_ReplacesBody(t *testing.T) {
+	ft := &fakeFilesTranslator{reqBody: []byte("translated")}
+	parent := &filesProcessor{
+		translator:   ft,
+		requestBody:  []byte("stripped-multipart"),
+		filesRequest: translator.FilesRequest{Model: "m1", Method: http.MethodPost},
+	}
+	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	require.NoError(t, err)
+	common := resp.GetRequestHeaders().GetResponse()
+	require.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, common.Status)
+	require.Equal(t, []byte("translated"), common.BodyMutation.GetBody())
+	cl, ok := responseHeaderValue(resp, "content-length")
+	require.True(t, ok)
+	require.Equal(t, "10", cl)
+	require.Equal(t, []byte("stripped-multipart"), ft.gotRaw)
+	require.Equal(t, "m1", ft.gotReq.Model)
+}
+
+func TestUpstreamRequest_Errors(t *testing.T) {
+	parent := &filesProcessor{translator: &fakeFilesTranslator{reqErr: errors.New("boom")}}
+	_, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	require.ErrorContains(t, err, "boom")
+
+	parent = &filesProcessor{translator: &fakeFilesTranslator{reqErr: fmt.Errorf("%w: bad purpose", internalapi.ErrInvalidRequestBody)}}
+	resp, err := upstreamWithParent(parent).ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{})
+	require.NoError(t, err)
+	require.Equal(t, int32(http.StatusUnprocessableEntity), int32(resp.GetImmediateResponse().Status.Code))
+}
+
+func TestSetBackend_LinksParent(t *testing.T) {
+	routeProcessor := &filesProcessor{op: filesOpList, logger: slog.Default()}
+	up := &filesProcessor{isUpstreamFilter: true, logger: slog.Default()}
+	b := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "r"})
+	for _, rb := range b.Backends {
+		require.NoError(t, up.SetBackend(context.Background(), rb, "r", routeProcessor))
+	}
+	require.Same(t, routeProcessor, up.parent)
+}
+
+func TestRouterRecordsFilesRequest(t *testing.T) {
+	codec := newTestCodec()
+	gw := encodeGatewayFileID(t, codec, "ns", "apple", "native-9")
+	p := newProcessorForPath(http.MethodDelete, "/v1/files/"+gw, nil)
+	p.codec = codec
+	_, err := p.ProcessRequestHeaders(context.Background(), nil)
+	require.NoError(t, err)
+	require.Equal(t, "native-9", p.filesRequest.NativeID)
+	require.Equal(t, "/v1/files/native-9", p.filesRequest.Path)
+	require.Equal(t, http.MethodDelete, p.filesRequest.Method)
+
+	p = newProcessorForPath(http.MethodGet, "/v1/files?model=m1&limit=2", nil)
+	_, err = p.ProcessRequestHeaders(context.Background(), nil)
+	require.NoError(t, err)
+	require.Equal(t, "?limit=2", p.filesRequest.Query)
+	require.Equal(t, "/v1/files?limit=2", p.filesRequest.Path)
+}
+
+func TestResponseHeaders_Translated(t *testing.T) {
+	p := &filesProcessor{logger: slog.Default(), translator: &fakeFilesTranslator{respHeaders: []internalapi.Header{{"x-p", "1"}}}}
+	resp, err := p.ProcessResponseHeaders(context.Background(), &corev3.HeaderMap{})
+	require.NoError(t, err)
+	hm := resp.GetResponseHeaders().GetResponse().GetHeaderMutation()
+	require.Len(t, hm.SetHeaders, 1)
+	require.Equal(t, "x-p", hm.SetHeaders[0].Header.Key)
+}
+
+func TestResponseError_Translated(t *testing.T) {
+	ft := &fakeFilesTranslator{errBody: []byte(`{"error":{}}`)}
+	p := &filesProcessor{logger: slog.Default(), op: filesOpRetrieve, translator: ft, responseHeaders: map[string]string{":status": "404"}}
+	resp, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{Body: []byte("provider err")})
+	require.NoError(t, err)
+	require.Equal(t, []byte("provider err"), ft.gotErrBody)
+	require.JSONEq(t, `{"error":{}}`, string(resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody()))
+	cl, ok := responseBodyHeaderValue(resp, "content-length")
+	require.True(t, ok)
+	require.Equal(t, "12", cl)
+}
+
+func TestContentResponse_Translated(t *testing.T) {
+	ft := &fakeFilesTranslator{respBody: []byte("unwrapped")}
+	p := &filesProcessor{logger: slog.Default(), op: filesOpContent, translator: ft, responseHeaders: map[string]string{":status": "200"}}
+	resp, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{Body: []byte("wrapped")})
+	require.NoError(t, err)
+	require.Equal(t, []byte("unwrapped"), resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody())
 }
