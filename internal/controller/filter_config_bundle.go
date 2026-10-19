@@ -27,6 +27,10 @@ const (
 	// Options.FilterConfigBundleMaxSlots is unset. The slot count is fixed per pod so shard count
 	// changes never require remounting.
 	DefaultFilterConfigBundleMaxSlots = 8
+	// MaxFilterConfigBundleMaxSlots caps Options.FilterConfigBundleMaxSlots. Every slot adds a
+	// projection to each gateway pod and Secret API calls to each reconcile, so an unbounded value
+	// would surface as pods rejected at admission rather than as a flag error.
+	MaxFilterConfigBundleMaxSlots = 128
 )
 
 func splitBytes(raw []byte, chunkSize int) [][]byte {

@@ -292,6 +292,14 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			},
 		},
 	}
+	// The slot count is fixed for the pod's lifetime. The reconciler builds its extproc builder
+	// from the same Options, so within one controller process the slots projected here always
+	// match the slots writeFilterConfigBundle may fill.
+	//
+	// When the slot count is raised and the config already needs more parts than the old count,
+	// Reconcile writes the larger bundle before rolling the workloads. Until a pod is replaced,
+	// its extproc sees an index listing parts it does not project and logs
+	// "failed to update bundled config" on every tick while it keeps serving its last good config.
 	optional := true
 	for i := range g.filterConfigBundleMaxSlots() {
 		projections = append(projections, corev1.VolumeProjection{

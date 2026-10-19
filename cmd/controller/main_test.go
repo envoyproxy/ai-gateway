@@ -249,7 +249,12 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			{
 				name:   "zero filterConfigBundleMaxSlots",
 				flags:  []string{"--filterConfigBundleMaxSlots=0"},
-				expErr: "filterConfigBundleMaxSlots must be at least 1, got 0",
+				expErr: "filterConfigBundleMaxSlots must be between 1 and 128, got 0",
+			},
+			{
+				name:   "too large filterConfigBundleMaxSlots",
+				flags:  []string{"--filterConfigBundleMaxSlots=129"},
+				expErr: "filterConfigBundleMaxSlots must be between 1 and 128, got 129",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

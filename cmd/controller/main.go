@@ -257,9 +257,10 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	filterConfigBundleMaxSlots := fs.Int(
 		"filterConfigBundleMaxSlots",
 		controller.DefaultFilterConfigBundleMaxSlots,
-		"Number of Secrets (about 700KiB each) the extProc filter config may be split into. "+
+		fmt.Sprintf("Number of Secrets (about 700KiB each) the extProc filter config may be split into. "+
 			"Every gateway pod projects this many optional slots, so a config larger than the slots is not written. "+
-			"Changing it rolls the gateway pods so they project the new slot count.",
+			"Changing it rolls the gateway pods so they project the new slot count. Must be between 1 and %d.",
+			controller.MaxFilterConfigBundleMaxSlots),
 	)
 	maxRecvMsgSize := fs.Int(
 		"maxRecvMsgSize",
@@ -359,8 +360,9 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		}
 	}
 
-	if *filterConfigBundleMaxSlots < 1 {
-		return nil, fmt.Errorf("filterConfigBundleMaxSlots must be at least 1, got %d", *filterConfigBundleMaxSlots)
+	if *filterConfigBundleMaxSlots < 1 || *filterConfigBundleMaxSlots > controller.MaxFilterConfigBundleMaxSlots {
+		return nil, fmt.Errorf("filterConfigBundleMaxSlots must be between 1 and %d, got %d",
+			controller.MaxFilterConfigBundleMaxSlots, *filterConfigBundleMaxSlots)
 	}
 
 	// Validate extProc extra env vars if provided.
