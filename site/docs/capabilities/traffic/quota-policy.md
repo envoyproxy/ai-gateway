@@ -315,12 +315,17 @@ Supported header match types are `Exact`, `Distinct`, and `RegularExpression`.
 metadata. This is useful when an authentication or entitlement filter already
 knows the tenant's budget and should serve many tenants with one policy.
 
-The producer must write a struct containing `requests_per_unit` and `unit`:
+Both the metadata namespace and key are configurable. The producer must write
+`requests_per_unit` and `unit` at that configured path:
 
 ```json
 {
-  "requests_per_unit": 50000,
-  "unit": "HOUR"
+  "envoy.filters.http.ext_authz": {
+    "total_limit": {
+      "requests_per_unit": 50000,
+      "unit": "HOUR"
+    }
+  }
 }
 ```
 

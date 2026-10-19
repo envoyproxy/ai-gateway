@@ -357,6 +357,80 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		require.Equal(t, "total_limit", override.MetadataKey.Path[0].GetKey())
 	})
 
+	t.Run("promotes static stream-done actions to dynamic overrides", func(t *testing.T) {
+		buildPolicy := func(name string, dynamic bool, withBucketRule bool) aigv1a1.QuotaPolicy {
+			defaultBucket := aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}
+			bucketRuleQuota := aigv1a1.QuotaValue{Limit: 50, Duration: "1m"}
+			if dynamic {
+				override := &aigv1a1.QuotaLimitFromMetadata{
+					Namespace: "envoy.filters.http.ext_authz",
+					Key:       "total_limit",
+				}
+				defaultBucket.FromMetadata = override
+				bucketRuleQuota.FromMetadata = override
+			}
+
+			quota := aigv1a1.QuotaDefinition{DefaultBucket: defaultBucket}
+			if withBucketRule {
+				quota.BucketRules = []aigv1a1.QuotaRule{{Quota: bucketRuleQuota}}
+			}
+			return aigv1a1.QuotaPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+				Spec: aigv1a1.QuotaPolicySpec{
+					TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{Name: "be"}},
+					PerModelQuotas: []aigv1a1.PerModelQuota{{
+						ModelName: ptr.To("gpt-4"),
+						Quota:     quota,
+					}},
+				},
+			}
+		}
+
+		t.Run("simple quota", func(t *testing.T) {
+			route := &routev3.Route{Name: "test-route"}
+			require.NoError(t, enableQuotaRateLimitOnRoute(
+				logr.Discard(),
+				route,
+				[]aigv1a1.QuotaPolicy{
+					buildPolicy("static", false, false),
+					buildPolicy("dynamic", true, false),
+				},
+				nil,
+			))
+
+			perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+			require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+			require.Len(t, perRoute.RateLimits, 3)
+			override := perRoute.RateLimits[2].Limit.GetDynamicMetadata()
+			require.NotNil(t, override)
+			require.Equal(t, "total_limit", override.MetadataKey.Path[0].GetKey())
+		})
+
+		t.Run("bucket and default quotas", func(t *testing.T) {
+			route := &routev3.Route{Name: "test-route"}
+			require.NoError(t, enableQuotaRateLimitOnRoute(
+				logr.Discard(),
+				route,
+				[]aigv1a1.QuotaPolicy{
+					buildPolicy("static", false, true),
+					buildPolicy("dynamic", true, true),
+				},
+				nil,
+			))
+
+			perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+			require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+			var streamDoneCount int
+			for _, rateLimit := range perRoute.RateLimits {
+				if rateLimit.ApplyOnStreamDone {
+					streamDoneCount++
+					require.NotNil(t, rateLimit.Limit.GetDynamicMetadata())
+				}
+			}
+			require.Equal(t, 2, streamDoneCount)
+		})
+	})
+
 	t.Run("preserves existing TypedPerFilterConfig entries", func(t *testing.T) {
 		route := &routev3.Route{
 			Name: "test-route",
