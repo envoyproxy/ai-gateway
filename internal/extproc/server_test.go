@@ -580,6 +580,11 @@ func Test_isSensitiveHeader(t *testing.T) {
 		{"authorization", true},
 		{"Authorization", true},
 		{"x-api-key", true},
+		// Azure API key and AWS SigV4 session token set by the backendauth handlers.
+		{"api-key", true},
+		{"Api-Key", true},
+		{"X-Amz-Security-Token", true},
+		{"X-Amz-Date", false},
 		// x-aigw- headers carry per-request credential overrides.
 		{"x-aigw-api-key", true},
 		{"x-aigw-aws-secret-access-key", true},
@@ -785,6 +790,60 @@ func TestServer_processMsg_RedactsCredentialMutation(t *testing.T) {
 	// But the debug log must not leak the credential.
 	require.Contains(t, buf.String(), "[REDACTED]")
 	require.NotContains(t, buf.String(), "secret-backend-key")
+}
+
+func Test_redactImmediateResponse(t *testing.T) {
+	buf := internaltesting.CaptureOutput("test")[0]
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	t.Run("nil", func(t *testing.T) {
+		require.Equal(t, &extprocv3.ProcessingResponse_ImmediateResponse{}, redactImmediateResponse(nil, logger, sensitiveHeaderKeys))
+		require.Equal(t, &extprocv3.ProcessingResponse_ImmediateResponse{},
+			redactImmediateResponse(&extprocv3.ProcessingResponse_ImmediateResponse{}, logger, sensitiveHeaderKeys))
+	})
+
+	t.Run("no headers", func(t *testing.T) {
+		resp := &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status:  &typev3.HttpStatus{Code: typev3.StatusCode_BadRequest},
+				Body:    []byte("malformed request"),
+				Details: "bad_request",
+			},
+		}
+		filtered := redactImmediateResponse(resp, logger, sensitiveHeaderKeys)
+		require.Nil(t, filtered.ImmediateResponse.GetHeaders())
+		require.Equal(t, typev3.StatusCode_BadRequest, filtered.ImmediateResponse.GetStatus().GetCode())
+		require.Equal(t, []byte("malformed request"), filtered.ImmediateResponse.GetBody())
+		require.Equal(t, "bad_request", filtered.ImmediateResponse.GetDetails())
+	})
+
+	t.Run("redacts sensitive headers", func(t *testing.T) {
+		resp := &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{Code: typev3.StatusCode_Unauthorized},
+				Headers: &extprocv3.HeaderMutation{
+					SetHeaders: []*corev3.HeaderValueOption{
+						{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("text/plain")}},
+						{Header: &corev3.HeaderValue{Key: "api-key", RawValue: []byte("secret-azure-key")}},
+					},
+					RemoveHeaders: []string{"x-foo"},
+				},
+				Body: []byte("unauthorized"),
+			},
+		}
+		filtered := redactImmediateResponse(resp, logger, sensitiveHeaderKeys)
+		require.Equal(t, []*corev3.HeaderValueOption{
+			{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("text/plain")}},
+			{Header: &corev3.HeaderValue{Key: "api-key", RawValue: []byte("[REDACTED]")}},
+		}, filtered.ImmediateResponse.GetHeaders().GetSetHeaders())
+		require.Equal(t, []string{"x-foo"}, filtered.ImmediateResponse.GetHeaders().GetRemoveHeaders())
+		require.Equal(t, []byte("unauthorized"), filtered.ImmediateResponse.GetBody())
+		// The original response sent to Envoy must not be modified.
+		require.Equal(t, []byte("secret-azure-key"), resp.ImmediateResponse.Headers.SetHeaders[1].Header.RawValue)
+		require.NotContains(t, buf.String(), "secret-azure-key")
+	})
 }
 
 func Test_redactRequestBodyResponseFull(t *testing.T) {
