@@ -2485,9 +2485,9 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
 
 <ApiField
   name="targetRefs"
-  type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
+  type="NamespacedPolicyTargetReference array"
   required="false"
-  description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
+  description="TargetRefs are the AIServiceBackend resources this QuotaPolicy is being attached to.<br />The namespace of each target defaults to the QuotaPolicy's namespace when omitted.<br />Cross-namespace references are supported by setting namespace explicitly. When the<br />target namespace differs from the QuotaPolicy's namespace, a ReferenceGrant in the<br />AIServiceBackend's namespace must authorize QuotaPolicy from the policy namespace to<br />reference AIServiceBackend. Same-namespace references do not require a ReferenceGrant."
 /><ApiField
   name="serviceQuota"
   type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
