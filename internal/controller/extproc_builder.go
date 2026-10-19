@@ -101,8 +101,11 @@ type extProcBuilder struct {
 	imagePullSecrets []corev1.LocalObjectReference
 	maxRecvMsgSize   int
 	extProcAsSideCar bool
-	// bundleMaxSlots is shared by the bundle writer and the webhook so the
-	// number of parts written can never exceed the slots a pod projects.
+	// bundleMaxSlots is the number of bundle part slots. The bundle writer and
+	// the webhook each build their extProcBuilder from the same Options, so
+	// within one controller process the parts written never exceed the slots a
+	// new pod projects. Pods that project fewer are rolled by
+	// checkPodHasBundleSlots.
 	bundleMaxSlots int
 
 	mcpSessionEncryptionSeed               string
