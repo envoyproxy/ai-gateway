@@ -3610,7 +3610,9 @@ func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) 
 
 	payload := []byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*(DefaultFilterConfigBundleMaxSlots+1)))
 	err := c.writeFilterConfigBundle(t.Context(), "cfg-gw", "cfg-ns", "ns", payload, "uuid-1")
-	require.ErrorContains(t, err, "exceeds max supported slots")
+	require.ErrorContains(t, err, fmt.Sprintf("filter config requires %d shards, exceeds max supported slots %d",
+		DefaultFilterConfigBundleMaxSlots+1, DefaultFilterConfigBundleMaxSlots))
+	require.ErrorContains(t, err, "raise --filterConfigBundleMaxSlots (Helm: controller.filterConfigBundleMaxSlots)")
 }
 
 func TestGatewayController_writeFilterConfigBundleShards_ConfiguredMaxSlots(t *testing.T) {

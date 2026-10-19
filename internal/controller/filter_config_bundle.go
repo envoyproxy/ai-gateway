@@ -53,7 +53,10 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 	chunks := splitBytes(payload, filterConfigBundlePartSizeBytes)
 	maxSlots := c.filterConfigBundleMaxSlots()
 	if len(chunks) > maxSlots {
-		return fmt.Errorf("filter config requires %d shards, exceeds max supported slots %d", len(chunks), maxSlots)
+		// Nothing is written past this point, so the gateway pods keep their previous config. Name the
+		// flag so the reconciler error log tells the operator what to change.
+		return fmt.Errorf("filter config requires %d shards, exceeds max supported slots %d; "+
+			"raise --filterConfigBundleMaxSlots (Helm: controller.filterConfigBundleMaxSlots)", len(chunks), maxSlots)
 	}
 	index := &filterapi.ConfigBundleIndex{
 		Version:  version.Parse(),
