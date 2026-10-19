@@ -48,6 +48,21 @@ func splitBytes(raw []byte, chunkSize int) [][]byte {
 	return chunks
 }
 
+// filterConfigBundleIndexFromSecret parses the bundle index held by the index Secret.
+func filterConfigBundleIndexFromSecret(secret *corev1.Secret) (*filterapi.ConfigBundleIndex, error) {
+	raw, ok := secret.Data[FilterConfigBundleIndexKey]
+	if !ok {
+		// The index is written as StringData, which the API server folds into Data but the fake
+		// clientset does not.
+		s, ok := secret.StringData[FilterConfigBundleIndexKey]
+		if !ok {
+			return nil, fmt.Errorf("filter config index secret %s has no %s key", secret.Name, FilterConfigBundleIndexKey)
+		}
+		raw = []byte(s)
+	}
+	return filterapi.UnmarshalConfigBundleIndex(raw)
+}
+
 func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gatewayName, gatewayNamespace, configSecretNamespace string, payload []byte, uuid string) error {
 	indexSecretName := FilterConfigBundleIndexSecretName(gatewayName, gatewayNamespace)
 	chunks := splitBytes(payload, filterConfigBundlePartSizeBytes)
@@ -66,24 +81,14 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 	}
 
 	// Create parts Secrets
-	for i := range maxSlots {
+	for i, chunk := range chunks {
 		partName := filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, i)
-
-		// Delete outdated parts from the previous configBundle
-		if i >= len(chunks) {
-			if err := c.kube.CoreV1().Secrets(configSecretNamespace).Delete(ctx, partName, metav1.DeleteOptions{}); err != nil &&
-				!apierrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete unused filter config part secret %s: %w", partName, err)
-			}
-			continue
-		}
-
 		index.Parts = append(index.Parts, filterapi.ConfigBundlePart{
 			Name:      partName,
 			Path:      filterapi.ConfigBundlePartPath(i),
-			SizeBytes: len(chunks[i]),
+			SizeBytes: len(chunk),
 		})
-		partData := map[string][]byte{FilterConfigBundlePartKey: chunks[i]}
+		partData := map[string][]byte{FilterConfigBundlePartKey: chunk}
 
 		secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, partName, metav1.GetOptions{})
 		switch {
@@ -105,6 +110,30 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 		}
 	}
 
+	indexSecret, indexErr := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, indexSecretName, metav1.GetOptions{})
+	if indexErr != nil && !apierrors.IsNotFound(indexErr) {
+		return fmt.Errorf("failed to get filter config index secret %s: %w", indexSecretName, indexErr)
+	}
+	indexExists := indexErr == nil
+
+	// Delete outdated parts from the previous configBundle. The previous index lists every part
+	// written by the last successful write, including parts past maxSlots when the slot count was
+	// lowered, so delete through whichever is larger. Parts are deleted before the index is
+	// replaced: if a delete fails, the previous index stays and the next reconcile retries.
+	stalePartsEnd := maxSlots
+	if indexExists {
+		if prev, prevErr := filterConfigBundleIndexFromSecret(indexSecret); prevErr == nil {
+			stalePartsEnd = max(stalePartsEnd, len(prev.Parts))
+		}
+	}
+	for i := len(chunks); i < stalePartsEnd; i++ {
+		partName := filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, i)
+		if err := c.kube.CoreV1().Secrets(configSecretNamespace).Delete(ctx, partName, metav1.DeleteOptions{}); err != nil &&
+			!apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete unused filter config part secret %s: %w", partName, err)
+		}
+	}
+
 	// Create index Secret
 	indexRaw, err := filterapi.MarshalConfigBundleIndex(index)
 	if err != nil {
@@ -112,11 +141,7 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 	}
 	indexStringData := map[string]string{FilterConfigBundleIndexKey: string(indexRaw)}
 
-	indexSecret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, indexSecretName, metav1.GetOptions{})
-	switch {
-	case err != nil && !apierrors.IsNotFound(err): // failed
-		return fmt.Errorf("failed to get filter config index secret %s: %w", indexSecretName, err)
-	case err != nil && apierrors.IsNotFound(err): // not found
+	if !indexExists {
 		indexSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: indexSecretName, Namespace: configSecretNamespace},
 			StringData: indexStringData,
@@ -124,11 +149,11 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 		if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, indexSecret, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("failed to create filter config index secret %s: %w", indexSecretName, err)
 		}
-	case err == nil: // found
-		indexSecret.StringData = indexStringData
-		if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, indexSecret, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update filter config index secret %s: %w", indexSecretName, err)
-		}
+		return nil
+	}
+	indexSecret.StringData = indexStringData
+	if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, indexSecret, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("failed to update filter config index secret %s: %w", indexSecretName, err)
 	}
 	return nil
 }

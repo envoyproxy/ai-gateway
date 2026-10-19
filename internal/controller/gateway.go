@@ -1261,6 +1261,63 @@ func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool, de
 	return hasSideCar
 }
 
+// checkPodHasBundleSlots returns whether the pod projects at least as many filter config bundle
+// part slots as writeFilterConfigBundle may fill. A pod projecting fewer cannot load the parts past
+// its last slot. A pod without a bundle volume reports true; checkPodHasSideCar covers it.
+//
+// The webhook fixes a pod's slots at admission, and the config hash on the workload template only
+// records the slot count the reconciler last wrote there, so a pod can project fewer slots than
+// configured while its template hash is current:
+//
+//   - The slot count is lowered and raised back. With 16 slots and a 12-part config, lowering to 8
+//     makes writeFilterConfigBundle refuse the write, so Reconcile returns before annotating and the
+//     template keeps the hash for 16. Pods created meanwhile project max(8, 12) = 12 slots, because
+//     the index still lists 12 parts. Raising back to 16 makes the desired hash match the template
+//     again, so no hash rollout replaces those pods, and they cannot load a config that grows past
+//     12 parts.
+//   - The controller runs several replicas and rolls out a raised slot count. Every ready replica
+//     serves the webhook, not only the leader, so after the new leader writes the hash for 16 to the
+//     template, an old replica can still admit the resulting pods with 8 slots. Those pods carry the
+//     current hash, so no hash rollout replaces them.
+func (c *GatewayController) checkPodHasBundleSlots(pod *corev1.Pod) (hasBundleSlots bool) {
+	slots, maxSlots := projectedBundlePartSlots(pod), c.filterConfigBundleMaxSlots()
+	if slots >= 0 && slots < maxSlots {
+		c.logger.Info("pod projects fewer filter config bundle slots than configured, triggering rollout",
+			"pod", pod.Name, "namespace", pod.Namespace, "slots", slots, "maxSlots", maxSlots)
+		return false
+	}
+	return true
+}
+
+// projectedBundlePartSlots returns the number of filter config bundle part slots projected into the
+// pod, or -1 when the pod has no bundle volume.
+func projectedBundlePartSlots(pod *corev1.Pod) int {
+	for i := range pod.Spec.Volumes {
+		projected := pod.Spec.Volumes[i].Projected
+		if projected == nil {
+			continue
+		}
+		isBundle, parts := false, 0
+		for _, source := range projected.Sources {
+			if source.Secret == nil {
+				continue
+			}
+			for _, item := range source.Secret.Items {
+				switch item.Key {
+				case FilterConfigBundleIndexKey:
+					isBundle = true
+				case FilterConfigBundlePartKey:
+					parts++
+				}
+			}
+		}
+		if isBundle {
+			return parts
+		}
+	}
+	return -1
+}
+
 // isRolloutInProgress checks whether any Deployment or DaemonSet is currently rolling out.
 func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.DaemonSet) bool {
 	for i := range deployments {
@@ -1313,15 +1370,20 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 	seenWithSidecar := false
 	seenWithoutSidecar := false
+	seenWithoutBundleSlots := false
 	for i := range pods {
-		if !pods[i].GetDeletionTimestamp().IsZero() {
+		pod := &pods[i]
+		if !pod.GetDeletionTimestamp().IsZero() {
 			continue
 		}
-		hasSideCar := c.checkPodHasSideCar(&pods[i], needMCP, desiredImage)
+		hasSideCar := c.checkPodHasSideCar(pod, needMCP, desiredImage)
 		if hasSideCar {
 			seenWithSidecar = true
 		} else {
 			seenWithoutSidecar = true
+		}
+		if !c.checkPodHasBundleSlots(pod) {
+			seenWithoutBundleSlots = true
 		}
 		if seenWithSidecar && seenWithoutSidecar {
 			break
@@ -1356,16 +1418,21 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
 	// 3. If pods are inconsistent even when rollout isn't in progress, force rollout to self-heal.
 	needsStateRollout := hasEffectiveRoute != hasSideCar || forceRollout
+	// The template hash cannot tell whether existing pods project enough bundle slots, so roll the
+	// workloads when one does not even if the hash is current. See checkPodHasBundleSlots for how
+	// that happens.
+	needsBundleSlotsRollout := hasEffectiveRoute && seenWithoutBundleSlots
+	needsUUIDRollout := needsStateRollout || needsBundleSlotsRollout
 	for i := range deployments {
 		dep := &deployments[i]
 		// Hash changes are written to the pod template so Kubernetes owns the rollout.
 		needsHashRollout := hasEffectiveRoute && desiredHash != "" && dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
-		if !needsStateRollout && !needsHashRollout {
+		if !needsUUIDRollout && !needsHashRollout {
 			continue
 		}
 		c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name, "desiredHash", desiredHash)
 		_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
-			workloadTemplateAnnotationPatch(uuid, desiredHash, needsStateRollout, needsHashRollout),
+			workloadTemplateAnnotationPatch(uuid, desiredHash, needsUUIDRollout, needsHashRollout),
 			metav1.PatchOptions{})
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
@@ -1376,12 +1443,12 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		daemonSet := &daemonSets[i]
 		// Hash changes are written to the pod template so Kubernetes owns the rollout.
 		needsHashRollout := hasEffectiveRoute && desiredHash != "" && daemonSet.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
-		if !needsStateRollout && !needsHashRollout {
+		if !needsUUIDRollout && !needsHashRollout {
 			continue
 		}
 		c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name, "desiredHash", desiredHash)
 		_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
-			workloadTemplateAnnotationPatch(uuid, desiredHash, needsStateRollout, needsHashRollout),
+			workloadTemplateAnnotationPatch(uuid, desiredHash, needsUUIDRollout, needsHashRollout),
 			metav1.PatchOptions{})
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
