@@ -33,12 +33,18 @@ type QuotaPolicy struct {
 
 // QuotaPolicySpec specifies rules for computing token based costs of requests.
 type QuotaPolicySpec struct {
-	// TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
+	// TargetRefs are the AIServiceBackend resources this QuotaPolicy is being attached to.
+	//
+	// The namespace of each target defaults to the QuotaPolicy's namespace when omitted.
+	// Cross-namespace references are supported by setting namespace explicitly. When the
+	// target namespace differs from the QuotaPolicy's namespace, a ReferenceGrant in the
+	// AIServiceBackend's namespace must authorize QuotaPolicy from the policy namespace to
+	// reference AIServiceBackend. Same-namespace references do not require a ReferenceGrant.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
+	TargetRefs []gwapiv1a2.NamespacedPolicyTargetReference `json:"targetRefs,omitempty"`
 	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
 	// configuration.
 	//
