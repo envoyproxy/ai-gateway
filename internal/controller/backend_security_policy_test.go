@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
@@ -28,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
@@ -1585,4 +1587,199 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeRotator is a [rotators.Rotator] whose results are fixed by the test.
+type fakeRotator struct {
+	preRotationTime    time.Time
+	preRotationTimeErr error
+	expirationTime     time.Time
+	rotateErr          error
+	rotated            bool
+}
+
+func (f *fakeRotator) IsExpired(preRotationExpirationTime time.Time) bool {
+	return !time.Now().Before(preRotationExpirationTime)
+}
+
+func (f *fakeRotator) GetPreRotationTime(context.Context) (time.Time, error) {
+	return f.preRotationTime, f.preRotationTimeErr
+}
+
+func (f *fakeRotator) Rotate(context.Context) (time.Time, error) {
+	f.rotated = true
+	return f.expirationTime, f.rotateErr
+}
+
+func TestBackendSecurityPolicyController_executeRotation(t *testing.T) {
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: "default"},
+		Spec:       aigv1b1.BackendSecurityPolicySpec{Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials},
+	}
+	notFound := apierrors.NewNotFound(corev1.Resource("secrets"), "bsp")
+
+	for _, tc := range []struct {
+		name              string
+		preRotationWindow time.Duration
+		rotator           *fakeRotator
+		expRotated        bool
+		expErr            string
+		// expRequeueMin and expRequeueMax bound the expected RequeueAfter.
+		expRequeueMin, expRequeueMax time.Duration
+	}{
+		{
+			name:              "failing to get the pre-rotation time retries in one minute",
+			preRotationWindow: DefaultPreRotationWindow,
+			rotator:           &fakeRotator{preRotationTimeErr: fmt.Errorf("boom")},
+			expErr:            "boom",
+			expRequeueMin:     time.Minute,
+			expRequeueMax:     time.Minute,
+		},
+		{
+			name:              "missing secret rotates and requeues before expiry by the pre-rotation window",
+			preRotationWindow: 20 * time.Minute,
+			rotator:           &fakeRotator{preRotationTimeErr: notFound, expirationTime: time.Now().Add(time.Hour)},
+			expRotated:        true,
+			expRequeueMin:     39 * time.Minute,
+			expRequeueMax:     40 * time.Minute,
+		},
+		{
+			name:              "expired credential rotates using the configured pre-rotation window",
+			preRotationWindow: 30 * time.Minute,
+			rotator: &fakeRotator{
+				preRotationTime: time.Now().Add(-time.Minute),
+				expirationTime:  time.Now().Add(time.Hour),
+			},
+			expRotated:    true,
+			expRequeueMin: 29 * time.Minute,
+			expRequeueMax: 30 * time.Minute,
+		},
+		{
+			name:              "pre-rotation window longer than the credential lifetime is an error",
+			preRotationWindow: 20 * time.Minute,
+			rotator: &fakeRotator{
+				preRotationTime: time.Now().Add(-time.Minute),
+				expirationTime:  time.Now().Add(10 * time.Minute),
+			},
+			expRotated:    true,
+			expErr:        "newly rotated credential is already expired",
+			expRequeueMin: time.Minute,
+			expRequeueMax: time.Minute,
+		},
+		{
+			name:              "failing to rotate retries in one minute",
+			preRotationWindow: DefaultPreRotationWindow,
+			rotator: &fakeRotator{
+				preRotationTime: time.Now().Add(-time.Minute),
+				rotateErr:       fmt.Errorf("rotate failed"),
+			},
+			expRotated:    true,
+			expErr:        "rotate failed",
+			expRequeueMin: time.Minute,
+			expRequeueMax: time.Minute,
+		},
+		{
+			name:              "unexpired credential requeues at the pre-rotation time without rotating",
+			preRotationWindow: DefaultPreRotationWindow,
+			rotator:           &fakeRotator{preRotationTime: time.Now().Add(15 * time.Minute)},
+			expRequeueMin:     14 * time.Minute,
+			expRequeueMax:     15 * time.Minute,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil, nil, tc.preRotationWindow)
+			res, err := c.executeRotation(t.Context(), tc.rotator, bsp)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expRotated, tc.rotator.rotated)
+			require.GreaterOrEqual(t, res.RequeueAfter, tc.expRequeueMin)
+			require.LessOrEqual(t, res.RequeueAfter, tc.expRequeueMax)
+		})
+	}
+}
+
+func TestBackendSecurityPolicyController_Reconcile_GetPolicy(t *testing.T) {
+	req := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "bsp"}}
+
+	t.Run("deleted policy is ignored", func(t *testing.T) {
+		c := NewBackendSecurityPolicyController(requireNewFakeClientWithIndexes(t), fake2.NewClientset(), ctrl.Log, nil, nil, DefaultPreRotationWindow)
+		res, err := c.Reconcile(t.Context(), req)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, res)
+	})
+
+	t.Run("get error is returned", func(t *testing.T) {
+		cl := interceptor.NewClient(fake.NewClientBuilder().WithScheme(Scheme).Build(), interceptor.Funcs{
+			Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+				return fmt.Errorf("get failed")
+			},
+		})
+		c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, nil, nil, DefaultPreRotationWindow)
+		_, err := c.Reconcile(t.Context(), req)
+		require.EqualError(t, err, "get failed")
+	})
+}
+
+func TestBackendSecurityPolicyController_syncBackendSecurityPolicy(t *testing.T) {
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: "default"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: "missing-backend"},
+				{Group: inferencePoolGroup, Kind: inferencePoolKind, Name: "missing-pool"},
+			},
+		},
+	}
+
+	t.Run("missing targets are skipped", func(t *testing.T) {
+		aiServiceBackendEventCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
+		inferencePoolEventCh := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
+		c := NewBackendSecurityPolicyController(requireNewFakeClientWithIndexesAndInferencePool(t), fake2.NewClientset(), ctrl.Log,
+			aiServiceBackendEventCh.Ch, inferencePoolEventCh.Ch, DefaultPreRotationWindow)
+		require.NoError(t, c.syncBackendSecurityPolicy(t.Context(), bsp))
+		require.Empty(t, aiServiceBackendEventCh.RequireItemsEventually(t, 0))
+		require.Empty(t, inferencePoolEventCh.RequireItemsEventually(t, 0))
+	})
+
+	for _, tc := range []struct {
+		name   string
+		failOn client.Object
+		expErr string
+	}{
+		{
+			name:   "AIServiceBackend get error",
+			failOn: &aigv1b1.AIServiceBackend{},
+			expErr: "failed to get targeted AIServiceBackend missing-backend: get failed",
+		},
+		{
+			name:   "InferencePool get error",
+			failOn: &gwaiev1.InferencePool{},
+			expErr: "failed to get targeted InferencePool missing-pool: get failed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cl := interceptor.NewClient(fake.NewClientBuilder().WithScheme(Scheme).Build(), interceptor.Funcs{
+				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if fmt.Sprintf("%T", obj) == fmt.Sprintf("%T", tc.failOn) {
+						return fmt.Errorf("get failed")
+					}
+					return cl.Get(ctx, key, obj, opts...)
+				},
+			})
+			c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, nil, nil, DefaultPreRotationWindow)
+			require.EqualError(t, c.syncBackendSecurityPolicy(t.Context(), bsp), tc.expErr)
+		})
+	}
+}
+
+func TestGetBSPGeneratedSecretName_UnsupportedType(t *testing.T) {
+	require.PanicsWithValue(t, "BUG: unsupported backend security policy type: Unknown", func() {
+		getBSPGeneratedSecretName(&aigv1b1.BackendSecurityPolicy{
+			Spec: aigv1b1.BackendSecurityPolicySpec{Type: "Unknown"},
+		})
+	})
 }
