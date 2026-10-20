@@ -272,7 +272,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	credentialPreRotationWindow := fs.Duration(
 		"credentialPreRotationWindow",
 		controller.DefaultPreRotationWindow,
-		"How long before expiry to rotate short-lived BackendSecurityPolicy credentialsq.",
+		"How long before expiry to rotate short-lived BackendSecurityPolicy credentials.",
 	)
 	mcpSessionEncryptionSeed := fs.String("mcpSessionEncryptionSeed", "default-insecure-seed",
 		"Seed used to derive the MCP session encryption key. This should be changed and set to a secure value.")
