@@ -115,13 +115,16 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		}
 	}
 
-	usage := anthropicResp.Usage
-	tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
-		int64(usage.InputTokens),
-		int64(usage.OutputTokens),
-		ptr.To(int64(usage.CacheReadInputTokens)),
-		ptr.To(int64(usage.CacheCreationInputTokens)),
-	)
+	// Usage is optional in the schema. A response without it (including a JSON `null` or `{}`
+	// body, which decodes without an error) reports no usage, as the streaming path does.
+	if usage := anthropicResp.Usage; usage != nil {
+		tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
+			int64(usage.InputTokens),
+			int64(usage.OutputTokens),
+			ptr.To(int64(usage.CacheReadInputTokens)),
+			ptr.To(int64(usage.CacheCreationInputTokens)),
+		)
+	}
 	if span != nil {
 		span.RecordResponse(anthropicResp)
 	}
