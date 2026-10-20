@@ -144,7 +144,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	extProcBuilder := newExtProcBuilder(options, isKubernetes133OrLater(versionInfo, logger), logger)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
 		logger.WithName("gateway"), options.EnvoyGatewayNamespace,
-		false, uuid.NewString, options, isKubernetes133OrLater(versionInfo, logger))
+		false, uuid.NewString, options, isKubernetes133OrLater(versionInfo, logger),
+		mgr.GetEventRecorder("envoy-ai-gateway-controller"))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,

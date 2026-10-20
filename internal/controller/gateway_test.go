@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -76,7 +77,7 @@ func newTestGatewayController(c client.Client, kube kubernetes.Interface, logger
 		MCPFallbackSessionEncryptionSeed:       "fallback",
 		MCPFallbackSessionEncryptionIterations: 200,
 	}
-	return NewGatewayController(c, kube, logger, ns, standAlone, uuidFn, opts, extProcAsSideCar)
+	return NewGatewayController(c, kube, logger, ns, standAlone, uuidFn, opts, extProcAsSideCar, nil)
 }
 
 func requireFilterConfigFromBundle(t *testing.T, kube kubernetes.Interface, namespace, gatewayName, gatewayNamespace string) filterapi.Config {
@@ -249,7 +250,7 @@ func TestGatewayController_Reconcile_GatewayConfigImageOverrideNoWorkloadPatch(t
 		globalImage = "docker.io/envoyproxy/ai-gateway-extproc:latest"
 	)
 	opts := newTestExtProcOptions(globalImage, "info")
-	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log, egNamespace, false, func() string { return "uuid" }, opts, true)
+	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log, egNamespace, false, func() string { return "uuid" }, opts, true, nil)
 
 	gatewayConfig := testGatewayConfig.DeepCopy()
 	gatewayConfig.Namespace = namespace
@@ -2820,7 +2821,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	const image = "docker.io/envoyproxy/ai-gateway-extproc:latest"
 	opts := newTestExtProcOptions(image, "info")
 	baseBuilder := newExtProcBuilder(opts, true, ctrl.Log)
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, egNamespace, false, func() string { return "test-uuid" }, opts, true)
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, egNamespace, false, func() string { return "test-uuid" }, opts, true, nil)
 	baseHash := baseBuilder.extProcContainerHash(extProcContainerInput{})
 
 	pod := &corev1.Pod{
@@ -3712,6 +3713,30 @@ func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) 
 	require.ErrorContains(t, err, fmt.Sprintf("filter config requires %d shards, exceeds max supported slots %d",
 		DefaultFilterConfigBundleMaxSlots+1, DefaultFilterConfigBundleMaxSlots))
 	require.ErrorContains(t, err, "raise --filterConfigBundleMaxSlots (Helm: controller.filterConfigBundleMaxSlots)")
+}
+
+func TestGatewayController_recordFilterConfigWriteError(t *testing.T) {
+	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "ns"}}
+	tooLarge := &filterConfigBundleTooLargeError{parts: 12, maxSlots: 8}
+
+	t.Run("bundle too large", func(t *testing.T) {
+		recorder := events.NewFakeRecorder(10)
+		c := &GatewayController{eventRecorder: recorder}
+		c.recordFilterConfigWriteError(gw, fmt.Errorf("failed to write: %w", tooLarge))
+		require.Len(t, recorder.Events, 1)
+		require.Equal(t, "Warning FilterConfigBundleTooLarge "+tooLarge.Error()+
+			"; the extproc keeps its previous config until then", <-recorder.Events)
+	})
+	t.Run("other error", func(t *testing.T) {
+		recorder := events.NewFakeRecorder(10)
+		c := &GatewayController{eventRecorder: recorder}
+		c.recordFilterConfigWriteError(gw, fmt.Errorf("failed to get secret"))
+		require.Empty(t, recorder.Events)
+	})
+	t.Run("no recorder", func(t *testing.T) {
+		c := &GatewayController{}
+		require.NotPanics(t, func() { c.recordFilterConfigWriteError(gw, tooLarge) })
+	})
 }
 
 func TestGatewayController_writeFilterConfigBundleShards_ConfiguredMaxSlots(t *testing.T) {

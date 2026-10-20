@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,7 +55,7 @@ const (
 // options to both), so the workload template hash matches webhook injection.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
-	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
+	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool, eventRecorder events.EventRecorder,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -69,6 +70,7 @@ func NewGatewayController(
 		uuidFn:                  uf,
 		extProcBuilder:          newExtProcBuilder(options, extProcAsSideCar, logger),
 		referenceGrantValidator: newReferenceGrantValidator(client),
+		eventRecorder:           eventRecorder,
 	}
 }
 
@@ -87,6 +89,9 @@ type GatewayController struct {
 	// referenceGrantValidator authorizes cross-namespace AIServiceBackend/InferencePool
 	// references (and their BackendSecurityPolicy credentials) via Gateway API ReferenceGrant.
 	referenceGrantValidator *referenceGrantValidator
+	// eventRecorder records Events on the Gateway. It is nil in standalone mode, where there is no
+	// API server to record them to.
+	eventRecorder events.EventRecorder
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -157,6 +162,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, declaredMetadataNamespaces)
 	if err != nil {
+		c.recordFilterConfigWriteError(gw, err)
 		return ctrl.Result{}, err
 	}
 
@@ -168,6 +174,19 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	return result, nil
+}
+
+// recordFilterConfigWriteError records a Warning Event on the Gateway when the filter config write
+// was refused because it needs more bundle parts than the configured slots. The extproc keeps serving
+// its previous config in that case, so route and backend changes stop reaching the data plane, and
+// without the Event the reconciler error log would be the only place that says so.
+func (c *GatewayController) recordFilterConfigWriteError(gw *gwapiv1.Gateway, err error) {
+	var tooLarge *filterConfigBundleTooLargeError
+	if c.eventRecorder == nil || !errors.As(err, &tooLarge) {
+		return
+	}
+	c.eventRecorder.Eventf(gw, nil, corev1.EventTypeWarning, filterConfigBundleTooLargeEventReason,
+		"WriteFilterConfig", "%s; the extproc keeps its previous config until then", tooLarge.Error())
 }
 
 // schemaToFilterAPI converts an aigv1b1.VersionedAPISchema to filterapi.VersionedAPISchema.

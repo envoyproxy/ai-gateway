@@ -31,6 +31,9 @@ const (
 	// projection to each gateway pod and Secret API calls to each reconcile, so an unbounded value
 	// would surface as pods rejected at admission rather than as a flag error.
 	MaxFilterConfigBundleMaxSlots = 128
+	// filterConfigBundleTooLargeEventReason is the reason of the Warning Event recorded on the Gateway
+	// when the filter config needs more bundle parts than the configured slots.
+	filterConfigBundleTooLargeEventReason = "FilterConfigBundleTooLarge"
 )
 
 func splitBytes(raw []byte, chunkSize int) [][]byte {
@@ -46,6 +49,19 @@ func splitBytes(raw []byte, chunkSize int) [][]byte {
 		chunks = append(chunks, raw[start:end])
 	}
 	return chunks
+}
+
+// filterConfigBundleTooLargeError is returned when the filter config needs more parts than the
+// configured slot count. Reconcile surfaces it as a Warning Event on the Gateway, since otherwise the
+// only trace of the refused write is the reconciler error log.
+type filterConfigBundleTooLargeError struct {
+	parts, maxSlots int
+}
+
+// Error implements error. It names the flag so the reader knows what to change.
+func (e *filterConfigBundleTooLargeError) Error() string {
+	return fmt.Sprintf("filter config requires %d shards, exceeds max supported slots %d; "+
+		"raise --filterConfigBundleMaxSlots (Helm: controller.filterConfigBundleMaxSlots)", e.parts, e.maxSlots)
 }
 
 // filterConfigBundleIndexFromSecret parses the bundle index held by the index Secret.
@@ -68,10 +84,8 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 	chunks := splitBytes(payload, filterConfigBundlePartSizeBytes)
 	maxSlots := c.filterConfigBundleMaxSlots()
 	if len(chunks) > maxSlots {
-		// Nothing is written past this point, so the gateway pods keep their previous config. Name the
-		// flag so the reconciler error log tells the operator what to change.
-		return fmt.Errorf("filter config requires %d shards, exceeds max supported slots %d; "+
-			"raise --filterConfigBundleMaxSlots (Helm: controller.filterConfigBundleMaxSlots)", len(chunks), maxSlots)
+		// Nothing is written past this point, so the gateway pods keep their previous config.
+		return &filterConfigBundleTooLargeError{parts: len(chunks), maxSlots: maxSlots}
 	}
 	index := &filterapi.ConfigBundleIndex{
 		Version:  version.Parse(),
