@@ -257,10 +257,8 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	filterConfigBundleMaxSlots := fs.Int(
 		"filterConfigBundleMaxSlots",
 		controller.DefaultFilterConfigBundleMaxSlots,
-		fmt.Sprintf("Number of Secrets (about 700KiB each) the extProc filter config may be split into. "+
-			"Every gateway pod projects this many optional slots, so a config larger than the slots is not written. "+
-			"Changing it rolls the gateway pods so they project the new slot count. A lowered value takes effect only "+
-			"once the config fits in it; until then the config is not written. Must be between 1 and %d.",
+		fmt.Sprintf("Maximum number of Secrets (~700KiB each) the extProc filter config is split into; "+
+			"a larger config is not written. Changing it rolls the gateway pods. Must be between 1 and %d.",
 			controller.MaxFilterConfigBundleMaxSlots),
 	)
 	maxRecvMsgSize := fs.Int(
