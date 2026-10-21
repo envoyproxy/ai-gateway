@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	lua "github.com/yuin/gopher-lua"
@@ -28,12 +27,12 @@ func TestAggregateUserBudgetSharesAdmissionAndResponseKeys(t *testing.T) {
 			{ModelName: ptr.To("model-b"), Quota: aigv1a1.QuotaDefinition{CostExpression: ptr.To("output_tokens")}},
 		},
 	}}
-	route := &routev3.Route{}
+	route := &routev3.Route{Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
 	require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, []aigv1a1.QuotaPolicy{policy}, nil))
-	config := &ratelimitv3.RateLimitPerRoute{}
-	require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(config))
-	require.Len(t, config.RateLimits, 2, "must not charge once per model/backend")
-	check, charge := config.RateLimits[0], config.RateLimits[1]
+	entries := route.GetRoute().RateLimits
+	require.Len(t, entries, 2, "must not charge once per model/backend")
+	check, charge := entries[0], entries[1]
+	require.Equal(t, uint32(aggregateRateLimitStage), check.GetStage().GetValue())
 	require.Equal(t, check.Actions, charge.Actions)
 	require.Equal(t, check.Limit, charge.Limit)
 	require.Zero(t, check.HitsAddend.Number.Value)

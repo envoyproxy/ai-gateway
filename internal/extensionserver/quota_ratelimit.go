@@ -133,7 +133,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 			}
 			for _, policy := range quotaPolicies {
 				if policy.Spec.AggregateUserBudget != nil {
-					if err := injectAggregateBudgetGuard(ln); err != nil {
+					if err := s.injectAggregateBudgetGuard(ln); err != nil {
 						return nil, err
 					}
 					break
@@ -637,15 +637,15 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 			}
 			if budget := policy.Spec.AggregateUserBudget; budget != nil {
 				if !aggregateAdded {
+					if _, configured := route.TypedPerFilterConfig[aggregateBudgetFilterName]; configured {
+						return fmt.Errorf("a route cannot have multiple aggregate user budget policies")
+					}
 					if len(rateLimitActions) != 0 || len(streamDoneActions) != 0 {
 						return fmt.Errorf("aggregate user budgets cannot overlap another quota policy on a route")
 					}
 					if err := configureAggregateBudget(route, policy); err != nil {
 						return err
 					}
-					entries := aggregateBudgetEntries(budget)
-					rateLimitActions = append(rateLimitActions, entries[0])
-					streamDoneActions = append(streamDoneActions, entries[1])
 					aggregateAdded = true
 				}
 				continue
@@ -720,6 +720,9 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 
 	rateLimitActions = append(rateLimitActions, streamDoneActions...)
 
+	if _, aggregateConfigured := route.TypedPerFilterConfig[aggregateBudgetFilterName]; aggregateConfigured {
+		return nil
+	}
 	if len(rateLimitActions) == 0 {
 		return nil
 	}
