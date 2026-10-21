@@ -18,22 +18,25 @@ import (
 )
 
 func TestPostModelLuaPreservesAuthAndUnrelatedLua(t *testing.T) {
-	guard, err := anypb.New(&luav3.LuaPerRoute{Override: &luav3.LuaPerRoute_SourceCode{
-		SourceCode: &corev3.DataSource{Specifier: &corev3.DataSource_InlineString{InlineString: postModelLuaMarker + `
+	guard, err := anypb.New(&luav3.Lua{
+		DefaultSourceCode: &corev3.DataSource{Specifier: &corev3.DataSource_InlineString{InlineString: postModelLuaMarker + `
 function envoy_on_request(handle)
   local model = handle:headers():get("x-ai-eg-model")
   if model == "claude" then handle:respond({[":status"]="400"}, "max_tokens required") end
 end
 `}},
-	}})
+	})
 	require.NoError(t, err)
 	unrelated, err := anypb.New(&luav3.LuaPerRoute{Override: &luav3.LuaPerRoute_Disabled{Disabled: true}})
 	require.NoError(t, err)
-	guardRoute := &routev3.Route{Name: "guard", TypedPerFilterConfig: map[string]*anypb.Any{"envoy.filters.http.lua/0": guard}}
+	enabled, err := anypb.New(&routev3.FilterConfig{Config: &anypb.Any{}})
+	require.NoError(t, err)
+	const guardName = "envoy.filters.http.lua/envoyextensionpolicy/test/llm-request-guard/lua/0"
+	guardRoute := &routev3.Route{Name: "guard", TypedPerFilterConfig: map[string]*anypb.Any{guardName: enabled}}
 	otherRoute := &routev3.Route{Name: "other", TypedPerFilterConfig: map[string]*anypb.Any{"envoy.filters.http.lua/0": unrelated}}
-	routes := []*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{guardRoute, otherRoute}}}}}
 	hcm := &hcmv3.HttpConnectionManager{HttpFilters: []*hcmv3.HttpFilter{
 		{Name: "envoy.filters.http.jwt_authn"}, {Name: "envoy.filters.http.lua/0"},
+		{Name: guardName, Disabled: true, ConfigType: &hcmv3.HttpFilter_TypedConfig{TypedConfig: guard}},
 		{Name: "envoy.filters.http.rbac"}, {Name: "envoy.filters.http.router"},
 	}}
 	require.NoError(t, insertAIGatewayExtProcFilter(hcm, &hcmv3.HttpFilter{Name: aiGatewayExtProcName}))
@@ -43,8 +46,8 @@ end
 		Name:       "envoy.filters.network.http_connection_manager",
 		ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny},
 	}}}}}
-	require.NoError(t, configurePostModelLua(listeners, routes))
-	require.NoError(t, configurePostModelLua(listeners, routes), "must be idempotent")
+	require.NoError(t, configurePostModelLua(listeners))
+	require.NoError(t, configurePostModelLua(listeners), "must be idempotent")
 	updated, _, err := findHCM(listeners[0].DefaultFilterChain)
 	require.NoError(t, err)
 	var names []string
@@ -52,13 +55,10 @@ end
 		names = append(names, filter.Name)
 	}
 	require.Equal(t, []string{"envoy.filters.http.jwt_authn", "envoy.filters.http.lua/0",
-		"envoy.filters.http.rbac", aiGatewayExtProcName, postModelLuaFilter, "envoy.filters.http.router"}, names)
-	require.Equal(t, guard, guardRoute.TypedPerFilterConfig[postModelLuaFilter])
-	disabled := &luav3.LuaPerRoute{}
-	require.NoError(t, guardRoute.TypedPerFilterConfig["envoy.filters.http.lua/0"].UnmarshalTo(disabled))
-	require.True(t, disabled.GetDisabled())
+		"envoy.filters.http.rbac", aiGatewayExtProcName, guardName, "envoy.filters.http.router"}, names)
+	require.Equal(t, enabled, guardRoute.TypedPerFilterConfig[guardName])
 	require.Equal(t, unrelated, otherRoute.TypedPerFilterConfig["envoy.filters.http.lua/0"])
-	require.Nil(t, otherRoute.TypedPerFilterConfig[postModelLuaFilter])
+	require.Nil(t, otherRoute.TypedPerFilterConfig[guardName])
 
 	// A body-only request has no model header until the extproc step runs.
 	state := lua.NewState()
@@ -76,10 +76,10 @@ function handle:respond(status,body) result=status[":status"] end
 			var body struct{ Model string }
 			require.NoError(t, json.Unmarshal([]byte(`{"model":"claude","messages":[]}`), &body))
 			state.GetGlobal("headers").(*lua.LTable).RawSetString("x-ai-eg-model", lua.LString(body.Model))
-		case postModelLuaFilter:
-			script := &luav3.LuaPerRoute{}
-			require.NoError(t, guardRoute.TypedPerFilterConfig[filter.Name].UnmarshalTo(script))
-			require.NoError(t, state.DoString(script.GetSourceCode().GetInlineString()+"\nenvoy_on_request(handle)"))
+		case guardName:
+			script := &luav3.Lua{}
+			require.NoError(t, filter.GetTypedConfig().UnmarshalTo(script))
+			require.NoError(t, state.DoString(script.GetDefaultSourceCode().GetInlineString()+"\nenvoy_on_request(handle)"))
 		}
 	}
 	require.Equal(t, lua.LString("400"), state.GetGlobal("result"))

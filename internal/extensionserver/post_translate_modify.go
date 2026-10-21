@@ -142,7 +142,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
-	if err = configurePostModelLua(req.Listeners, req.Routes); err != nil {
+	if err = configurePostModelLua(req.Listeners); err != nil {
 		return nil, fmt.Errorf("failed to place model-dependent Lua after extproc: %w", err)
 	}
 
