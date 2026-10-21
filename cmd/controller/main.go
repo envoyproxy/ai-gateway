@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,6 +77,26 @@ type flags struct {
 	quotaRateLimitServiceAddr              string
 	quotaRateLimitTimeout                  int64
 	quotaRateLimitFailureModeDeny          bool
+}
+
+// extensionServerRunnable starts the extension server after the manager cache has synced.
+// It does not require leader election because every replica serves read-only extension requests.
+type extensionServerRunnable struct {
+	server   *grpc.Server
+	listener net.Listener
+}
+
+func (r extensionServerRunnable) Start(ctx context.Context) error {
+	stop := context.AfterFunc(ctx, r.server.GracefulStop)
+	defer stop()
+	if err := r.server.Serve(r.listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		return fmt.Errorf("failed to serve extension server: %w", err)
+	}
+	return nil
+}
+
+func (extensionServerRunnable) NeedLeaderElection() bool {
+	return false
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -469,15 +491,10 @@ func main() {
 	}
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
-	go func() {
-		<-ctx.Done()
-		s.GracefulStop()
-	}()
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			setupLog.Error(err, "failed to serve extension server")
-		}
-	}()
+	if err = mgr.Add(extensionServerRunnable{server: s, listener: lis}); err != nil {
+		setupLog.Error(err, "failed to register extension server")
+		os.Exit(1)
+	}
 
 	// Start the rate limit xDS config server.
 	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
@@ -526,26 +543,31 @@ const mutatingWebhookConfigurationName = "envoy-ai-gateway-gateway-pod-mutator"
 // This allows users to only need to manage the secret and not take care of mutating webhook configuration.
 func maybePatchAdmissionWebhook(ctx context.Context, cli client.Client, bundlePath string) error {
 	webhookConfigName := fmt.Sprintf("%s.%s", mutatingWebhookConfigurationName, os.Getenv("POD_NAMESPACE"))
-	webhookCfg := &admissionregistrationv1.MutatingWebhookConfiguration{}
-	if err := cli.Get(ctx, client.ObjectKey{Name: webhookConfigName}, webhookCfg); err != nil {
-		return fmt.Errorf("failed to get mutating webhook configuration: %w", err)
-	}
+	// Every controller replica runs this before leader election, so they may race to update the same object.
+	// On conflict, re-read it: if another replica has already written the same bundle, there is nothing to do.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		webhookCfg := &admissionregistrationv1.MutatingWebhookConfiguration{}
+		if err := cli.Get(ctx, client.ObjectKey{Name: webhookConfigName}, webhookCfg); err != nil {
+			return fmt.Errorf("failed to get mutating webhook configuration: %w", err)
+		}
 
-	if len(webhookCfg.Webhooks) != 1 {
-		return fmt.Errorf("expected 1 webhook in %s, got %d", webhookConfigName, len(webhookCfg.Webhooks))
-	}
+		if len(webhookCfg.Webhooks) != 1 {
+			return fmt.Errorf("expected 1 webhook in %s, got %d", webhookConfigName, len(webhookCfg.Webhooks))
+		}
 
-	bundle, err := os.ReadFile(bundlePath)
-	if err != nil {
-		return fmt.Errorf("failed to read CA bundle: %w", err)
-	}
-	if !bytes.Equal(webhookCfg.Webhooks[0].ClientConfig.CABundle, bundle) {
+		bundle, err := os.ReadFile(bundlePath)
+		if err != nil {
+			return fmt.Errorf("failed to read CA bundle: %w", err)
+		}
+		if bytes.Equal(webhookCfg.Webhooks[0].ClientConfig.CABundle, bundle) {
+			return nil
+		}
 		webhookCfg.Webhooks[0].ClientConfig.CABundle = bundle
 		if err := cli.Update(ctx, webhookCfg); err != nil {
 			return fmt.Errorf("failed to update mutating webhook configuration: %w", err)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // setupCache sets up the cache options based on the provided flags.

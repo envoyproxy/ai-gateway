@@ -92,6 +92,12 @@ func AWSCredentialOverrideHeaderNames(prefix string) (accessKeyID, secretAccessK
 	return prefix + "access-key-id", prefix + "secret-access-key", prefix + "session-token"
 }
 
+// MCPProxyAddr is the address the MCP proxy listens on. It is loopback-only: its only client is the
+// Envoy proxy in the same pod (the extension server points the MCP main route's cluster at
+// 127.0.0.1), and it trusts the route and subject headers that Envoy's frontend sets after enforcing
+// the MCPRoute's security policy, so it must not be reachable from other pods.
+var MCPProxyAddr = fmt.Sprintf("127.0.0.1:%d", MCPProxyPort)
+
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
 //
 // Only headers that do not survive to the router belong here. Headers the MCP proxy sets and leaves
@@ -145,6 +151,16 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// AIServiceBackendName extracts the "namespace/name" of the AIServiceBackend from a name
+// produced by [PerRouteRuleRefBackendName], and returns the input unchanged when it does
+// not carry the per-route rule suffix.
+func AIServiceBackendName(perRouteRuleRefBackendName string) string {
+	if parts := strings.SplitN(perRouteRuleRefBackendName, "/", 3); len(parts) >= 2 {
+		return parts[0] + "/" + parts[1]
+	}
+	return perRouteRuleRefBackendName
 }
 
 // awsBedrockHostRE matches an AWS Bedrock runtime host — public, FIPS, PrivateLink (VPCE), or the

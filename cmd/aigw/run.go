@@ -278,7 +278,7 @@ func recreateDir(path string) error {
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
 func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, int, error) {
-	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, _, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
+	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, referenceGrants, gateways, secrets, _, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("error collecting: %w", err)
 	}
@@ -301,7 +301,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 
 	var secretList *corev1.SecretList
-	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilters, backends, secretList, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, runCtx.stderrLogger)
+	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilters, backends, secretList, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, referenceGrants, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("error translating: %w", err)
 	}
@@ -395,7 +395,7 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		"--configBundlePath", configBundlePath,
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
 		"--adminPort", fmt.Sprintf("%d", runCtx.adminPort),
-		"--mcpAddr", ":" + strconv.Itoa(internalapi.MCPProxyPort),
+		"--mcpAddr", internalapi.MCPProxyAddr,
 		"--mcpSessionEncryptionIterations", strconv.Itoa(runCtx.mcpSessionEncryptionIterations),
 	}
 	if runCtx.isDebug {

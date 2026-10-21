@@ -583,7 +583,6 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
-- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc)
 - [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
@@ -676,6 +675,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
   required="false"
   description="ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same creation time.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
+/><ApiField
+  name="excludeFromModelsEndpoint"
+  type="boolean"
+  required="false"
+  description="ExcludeFromModelsEndpoint prevents models matched by this rule from being returned by the<br />OpenAI-compatible `/models` endpoint. Requests still match this rule and apply its<br />configured transformations, including model name overrides.<br />This is useful for internal or backwards-compatible aliases, as well as duplicate model<br />definitions with different schemas."
 />
 
 
@@ -1229,7 +1233,6 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken)
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken)
-- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -1491,7 +1494,6 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   required="false"
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
-
 
 
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc">GatewayConfigExtProc</a>
@@ -2280,7 +2282,7 @@ MCPRouteSpec details the MCPRoute configuration.
   name="backendSelector"
   type="[MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselector)"
   required="false"
-  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered."
+  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered.<br />Security note: a backendSelector rule whose CEL expression reads request.auth.jwt<br />(claims or scopes) only reflects verified JWT data when SecurityPolicy.OAuth is<br />configured for this route; the XValidation below enforces that pairing so that<br />unauthenticated or forged bearer tokens can't influence backend selection."
 />
 
 
@@ -2574,9 +2576,9 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
 
 <ApiField
   name="targetRefs"
-  type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
+  type="NamespacedPolicyTargetReference array"
   required="false"
-  description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
+  description="TargetRefs are the AIServiceBackend resources this QuotaPolicy is being attached to.<br />The namespace of each target defaults to the QuotaPolicy's namespace when omitted.<br />Cross-namespace references are supported by setting namespace explicitly. When the<br />target namespace differs from the QuotaPolicy's namespace, a ReferenceGrant in the<br />AIServiceBackend's namespace must authorize QuotaPolicy from the policy namespace to<br />reference AIServiceBackend. Same-namespace references do not require a ReferenceGrant."
 /><ApiField
   name="serviceQuota"
   type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
@@ -2666,7 +2668,7 @@ QuotaValue defines the quota limits using sliding window.
   name="duration"
   type="string"
   required="true"
-  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), or `1d` (1 day)."
+  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), `1d` (1 day), `1w` (1 week), `1mo` (1 month), or `1y` (1 year)."
 />
 
 
@@ -3252,7 +3254,6 @@ MCPRouteList contains a list of MCPRoute.
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
-- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc)
 - [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
@@ -3342,6 +3343,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
   required="false"
   description="ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same creation time.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
+/><ApiField
+  name="excludeFromModelsEndpoint"
+  type="boolean"
+  required="false"
+  description="ExcludeFromModelsEndpoint prevents models matched by this rule from being returned by the<br />OpenAI-compatible `/models` endpoint. Requests still match this rule and apply its<br />configured transformations, including model name overrides.<br />This is useful for internal or backwards-compatible aliases, as well as duplicate model<br />definitions with different schemas."
 />
 
 
@@ -3933,7 +3939,6 @@ default service account credentials when running on GCP.
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
-- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -4260,7 +4265,6 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   required="false"
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
-
 
 
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc">GatewayConfigExtProc</a>
@@ -5229,7 +5233,7 @@ MCPRouteSpec details the MCPRoute configuration.
   name="backendSelector"
   type="[MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)"
   required="false"
-  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered."
+  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered.<br />Security note: a backendSelector rule whose CEL expression reads request.auth.jwt<br />(claims or scopes) only reflects verified JWT data when SecurityPolicy.OAuth is<br />configured for this route; the XValidation below enforces that pairing so that<br />unauthenticated or forged bearer tokens can't influence backend selection."
 /><ApiField
   name="prefixMode"
   type="[MCPRoutePrefixMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteprefixmode)"

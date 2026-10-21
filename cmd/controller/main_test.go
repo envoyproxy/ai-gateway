@@ -7,6 +7,9 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -14,17 +17,55 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/test/bufconn"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
+
+func TestExtensionServerRunnable(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	grpcServer := grpc.NewServer()
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	runnable := extensionServerRunnable{server: grpcServer, listener: listener}
+	require.False(t, runnable.NeedLeaderElection())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- runnable.Start(ctx)
+	}()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	checkCtx, checkCancel := context.WithTimeout(t.Context(), time.Second)
+	check, err := grpc_health_v1.NewHealthClient(conn).Check(checkCtx, &grpc_health_v1.HealthCheckRequest{}, grpc.WaitForReady(true))
+	checkCancel()
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, check.Status)
+	require.NoError(t, conn.Close())
+
+	cancel()
+	require.NoError(t, <-done)
+}
 
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {
@@ -292,6 +333,45 @@ func Test_maybePatchAdmissionWebhook(t *testing.T) {
 	err = c.Get(t.Context(), client.ObjectKey{Name: w.Name}, updated)
 	require.NoError(t, err)
 	require.Equal(t, updated.Webhooks[0].ClientConfig.CABundle, []byte("somebundle"))
+}
+
+// Test_maybePatchAdmissionWebhook_conflict reproduces two controller replicas racing to set the CA bundle:
+// the other replica writes the bundle between our Get and Update, so our Update gets a Conflict.
+func Test_maybePatchAdmissionWebhook_conflict(t *testing.T) {
+	const ns = "envoy-ai-gateway-system"
+	t.Setenv("POD_NAMESPACE", ns)
+	p := t.TempDir() + "/bundle"
+	require.NoError(t, os.WriteFile(p, []byte("somebundle"), 0o600))
+
+	w := &admissionregistrationv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: mutatingWebhookConfigurationName + "." + ns},
+		Webhooks:   []admissionregistrationv1.MutatingWebhook{{}},
+	}
+	var updates int
+	c := fake.NewClientBuilder().WithObjects(w).WithInterceptorFuncs(interceptor.Funcs{
+		Update: func(ctx context.Context, cli client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			updates++
+			if updates == 1 {
+				// The other replica wins the race.
+				winner := &admissionregistrationv1.MutatingWebhookConfiguration{}
+				require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), winner))
+				winner.Webhooks[0].ClientConfig.CABundle = []byte("somebundle")
+				require.NoError(t, cli.Update(ctx, winner))
+				return apierrors.NewConflict(schema.GroupResource{
+					Group:    "admissionregistration.k8s.io",
+					Resource: "mutatingwebhookconfigurations",
+				}, obj.GetName(), errors.New("the object has been modified"))
+			}
+			return cli.Update(ctx, obj, opts...)
+		},
+	}).Build()
+
+	require.NoError(t, maybePatchAdmissionWebhook(t.Context(), c, p))
+	require.Equal(t, 1, updates, "the retry must not write once the bundle already matches")
+
+	updated := &admissionregistrationv1.MutatingWebhookConfiguration{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: w.Name}, updated))
+	require.Equal(t, []byte("somebundle"), updated.Webhooks[0].ClientConfig.CABundle)
 }
 
 func Test_parseAndValidateFlags_extProcImagePullSecrets(t *testing.T) {

@@ -33,12 +33,18 @@ type QuotaPolicy struct {
 
 // QuotaPolicySpec specifies rules for computing token based costs of requests.
 type QuotaPolicySpec struct {
-	// TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
+	// TargetRefs are the AIServiceBackend resources this QuotaPolicy is being attached to.
+	//
+	// The namespace of each target defaults to the QuotaPolicy's namespace when omitted.
+	// Cross-namespace references are supported by setting namespace explicitly. When the
+	// target namespace differs from the QuotaPolicy's namespace, a ReferenceGrant in the
+	// AIServiceBackend's namespace must authorize QuotaPolicy from the policy namespace to
+	// reference AIServiceBackend. Same-namespace references do not require a ReferenceGrant.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
+	TargetRefs []gwapiv1a2.NamespacedPolicyTargetReference `json:"targetRefs,omitempty"`
 	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
 	// configuration.
 	//
@@ -165,9 +171,9 @@ type QuotaRule struct {
 type QuotaValue struct {
 	// The limit alloted for a specified time window.
 	Limit uint `json:"limit"`
-	// Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), or "1d" (1 day).
+	// Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "1d" (1 day), "1w" (1 week), "1mo" (1 month), or "1y" (1 year).
 	//
-	// +kubebuilder:validation:Enum="1s";"1m";"1h";"1d"
+	// +kubebuilder:validation:Enum="1s";"1m";"1h";"1d";"1w";"1mo";"1y"
 	Duration string `json:"duration"`
 }
 
