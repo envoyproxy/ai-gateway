@@ -128,6 +128,31 @@ kubectl apply -f mcp-route.yaml
 
 Now clients can connect to `http://<gateway-address>/mcp` and access GitHub tools.
 
+#### Secrets in another namespace
+
+A `secretRef` without `namespace` refers to a Secret in the MCPRoute's own namespace. A Secret in another namespace also needs a [ReferenceGrant](https://gateway-api.sigs.k8s.io/api-types/referencegrant/) in the Secret's namespace that allows the reference. Without it, the MCPRoute is marked `NotAccepted`.
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-mcp-route-secrets
+  namespace: credentials # the Secret's namespace
+spec:
+  from:
+    - group: aigateway.envoyproxy.io
+      kind: MCPRoute
+      namespace: default # the MCPRoute's namespace
+  to:
+    - group: ""
+      kind: Secret
+      name: github-token # the Secret's name
+```
+
+The `name` field limits the grant to that one Secret. Without it, the grant covers every Secret in the namespace. To allow several Secrets, add a `to` entry for each.
+
+With `aigw run`, put the ReferenceGrant in the configuration file.
+
 ### Tool Filtering
 
 Control which tools are exposed using the `toolSelector` field. You can use exact matches or regular expressions:

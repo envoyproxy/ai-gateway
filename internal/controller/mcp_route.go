@@ -45,6 +45,9 @@ type MCPRouteController struct {
 	logger logr.Logger
 	// gatewayEventChan is a channel to send events to the gateway controller.
 	gatewayEventChan chan event.GenericEvent
+	// referenceGrantValidator authorizes cross-namespace apiKey.secretRef references via Gateway API
+	// ReferenceGrant.
+	referenceGrantValidator *referenceGrantValidator
 }
 
 // NewMCPRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the MCPRoute resource.
@@ -53,10 +56,11 @@ func NewMCPRouteController(
 	gatewayEventChan chan event.GenericEvent,
 ) *MCPRouteController {
 	return &MCPRouteController{
-		client:           client,
-		kube:             kube,
-		logger:           logger,
-		gatewayEventChan: gatewayEventChan,
+		client:                  client,
+		kube:                    kube,
+		logger:                  logger,
+		gatewayEventChan:        gatewayEventChan,
+		referenceGrantValidator: newReferenceGrantValidator(client),
 	}
 }
 
@@ -688,7 +692,7 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 			// Query parameter injection cannot use Envoy Gateway's credentialInjection filter;
 			// embed directly in the URL rewrite path. injectionPolicy does not apply here.
 			// TODO: evaluate alternatives to avoid embedding the secret in the HTTPRoute manifest.
-			apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
+			apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute, apiKey)
 			if err != nil {
 				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to read API key for backend %s: %w", ref.Name, err)
 			}
@@ -863,7 +867,7 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 // value under the InjectedCredentialKey key. This secret is referenced by the HTTPRouteFilter's credentialInjection,
 // keeping the plaintext API key out of the HTTPRoute manifest.
 func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretName string, mcpRoute *aigv1b1.MCPRoute, apiKey *aigv1b1.MCPBackendAPIKey) error {
-	apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
+	apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute, apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to read API key: %w", err)
 	}
@@ -913,10 +917,23 @@ func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretN
 	return nil
 }
 
-func (c *MCPRouteController) readAPIKey(ctx context.Context, namespace string, apiKey *aigv1b1.MCPBackendAPIKey) (string, error) {
+// readAPIKey returns the API key configured for a backend, reading the referenced Secret when the
+// key is not inline. The Secret lives in secretRef.namespace when that is set, otherwise in the
+// MCPRoute's namespace; a Secret in another namespace is only read when a ReferenceGrant in that
+// namespace allows the MCPRoute to reference it.
+func (c *MCPRouteController) readAPIKey(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, apiKey *aigv1b1.MCPBackendAPIKey) (string, error) {
 	key := ptr.Deref(apiKey.Inline, "")
 	if key == "" {
 		secretRef := apiKey.SecretRef
+		namespace := mcpRoute.Namespace
+		if secretRef.Namespace != nil && *secretRef.Namespace != "" {
+			namespace = string(*secretRef.Namespace)
+		}
+		// The grant check must run before the Secret is read: the controller can read every Secret
+		// in the cluster, so an ungranted reference must never reach the API server.
+		if err := c.referenceGrantValidator.validateMCPRouteSecretReference(ctx, mcpRoute.Namespace, namespace, string(secretRef.Name)); err != nil {
+			return "", err
+		}
 		secret, err := c.kube.CoreV1().Secrets(namespace).Get(ctx, string(secretRef.Name), metav1.GetOptions{})
 		if err != nil {
 			return "", fmt.Errorf("failed to get secret for API key: %w", err)
