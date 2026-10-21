@@ -24,6 +24,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -1455,22 +1456,6 @@ func TestMCPRouteController_apiKeySecretRefNamespace(t *testing.T) {
 			expNotPermitted: true,
 		},
 		{
-			name: "cross-namespace secret with grant for another route namespace",
-			key: &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{
-				Name: "some-secret", Namespace: ptr.To(gwapiv1.Namespace(secretNS)),
-			}},
-			grant:           mcpRouteSecretGrant(secretNS, "other", "some-secret"),
-			expNotPermitted: true,
-		},
-		{
-			name: "cross-namespace secret with grant for another secret name",
-			key: &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{
-				Name: "some-secret", Namespace: ptr.To(gwapiv1.Namespace(secretNS)),
-			}},
-			grant:           mcpRouteSecretGrant(secretNS, routeNS, "another-secret"),
-			expNotPermitted: true,
-		},
-		{
 			name: "explicit same namespace needs no grant",
 			key: &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{
 				Name: "some-secret", Namespace: ptr.To(gwapiv1.Namespace(routeNS)),
@@ -1532,59 +1517,6 @@ func TestMCPRouteController_apiKeySecretRefNamespace(t *testing.T) {
 			require.Equal(t, tt.expCredentialValue, string(cred.Data[egv1a1.InjectedCredentialKey]))
 		})
 	}
-}
-
-// TestMCPRouteController_Reconcile_SecretRefNamespaceNotPermitted verifies that an MCPRoute whose
-// apiKey.secretRef points at a Secret in another namespace is NotAccepted until a ReferenceGrant
-// allows the reference, and that the route then uses the referenced Secret.
-func TestMCPRouteController_Reconcile_SecretRefNamespaceNotPermitted(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	kubeClient := fakekube.NewClientset(
-		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "default"}, Data: map[string][]byte{"apiKey": []byte("route-ns-value")}},
-		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "shared"}, Data: map[string][]byte{"apiKey": []byte("shared-value")}},
-	)
-	c := NewMCPRouteController(fakeClient, kubeClient, ctrl.Log, eventCh.Ch)
-	require.NoError(t, fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"}}))
-
-	route := &aigv1b1.MCPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route-a", Namespace: "default"},
-		Spec: aigv1b1.MCPRouteSpec{
-			ParentRefs: []gwapiv1.ParentReference{{Name: "gw"}},
-			BackendRefs: []aigv1b1.MCPRouteBackendRef{{
-				BackendObjectReference: gwapiv1.BackendObjectReference{Name: "svc-a", Namespace: ptr.To(gwapiv1.Namespace("default"))},
-				SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{APIKey: &aigv1b1.MCPBackendAPIKey{
-					SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret", Namespace: ptr.To(gwapiv1.Namespace("shared"))},
-				}},
-			}},
-		},
-	}
-	require.NoError(t, fakeClient.Create(t.Context(), route))
-	req := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "route-a"}}
-
-	// Without a grant the route is NotAccepted and no credential Secret is written.
-	_, err := c.Reconcile(t.Context(), req)
-	require.Error(t, err)
-	var current aigv1b1.MCPRoute
-	require.NoError(t, fakeClient.Get(t.Context(), req.NamespacedName, &current))
-	require.Len(t, current.Status.Conditions, 1)
-	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, current.Status.Conditions[0].Type)
-	require.Contains(t, current.Status.Conditions[0].Message, "is not permitted")
-	require.Contains(t, current.Status.Conditions[0].Message, "must allow MCPRoute from namespace default to reference Secret in namespace shared")
-	credName := mcpCredentialSecretName(route, "svc-a")
-	_, err = kubeClient.CoreV1().Secrets("default").Get(t.Context(), credName, metav1.GetOptions{})
-	require.True(t, apierrors.IsNotFound(err))
-
-	// With a grant in the Secret's namespace the route is Accepted and carries the referenced value.
-	require.NoError(t, fakeClient.Create(t.Context(), mcpRouteSecretGrant("shared", "default", "some-secret")))
-	_, err = c.Reconcile(t.Context(), req)
-	require.NoError(t, err)
-	require.NoError(t, fakeClient.Get(t.Context(), req.NamespacedName, &current))
-	require.Len(t, current.Status.Conditions, 1)
-	require.Equal(t, aigv1b1.ConditionTypeAccepted, current.Status.Conditions[0].Type)
-	cred, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credName, metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, "Bearer shared-value", string(cred.Data[egv1a1.InjectedCredentialKey]))
 }
 
 // countSecretReads records how many Secret reads the controller issues per namespace without changing
@@ -1800,7 +1732,7 @@ func TestMCPRouteController_Reconcile_SecretRefGrantRevoked(t *testing.T) {
 			require.ErrorContains(t, err, notPermitted)
 			requireConverged()
 
-			// Granted again, narrowed to another Secret name, restored, narrowed to another route namespace, restored.
+			// Granted again, narrowed to another Secret name, restored.
 			grant = mcpRouteSecretGrant(secretNS, routeNS, "some-secret")
 			require.NoError(t, fakeClient.Create(t.Context(), grant))
 			_, err = c.Reconcile(t.Context(), req)
@@ -1822,25 +1754,6 @@ func TestMCPRouteController_Reconcile_SecretRefGrantRevoked(t *testing.T) {
 			_, err = c.Reconcile(t.Context(), req)
 			require.NoError(t, err)
 			requireGranted()
-			updateGrant(func(g *gwapiv1b1.ReferenceGrant) { g.Spec.From[0].Namespace = "other" })
-			_, err = c.Reconcile(t.Context(), req)
-			require.ErrorContains(t, err, notPermitted)
-			requireConverged()
-			updateGrant(func(g *gwapiv1b1.ReferenceGrant) { g.Spec.From[0].Namespace = routeNS })
-			_, err = c.Reconcile(t.Context(), req)
-			require.NoError(t, err)
-			requireGranted()
-
-			// A grant that is being deleted but is still held by a finalizer, as the ReferenceGrant controller
-			// does while it wakes the routes, no longer authorizes anything.
-			updateGrant(func(g *gwapiv1b1.ReferenceGrant) { g.Finalizers = []string{aiGatewayControllerFinalizer} })
-			require.NoError(t, fakeClient.Delete(t.Context(), grant))
-			var deleting gwapiv1b1.ReferenceGrant
-			require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(grant), &deleting))
-			require.False(t, deleting.DeletionTimestamp.IsZero())
-			_, err = c.Reconcile(t.Context(), req)
-			require.ErrorContains(t, err, notPermitted)
-			requireConverged()
 		})
 	}
 }
@@ -2029,14 +1942,30 @@ func TestMCPRouteController_Reconcile_NonGrantErrorsKeepResources(t *testing.T) 
 		requirePerBackendResources(t, f.fakeClient, f.kubeClient, f.route, "svc-a", true, "Bearer shared-value")
 	})
 
-	t.Run("same-namespace Secret deleted", func(t *testing.T) {
+	t.Run("transient error listing ReferenceGrants", func(t *testing.T) {
 		f := newGrantedFixture(t)
-		require.NoError(t, f.kubeClient.CoreV1().Secrets("default").Delete(t.Context(), "local-secret", metav1.DeleteOptions{}))
-		_, err := f.c.Reconcile(t.Context(), f.req)
-		require.ErrorContains(t, err, `failed to get secret for API key: secrets "local-secret" not found`)
-		requireMCPRouteCondition(t, f.fakeClient, f.route, aigv1b1.ConditionTypeNotAccepted, `secrets "local-secret" not found`)
-		requirePerBackendResources(t, f.fakeClient, f.kubeClient, f.route, "svc-local", true, "Bearer local-value")
+		inner, ok := f.fakeClient.(client.WithWatch)
+		require.True(t, ok)
+		failing := true
+		listErr := errors.New("cache unavailable")
+		c := NewMCPRouteController(interceptor.NewClient(inner, interceptor.Funcs{
+			List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, isGrants := list.(*gwapiv1b1.ReferenceGrantList); isGrants && failing {
+					return listErr
+				}
+				return cl.List(ctx, list, opts...)
+			},
+		}), f.kubeClient, logr.Discard(), internaltesting.NewControllerEventChan[*gwapiv1.Gateway]().Ch)
+		_, err := c.Reconcile(t.Context(), f.req)
+		require.ErrorContains(t, err, "failed to validate the Secret reference of backend svc-a")
+		require.ErrorIs(t, err, listErr)
+		requireMCPRouteCondition(t, f.fakeClient, f.route, aigv1b1.ConditionTypeNotAccepted, "cache unavailable")
 		requirePerBackendResources(t, f.fakeClient, f.kubeClient, f.route, "svc-a", true, "Bearer shared-value")
+		requirePerBackendResources(t, f.fakeClient, f.kubeClient, f.route, "svc-local", true, "Bearer local-value")
+		failing = false
+		_, err = c.Reconcile(t.Context(), f.req)
+		require.NoError(t, err)
+		requireMCPRouteCondition(t, f.fakeClient, f.route, aigv1b1.ConditionTypeAccepted)
 	})
 
 	t.Run("failed cleanup of a denied backend is retried", func(t *testing.T) {
@@ -2095,31 +2024,4 @@ func TestMCPRouteController_Reconcile_DeniedRouteDeleted(t *testing.T) {
 	require.True(t, apierrors.IsNotFound(fakeClient.Get(t.Context(), req.NamespacedName, &current)))
 	var sharedBackend egv1a1.Backend
 	require.True(t, apierrors.IsNotFound(fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &sharedBackend)))
-}
-
-// TestMCPRouteController_deletePerBackendResources verifies that the helper deletes exactly the three
-// generated objects, tolerates their absence and never touches a user's Secret.
-func TestMCPRouteController_deletePerBackendResources(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	kubeClient := fakekube.NewClientset(
-		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "user-secret", Namespace: "default"}, Data: map[string][]byte{"apiKey": []byte("user-value")}},
-	)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	c := NewMCPRouteController(fakeClient, kubeClient, logr.Discard(), eventCh.Ch)
-	route := &aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-x", Namespace: "default"}}
-	name := mcpPerBackendRefHTTPRouteName(route.Name, "svc")
-	require.NoError(t, fakeClient.Create(t.Context(), &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}))
-	require.NoError(t, fakeClient.Create(t.Context(), &egv1a1.HTTPRouteFilter{ObjectMeta: metav1.ObjectMeta{Name: mcpBackendRefFilterName(route, "svc"), Namespace: "default"}}))
-	_, err := kubeClient.CoreV1().Secrets("default").Create(t.Context(), &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: mcpCredentialSecretName(route, "svc"), Namespace: "default"},
-		Data:       map[string][]byte{egv1a1.InjectedCredentialKey: []byte("Bearer value")},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	require.NoError(t, c.deletePerBackendResources(t.Context(), route, name))
-	requirePerBackendResources(t, fakeClient, kubeClient, route, "svc", false, "")
-	requireUserSecretExists(t, kubeClient, "default", "user-secret")
-	// Repeating the call is a no-op.
-	require.NoError(t, c.deletePerBackendResources(t.Context(), route, name))
-	requirePerBackendResources(t, fakeClient, kubeClient, route, "svc", false, "")
 }

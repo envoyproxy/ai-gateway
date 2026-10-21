@@ -153,7 +153,7 @@ func requireMCPConnectFails(t *testing.T, client *mcp.Client, endpoint string) {
 		sess, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint}, nil)
 		if err != nil {
 			t.Logf("connect to %s failed: %v", endpoint, err)
-			return strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "Internal Server Error")
+			return strings.Contains(err.Error(), "Internal Server Error")
 		}
 		_ = sess.Close()
 		t.Logf("a session was still created at %s", endpoint)
@@ -180,10 +180,7 @@ func requireMCPToolsEventually(t *testing.T, client *mcp.Client, endpoint string
 			t.Logf("failed to list tools at %s: %v", endpoint, err)
 			return false
 		}
-		names := make([]string, 0, len(tools.Tools))
-		for _, tool := range tools.Tools {
-			names = append(names, tool.Name)
-		}
+		names := toolNames(tools.Tools)
 		slices.Sort(names)
 		if !slices.Equal(names, expected) {
 			t.Logf("tools at %s: %v", endpoint, names)
