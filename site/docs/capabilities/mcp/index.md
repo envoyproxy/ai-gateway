@@ -130,7 +130,17 @@ Now clients can connect to `http://<gateway-address>/mcp` and access GitHub tool
 
 #### Secrets in another namespace
 
-A `secretRef` without `namespace` refers to a Secret in the MCPRoute's own namespace. A Secret in another namespace also needs a [ReferenceGrant](https://gateway-api.sigs.k8s.io/api-types/referencegrant/) in the Secret's namespace that allows the reference. Without it, the MCPRoute is marked `NotAccepted`. If the grant is removed later, or narrowed so that it no longer covers the Secret, the controller deletes the resources it generated for that backend, including its copy of the credential, and the backend stays unavailable until a grant allows the reference again.
+A backend's `apiKey.secretRef` without `namespace` refers to a Secret in the MCPRoute's own namespace. A Secret in another namespace is named with its namespace on the backend:
+
+```yaml
+securityPolicy:
+  apiKey:
+    secretRef:
+      name: github-token
+      namespace: credentials # the Secret's namespace
+```
+
+It also needs a [ReferenceGrant](https://gateway-api.sigs.k8s.io/api-types/referencegrant/) in the Secret's namespace that allows the reference. Without it, the MCPRoute is marked `NotAccepted`. If the grant is removed later, or narrowed so that it no longer covers the Secret, the controller deletes the resources it generated for that backend, including its copy of the credential, and the backend stays unavailable until a grant allows the reference again.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
