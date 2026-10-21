@@ -646,6 +646,9 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 					if err := configureAggregateBudget(route, policy); err != nil {
 						return err
 					}
+					entries := aggregateBudgetEntries(budget)
+					rateLimitActions = append(rateLimitActions, entries[0])
+					streamDoneActions = append(streamDoneActions, entries[1])
 					aggregateAdded = true
 				}
 				continue
@@ -720,9 +723,6 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 
 	rateLimitActions = append(rateLimitActions, streamDoneActions...)
 
-	if _, aggregateConfigured := route.TypedPerFilterConfig[aggregateBudgetFilterName]; aggregateConfigured {
-		return nil
-	}
 	if len(rateLimitActions) == 0 {
 		return nil
 	}

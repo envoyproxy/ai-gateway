@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	lua "github.com/yuin/gopher-lua"
@@ -27,26 +28,31 @@ func TestAggregateUserBudgetSharesAdmissionAndResponseKeys(t *testing.T) {
 			{ModelName: ptr.To("model-b"), Quota: aigv1a1.QuotaDefinition{CostExpression: ptr.To("output_tokens")}},
 		},
 	}}
-	route := &routev3.Route{Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
+	safetyLimits := []*routev3.RateLimit{{}}
+	route := &routev3.Route{Action: &routev3.Route_Route{Route: &routev3.RouteAction{RateLimits: safetyLimits}}}
 	require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, []aigv1a1.QuotaPolicy{policy}, nil))
-	entries := route.GetRoute().RateLimits
+	require.Equal(t, safetyLimits, route.GetRoute().RateLimits)
+	config := &ratelimitv3.RateLimitPerRoute{}
+	require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(config))
+	entries := config.RateLimits
 	require.Len(t, entries, 2, "must not charge once per model/backend")
 	check, charge := entries[0], entries[1]
-	require.Equal(t, uint32(aggregateRateLimitStage), check.GetStage().GetValue())
 	require.Equal(t, check.Actions, charge.Actions)
-	require.Equal(t, check.Limit, charge.Limit)
+	require.Nil(t, check.Limit, "Envoy rejects inline limit overrides")
+	require.Nil(t, charge.Limit)
 	require.Zero(t, check.HitsAddend.Number.Value)
 	require.True(t, charge.ApplyOnStreamDone)
 	require.Contains(t, charge.HitsAddend.Format, "quota_cost")
-	require.Len(t, check.Actions, 2)
+	require.Len(t, check.Actions, 3)
 	require.Equal(t, "shared", check.Actions[0].GetGenericKey().DescriptorValue)
 	require.Equal(t, "aggregate_user", check.Actions[1].GetMetadata().DescriptorKey)
+	require.Equal(t, "aggregate_tier", check.Actions[2].GetMetadata().DescriptorKey)
 	require.NotNil(t, route.TypedPerFilterConfig[aggregateBudgetFilterName])
 	script := aggregateBudgetLua(budget)
 	require.Contains(t, script, `get("envoy.filters.http.jwt_authn")`)
 	require.Contains(t, script, "claims.iss")
 	require.Contains(t, script, "claims.sub")
-	require.Contains(t, script, `unit="MONTH"`)
+	require.Contains(t, script, `"aggregate_tier", tier`)
 	require.NotContains(t, script, "handle:headers()")
 	require.Contains(t, script, `handle:respond({[":status"]="403"}`)
 }
@@ -97,9 +103,8 @@ envoy_on_request(handle)
 			} else {
 				require.Equal(t, lua.LNil, result.RawGetString("status"))
 				require.Equal(t, lua.LString(tc.user), result.RawGetString("aggregate_user"))
-				limit := result.RawGetString("aggregate_limit").(*lua.LTable)
-				require.Equal(t, lua.LNumber(tc.limit), limit.RawGetString("requests_per_unit"))
-				require.Equal(t, lua.LString("MONTH"), limit.RawGetString("unit"))
+				tier := result.RawGetString("aggregate_tier").String()
+				require.Equal(t, uint32(tc.limit), budget.TierLimits[tier])
 			}
 		})
 	}

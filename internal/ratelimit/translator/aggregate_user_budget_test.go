@@ -36,7 +36,7 @@ func aggregatePolicy() *aigv1a1.QuotaPolicy {
 	}}
 }
 
-func TestAggregateBudgetDescriptorsExcludeBackendModelTierAndEnvironment(t *testing.T) {
+func TestAggregateBudgetDescriptorsExcludeBackendModelAndEnvironment(t *testing.T) {
 	policy := aggregatePolicy()
 	var previous []*rlsconfv3.RateLimitConfig
 	for _, environment := range []string{"dev", "test", "prod"} {
@@ -52,8 +52,14 @@ func TestAggregateBudgetDescriptorsExcludeBackendModelTierAndEnvironment(t *test
 		user := root.Descriptors[0]
 		require.Equal(t, AggregateUserDescriptorKey, user.Key)
 		require.Empty(t, user.Value)
-		require.Empty(t, user.Descriptors)
-		require.Equal(t, rlsconfv3.RateLimitUnit_MONTH, user.RateLimit.Unit)
+		require.Nil(t, user.RateLimit)
+		require.Len(t, user.Descriptors, 2)
+		for _, tier := range user.Descriptors {
+			require.Equal(t, AggregateTierDescriptorKey, tier.Key)
+			require.Equal(t, policy.Spec.AggregateUserBudget.TierLimits[tier.Value], tier.RateLimit.RequestsPerUnit)
+			require.Equal(t, rlsconfv3.RateLimitUnit_MONTH, tier.RateLimit.Unit)
+			require.True(t, tier.QuotaMode)
+		}
 		if previous != nil {
 			require.Equal(t, previous, configs)
 		}

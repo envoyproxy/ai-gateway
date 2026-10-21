@@ -12,7 +12,6 @@ import (
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
-	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -23,11 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
 )
 
-const (
-	aggregateBudgetFilterName    = "envoy.filters.http.lua/aggregate-user-budget"
-	aggregateRateLimitFilterName = "envoy.filters.http.ratelimit/aggregate-user-budget"
-	aggregateRateLimitStage      = 1
-)
+const aggregateBudgetFilterName = "envoy.filters.http.lua/aggregate-user-budget"
 
 func (s *Server) injectAggregateBudgetGuard(listener *listenerv3.Listener) error {
 	chains := listener.GetFilterChains()
@@ -54,31 +49,15 @@ func (s *Server) injectAggregateBudgetGuard(listener *listenerv3.Listener) error
 		if err != nil {
 			return fmt.Errorf("marshal aggregate identity filter: %w", err)
 		}
-		budgetFilter, err := s.buildQuotaRateLimitFilter(translator.QuotaDomain)
-		if err != nil {
-			return err
-		}
-		budgetConfig := &ratelimitv3.RateLimit{}
-		if err := budgetFilter.GetTypedConfig().UnmarshalTo(budgetConfig); err != nil {
-			return err
-		}
-		budgetConfig.Stage = aggregateRateLimitStage
-		budgetAny, err := anypb.New(budgetConfig)
-		if err != nil {
-			return err
-		}
-		budgetFilter.Name = aggregateRateLimitFilterName
-		budgetFilter.ConfigType = &hcmv3.HttpFilter_TypedConfig{TypedConfig: budgetAny}
 		for i, filter := range hcm.HttpFilters {
 			if filter.Name == quotaRateLimitFilterName {
 				guard := &hcmv3.HttpFilter{
 					Name:       aggregateBudgetFilterName,
 					ConfigType: &hcmv3.HttpFilter_TypedConfig{TypedConfig: config},
 				}
-				hcm.HttpFilters = append(hcm.HttpFilters, nil, nil)
-				copy(hcm.HttpFilters[i+2:], hcm.HttpFilters[i:])
+				hcm.HttpFilters = append(hcm.HttpFilters, nil)
+				copy(hcm.HttpFilters[i+1:], hcm.HttpFilters[i:])
 				hcm.HttpFilters[i] = guard
-				hcm.HttpFilters[i+1] = budgetFilter
 				break
 			}
 		}
@@ -116,23 +95,20 @@ func aggregateBudgetEntries(budget *aigv1a1.AggregateUserBudget) []*routev3.Rate
 					Source:        routev3.RateLimit_Action_MetaData_DYNAMIC,
 				},
 			},
-		}}
-	}
-	override := func() *routev3.RateLimit_Override {
-		return &routev3.RateLimit_Override{
-			OverrideSpecifier: &routev3.RateLimit_Override_DynamicMetadata_{
-				DynamicMetadata: &routev3.RateLimit_Override_DynamicMetadata{
-					MetadataKey: aggregateMetadataKey("aggregate_limit"),
+		}, {
+			ActionSpecifier: &routev3.RateLimit_Action_Metadata{
+				Metadata: &routev3.RateLimit_Action_MetaData{
+					DescriptorKey: translator.AggregateTierDescriptorKey,
+					MetadataKey:   aggregateMetadataKey("aggregate_tier"),
+					Source:        routev3.RateLimit_Action_MetaData_DYNAMIC,
 				},
 			},
-		}
+		}}
 	}
 	return []*routev3.RateLimit{{
-		Stage:   wrapperspb.UInt32(aggregateRateLimitStage),
-		Actions: actions(), HitsAddend: &routev3.RateLimit_HitsAddend{Number: wrapperspb.UInt64(0)}, Limit: override(),
+		Actions: actions(), HitsAddend: &routev3.RateLimit_HitsAddend{Number: wrapperspb.UInt64(0)},
 	}, {
-		Stage:   wrapperspb.UInt32(aggregateRateLimitStage),
-		Actions: actions(), HitsAddend: quotaHitsAddend(), Limit: override(), ApplyOnStreamDone: true,
+		Actions: actions(), HitsAddend: quotaHitsAddend(), ApplyOnStreamDone: true,
 	}}
 }
 
@@ -178,7 +154,7 @@ function envoy_on_request(handle)
   end
   local metadata = handle:streamInfo():dynamicMetadata()
   metadata:set(%s, "aggregate_user", tostring(#claims.iss) .. ":" .. claims.iss .. claims.sub)
-  metadata:set(%s, "aggregate_limit", {requests_per_unit=limit, unit="MONTH"})
+  metadata:set(%s, "aggregate_tier", tier)
 end
 `, luaLiteral(budget.JWTProvider), limits.String(), luaLiteral(budget.TierClaim),
 		luaLiteral(aigv1b1.AIGatewayFilterMetadataNamespace), luaLiteral(aigv1b1.AIGatewayFilterMetadataNamespace))
@@ -205,13 +181,5 @@ func configureAggregateBudget(route *routev3.Route, policy *aigv1a1.QuotaPolicy)
 		route.TypedPerFilterConfig = make(map[string]*anypb.Any)
 	}
 	route.TypedPerFilterConfig[aggregateBudgetFilterName] = config
-	// Envoy's inline RateLimitPerRoute policy rejects limit overrides. Use
-	// route-level stage 1 entries, isolated from the general stage 0 ceilings.
-	route.GetRoute().RateLimits = append(route.GetRoute().RateLimits, aggregateBudgetEntries(policy.Spec.AggregateUserBudget)...)
-	disabled, err := anypb.New(&routev3.FilterConfig{Disabled: true})
-	if err != nil {
-		return err
-	}
-	route.TypedPerFilterConfig[quotaRateLimitFilterName] = disabled
 	return nil
 }

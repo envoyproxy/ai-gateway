@@ -100,18 +100,27 @@ func BuildRateLimitConfigs(
 		if err := ValidateAggregateUserBudget(policy); err != nil {
 			return nil, err
 		}
+		tiers := make([]string, 0, len(budget.TierLimits))
+		for tier := range budget.TierLimits {
+			tiers = append(tiers, tier)
+		}
+		sort.Strings(tiers)
+		limits := make([]*rlsconfv3.RateLimitDescriptor, 0, len(tiers))
+		for _, tier := range tiers {
+			limits = append(limits, &rlsconfv3.RateLimitDescriptor{
+				Key: AggregateTierDescriptorKey, Value: tier,
+				RateLimit: &rlsconfv3.RateLimitPolicy{
+					RequestsPerUnit: budget.TierLimits[tier], Unit: rlsconfv3.RateLimitUnit_MONTH,
+				},
+				QuotaMode: true,
+			})
+		}
 		return []*rlsconfv3.RateLimitConfig{{
 			Name: QuotaDomain, Domain: QuotaDomain,
 			Descriptors: []*rlsconfv3.RateLimitDescriptor{{
 				Key: AggregateBudgetDescriptorKey, Value: budget.Name,
 				Descriptors: []*rlsconfv3.RateLimitDescriptor{{
-					Key: AggregateUserDescriptorKey,
-					// Each request carries a trusted tier limit override. A missing
-					// override must not grant a full allowance.
-					RateLimit: &rlsconfv3.RateLimitPolicy{
-						RequestsPerUnit: 1, Unit: rlsconfv3.RateLimitUnit_MONTH,
-					},
-					QuotaMode: true,
+					Key: AggregateUserDescriptorKey, Descriptors: limits,
 				}},
 			}},
 		}}, nil
@@ -143,6 +152,7 @@ func BuildRateLimitConfigs(
 const (
 	AggregateBudgetDescriptorKey = "aggregate_budget"
 	AggregateUserDescriptorKey   = "aggregate_user"
+	AggregateTierDescriptorKey   = "aggregate_tier"
 )
 
 // ValidateAggregateUserBudget rejects ambiguous or incomplete accounting configuration.
