@@ -300,7 +300,7 @@ func (b *extProcBuilder) buildExtProcBaseArgs(needMCP bool) []string {
 	}
 	if needMCP {
 		args = append(args,
-			"-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
+			"-mcpAddr", internalapi.MCPProxyAddr,
 			"-mcpSessionEncryptionSeed", b.mcpSessionEncryptionSeed,
 			"-mcpSessionEncryptionIterations", strconv.Itoa(b.mcpSessionEncryptionIterations),
 		)
