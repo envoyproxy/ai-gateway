@@ -115,19 +115,21 @@ type (
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 
-		logger             *slog.Logger
-		requestHeaders     map[string]string
-		responseHeaders    map[string]string
-		responseEncoding   string
-		compressedBuf      []byte // accumulates raw compressed bytes across streaming chunks
-		decompressedOffset int    // tracks decompressed bytes already returned
-		translator         translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
-		modelNameOverride  internalapi.ModelNameOverride
-		headerMutator      *headermutator.HeaderMutator
-		bodyMutator        *bodymutator.BodyMutator
-		backendName        string
-		routeName          string
-		handler            filterapi.BackendAuthHandler
+		logger                   *slog.Logger
+		requestHeaders           map[string]string
+		responseHeaders          map[string]string
+		responseEncoding         string
+		compressedBuf            []byte // accumulates raw compressed bytes across streaming chunks
+		decompressedOffset       int    // tracks decompressed bytes already returned
+		responseStreamTerminated bool   // a terminal SSE error was returned; discard any later upstream chunks
+		translator               translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
+		modelNameOverride        internalapi.ModelNameOverride
+		headerMutator            *headermutator.HeaderMutator
+		bodyMutator              *bodymutator.BodyMutator
+		backendName              string
+		aiServiceBackendName     string
+		routeName                string
+		handler                  filterapi.BackendAuthHandler
 		// unsupportedBackendErr is set by SetBackend and answered as a 422 in ProcessRequestHeaders.
 		unsupportedBackendErr error
 		// cost is the cost of the request that is accumulated during the processing of the response.
@@ -510,6 +512,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	// Reset streaming decompression state for new response (important for retries).
 	u.compressedBuf = nil
 	u.decompressedOffset = 0
+	u.responseStreamTerminated = false
 	newHeaders, err := u.translator.ResponseHeaders(u.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -544,6 +547,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{},
+			},
+		}, nil
+	}
+	if u.responseStreamTerminated {
+		// The terminal error event has already been sent downstream. Replace any
+		// later provider chunks with an empty body so they cannot appear after it.
+		_, bodyMutation := mutationsFromTranslationResult(nil, []byte{})
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{BodyMutation: bodyMutation},
+				},
 			},
 		}, nil
 	}
@@ -606,6 +621,30 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 
 	newHeaders, newBody, tokenUsage, responseModel, err := u.translator.ResponseBody(u.responseHeaders, decodingResult.reader, body.EndOfStream, u.parent.span)
 	if err != nil {
+		var streamErr *translator.StreamOverloadedError
+		if u.parent.stream && errors.As(err, &streamErr) && len(newBody) > 0 {
+			if u.logger != nil {
+				u.logger.Warn("upstream returned an overload error in the response stream")
+			}
+			u.responseStreamTerminated = true
+			recordRequestCompletionErr = true
+			headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+			headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
+			if u.parent.span != nil {
+				code, _ := strconv.Atoi(u.responseHeaders[":status"])
+				u.parent.span.EndSpanOnError(code, newBody)
+			}
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ResponseBody{
+					ResponseBody: &extprocv3.BodyResponse{
+						Response: &extprocv3.CommonResponse{
+							HeaderMutation: headerMutation,
+							BodyMutation:   bodyMutation,
+						},
+					},
+				},
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
@@ -649,7 +688,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	// even if the downstream client disconnects right after the terminal chunk, before EndOfStream
 	// is observed by the extproc. The EndOfStream write below remains as the final refresh.
 	if (body.EndOfStream || !tokenUsage.IsZero()) && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
-		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
+		identity := resolveAIServiceBackendName(u.aiServiceBackendName, u.backendName)
+		metadata, err := buildDynamicMetadataWithBackendIdentity(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, identity, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -712,6 +752,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
+	u.aiServiceBackendName = resolveAIServiceBackendName(
+		backend.Backend.AIServiceBackendName, u.backendName,
+	)
 	u.routeName = routeName
 	u.handler = backend.Handler
 	u.headerMutator = headermutator.NewHeaderMutator(backend.Backend.HeaderMutation, rp.requestHeaders)
@@ -946,12 +989,30 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
 func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
+	identity := resolveAIServiceBackendName("", backendName)
+	return buildDynamicMetadataWithBackendIdentity(globalRequestCosts, requestCosts, costs, requestHeaders, backendName, identity, routeName, responseModel)
+}
+
+// resolveAIServiceBackendName returns the explicitly resolved AIServiceBackend
+// identity when available, otherwise derives it from the runtime backend name.
+// The final fallback preserves the original backend name for non-AI backends.
+func resolveAIServiceBackendName(explicitName, backendName string) string {
+	if explicitName != "" {
+		return explicitName
+	}
+	if derivedName := internalapi.AIServiceBackendName(backendName); derivedName != "" {
+		return derivedName
+	}
+	return backendName
+}
+
+func buildDynamicMetadataWithBackendIdentity(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, aiServiceBackendName, routeName, responseModel string) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+3)
 
 	// Track which metadata keys have been populated by route-scoped costs.
 	populatedKeys := make(map[string]struct{})
 
-	shortBackend := internalapi.AIServiceBackendName(backendName)
+	shortBackend := aiServiceBackendName
 
 	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
 

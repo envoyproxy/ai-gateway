@@ -913,6 +913,11 @@ func (m *mcpRequestContext) maybeResponseModify(_ context.Context, req *jsonrpc.
 		for _, res := range result.Contents {
 			res.URI = downstreamResourceURI(res.URI, backend)
 		}
+		// Older backends omit caching hints, which would otherwise be re-encoded as an invalid empty
+		// cacheScope. Read results can be user-specific, so a missing scope defaults to private.
+		if result.CacheScope == "" {
+			result.CacheScope = "private"
+		}
 		msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
 	case "tools/call":
 		result := &mcp.CallToolResult{}

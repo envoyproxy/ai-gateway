@@ -18,6 +18,8 @@ const (
 	aiGatewayRouteKind = "AIGatewayRoute"
 	// backendSecurityPolicyKind is the kind for BackendSecurityPolicy.
 	backendSecurityPolicyKind = "BackendSecurityPolicy"
+	// quotaPolicyKind is the kind for QuotaPolicy.
+	quotaPolicyKind = "QuotaPolicy"
 	// secretGroup is the API group for the core Secret resource (the core group is the empty string).
 	secretGroup = ""
 	// secretKind is the kind for the core Secret resource.
@@ -27,6 +29,36 @@ const (
 // ReferenceGrantValidator validates cross-namespace references using ReferenceGrant resources.
 type referenceGrantValidator struct {
 	client client.Client
+}
+
+// ReferenceNotPermittedError indicates that a cross-namespace reference was
+// denied because no applicable ReferenceGrant authorized it.
+type ReferenceNotPermittedError struct {
+	FromGroup       string
+	FromKind        string
+	FromNamespace   string
+	TargetGroup     string
+	TargetKind      string
+	TargetNamespace string
+	TargetName      string
+}
+
+func (e *ReferenceNotPermittedError) Error() string {
+	return fmt.Sprintf(
+		"cross-namespace reference from %s in namespace %s to %s %s in namespace %s is not permitted: "+
+			"no valid ReferenceGrant found in namespace %s. "+
+			"A ReferenceGrant must allow %s from namespace %s to reference %s in namespace %s",
+		e.FromKind,
+		e.FromNamespace,
+		e.TargetKind,
+		e.TargetName,
+		e.TargetNamespace,
+		e.TargetNamespace,
+		e.FromKind,
+		e.FromNamespace,
+		e.TargetKind,
+		e.TargetNamespace,
+	)
 }
 
 // NewReferenceGrantValidator creates a new ReferenceGrantValidator.
@@ -54,6 +86,34 @@ func (v *referenceGrantValidator) validateAIServiceBackendReference(
 	return v.validateReference(ctx,
 		aiServiceBackendGroup, aiGatewayRouteKind, routeNamespace,
 		aiServiceBackendGroup, aiServiceBackendKind, backendNamespace, backendName)
+}
+
+// validateQuotaPolicyAIServiceBackendReference validates that a QuotaPolicy can
+// reference an AIServiceBackend in another namespace.
+func (v *referenceGrantValidator) validateQuotaPolicyAIServiceBackendReference(
+	ctx context.Context,
+	policyNamespace string,
+	backendNamespace string,
+	backendName string,
+) error {
+	return v.validateReference(ctx,
+		aiServiceBackendGroup, quotaPolicyKind, policyNamespace,
+		aiServiceBackendGroup, aiServiceBackendKind, backendNamespace, backendName)
+}
+
+// ValidateQuotaPolicyAIServiceBackendReference validates a QuotaPolicy to
+// AIServiceBackend reference using the repository's shared ReferenceGrant
+// implementation. It is exported for consumers outside the controller package
+// that independently materialize quota configuration.
+func ValidateQuotaPolicyAIServiceBackendReference(
+	ctx context.Context,
+	c client.Client,
+	policyNamespace string,
+	backendNamespace string,
+	backendName string,
+) error {
+	return newReferenceGrantValidator(c).validateQuotaPolicyAIServiceBackendReference(
+		ctx, policyNamespace, backendNamespace, backendName)
 }
 
 // validateInferencePoolReference validates that an AIGatewayRoute can reference an InferencePool
@@ -135,21 +195,24 @@ func (v *referenceGrantValidator) validateReference(
 	// Check if any ReferenceGrant allows this cross-namespace reference.
 	for i := range referenceGrants.Items {
 		grant := &referenceGrants.Items[i]
-		if v.isReferenceGrantValid(grant, fromGroup, fromKind, fromNamespace, targetGroup, targetKind) {
+		if v.isReferenceGrantValid(grant, fromGroup, fromKind, fromNamespace, targetGroup, targetKind, targetName) {
 			return nil
 		}
 	}
 
-	return fmt.Errorf(
-		"cross-namespace reference from %s in namespace %s to %s %s in namespace %s is not permitted: "+
-			"no valid ReferenceGrant found in namespace %s. "+
-			"A ReferenceGrant must allow %s from namespace %s to reference %s in namespace %s",
-		fromKind, fromNamespace, targetKind, targetName, targetNamespace, targetNamespace, fromKind, fromNamespace, targetKind, targetNamespace,
-	)
+	return &ReferenceNotPermittedError{
+		FromGroup:       string(fromGroup),
+		FromKind:        string(fromKind),
+		FromNamespace:   fromNamespace,
+		TargetGroup:     string(targetGroup),
+		TargetKind:      string(targetKind),
+		TargetNamespace: targetNamespace,
+		TargetName:      targetName,
+	}
 }
 
 // isReferenceGrantValid checks if a ReferenceGrant allows a resource identified by fromGroup/fromKind
-// in fromNamespace to reference the target resource identified by targetGroup/targetKind.
+// in fromNamespace to reference the target resource identified by targetGroup/targetKind/targetName.
 func (v *referenceGrantValidator) isReferenceGrantValid(
 	grant *gwapiv1b1.ReferenceGrant,
 	fromGroup gwapiv1b1.Group,
@@ -157,7 +220,14 @@ func (v *referenceGrantValidator) isReferenceGrantValid(
 	fromNamespace string,
 	targetGroup gwapiv1b1.Group,
 	targetKind gwapiv1b1.Kind,
+	targetName string,
 ) bool {
+	// A ReferenceGrant that is being deleted no longer authorizes anything. Its finalizer keeps it
+	// in the cache while the reconciles it triggers run, and those must see the access as revoked.
+	if !grant.DeletionTimestamp.IsZero() {
+		return false
+	}
+
 	// Check if the grant allows references from fromGroup/fromKind in fromNamespace.
 	fromAllowed := false
 	for _, from := range grant.Spec.From {
@@ -173,7 +243,7 @@ func (v *referenceGrantValidator) isReferenceGrantValid(
 
 	// Check if the grant allows references to the target resource.
 	for _, to := range grant.Spec.To {
-		if v.matchesTo(&to, targetGroup, targetKind) {
+		if v.matchesTo(&to, targetGroup, targetKind, targetName) {
 			return true
 		}
 	}
@@ -206,8 +276,14 @@ func (v *referenceGrantValidator) matchesFrom(
 	return true
 }
 
-// matchesTo checks if a ReferenceGrantTo matches the target resource identified by targetGroup/targetKind.
-func (v *referenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo, targetGroup gwapiv1b1.Group, targetKind gwapiv1b1.Kind) bool {
+// matchesTo checks if a ReferenceGrantTo matches the target resource identified by
+// targetGroup/targetKind/targetName.
+func (v *referenceGrantValidator) matchesTo(
+	to *gwapiv1b1.ReferenceGrantTo,
+	targetGroup gwapiv1b1.Group,
+	targetKind gwapiv1b1.Kind,
+	targetName string,
+) bool {
 	// Check group
 	if to.Group != targetGroup {
 		return false
@@ -218,10 +294,11 @@ func (v *referenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo, targ
 		return false
 	}
 
-	// If a specific name is specified, we would need to check it here,
-	// but ReferenceGrant typically doesn't specify individual resource names
-	// (that's handled by the Name field which is optional in the spec)
-	// For now, we only check group and kind as per Gateway API spec
+	// When a name is set, the grant only applies to that object. When omitted, it applies to all
+	// objects of that group and kind in the namespace.
+	if to.Name != nil && string(*to.Name) != targetName {
+		return false
+	}
 
 	return true
 }
