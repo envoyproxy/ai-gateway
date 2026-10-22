@@ -94,22 +94,28 @@ func (m *mcpRequestContext) serveOAuthProtectedResourceMetadata(w http.ResponseW
 	// on path alone, so Envoy answered every method with the document. Rejecting anything here
 	// would be a change in client-visible behaviour.
 	routeName := r.Header.Get(internalapi.MCPRouteHeader)
-	var prm *filterapi.MCPRouteOAuthProtectedResourceMetadata
+	var route *mcpProxyConfigRoute
 	if m.mcpProxyConfig != nil {
-		if route := m.routes[routeName]; route != nil {
-			prm = route.prm
-		}
+		route = m.routes[routeName]
 	}
-	if prm == nil {
-		// Either the route is unknown to this proxy instance, or it does not configure OAuth.
-		// Both mean there is no metadata document to serve for it.
+	if route == nil {
+		// Envoy only sends this request for a programmed MCPRoute, so a route unknown to this
+		// proxy means its config has not been loaded yet, e.g. during an extproc restart. A 404
+		// would make the client conclude the resource has no metadata and abandon the OAuth flow,
+		// whereas a 503 tells it to retry.
+		m.l.Debug("MCP route not loaded, cannot serve protected resource metadata yet",
+			"route", routeName, "path", externalPath(r))
+		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if route.prm == nil {
 		m.l.Debug("no OAuth configuration for MCP route, not serving protected resource metadata",
 			"route", routeName, "path", externalPath(r))
 		http.NotFound(w, r)
 		return
 	}
 
-	m.writeProtectedResourceMetadata(w, r, prm)
+	m.writeProtectedResourceMetadata(w, r, route.prm)
 }
 
 // writeProtectedResourceMetadataCORSHeaders reproduces exactly the headers ensureCORSHeaders

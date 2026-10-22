@@ -370,10 +370,18 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 		require.Equal(t, "https://policy.example.com", doc["resource_policy_uri"])
 	})
 
-	t.Run("unknown route is not found", func(t *testing.T) {
+	// A 404 would make the client abandon the OAuth flow; a 503 tells it to retry.
+	t.Run("route not loaded yet is unavailable", func(t *testing.T) {
 		h := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{Issuer: "https://auth.example.com"})
 		w := get(h, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", "default/other-route")
-		require.Equal(t, http.StatusNotFound, w.Code)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	})
+
+	t.Run("no config loaded yet is unavailable", func(t *testing.T) {
+		_, h, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
+		require.NoError(t, err)
+		w := get(h, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", routeName)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	})
 
 	t.Run("route without OAuth is not found", func(t *testing.T) {

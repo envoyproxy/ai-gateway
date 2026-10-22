@@ -363,6 +363,11 @@ protectedResourceMetadata:
   resource: "https://api.example.com/mcp"
 ```
 
+Either way, the metadata document is served by the MCP proxy in the external processor container,
+so it is only available while that container is running and has loaded the MCPRoute. Until then the
+endpoint returns `503 Service Unavailable` so that clients retry; it returns `404` only for an
+MCPRoute that does not configure OAuth.
+
 Because the identifier is resolved per request, the gateway trusts the `Host` and
 `X-Forwarded-Proto` headers it receives. Envoy overwrites `X-Forwarded-Proto` from the actual
 downstream connection, but it does **not** sanitize `Host` — it forwards the authority the
