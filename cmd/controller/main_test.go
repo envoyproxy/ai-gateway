@@ -250,6 +250,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				expErr: "mcp fallback session encryption iterations must be positive: -1",
 			},
 			{
+				name:   "invalid credential pre-rotation window",
+				flags:  []string{"--credentialPreRotationWindow=invalid"},
+				expErr: `invalid value "invalid" for flag -credentialPreRotationWindow: parse error`,
+			},
+			{
 				name:   "zero credential pre-rotation window",
 				flags:  []string{"--credentialPreRotationWindow=0s"},
 				expErr: "credential pre-rotation window must be positive: 0s",

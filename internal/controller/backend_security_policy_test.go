@@ -1783,3 +1783,109 @@ func TestGetBSPGeneratedSecretName_UnsupportedType(t *testing.T) {
 		})
 	})
 }
+
+// TestBackendSecurityPolicyController_RotateCredential_AzureClientSecretUsesPreRotationWindow verifies that
+// the Azure client secret path builds its rotator with the controller's configured pre-rotation window.
+func TestBackendSecurityPolicyController_RotateCredential_AzureClientSecretUsesPreRotationWindow(t *testing.T) {
+	const bspNamespace, bspName = "default", "azure-bsp"
+	preRotationWindow := 10 * time.Minute
+	cl := requireNewFakeClientWithIndexes(t)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, nil, nil, preRotationWindow)
+
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "azure-client-secret", Namespace: bspNamespace},
+		Data:       map[string][]byte{clientSecretKey: []byte("client-secret")},
+	}))
+	// Pre-create the generated secret with a future expiration so that no token request is made.
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rotators.GetBSPSecretName(bspName),
+			Namespace: bspNamespace,
+			Annotations: map[string]string{
+				rotators.ExpirationTimeAnnotationKey: time.Now().Add(time.Hour).Format(time.RFC3339),
+			},
+		},
+	}))
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+			AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{
+				ClientID:        "client-id",
+				TenantID:        "tenant-id",
+				ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "azure-client-secret"},
+			},
+		},
+	}
+	require.NoError(t, cl.Create(t.Context(), bsp))
+
+	res, err := c.rotateCredential(t.Context(), bsp)
+	require.NoError(t, err)
+	// Expiration is in one hour, so the next rotation should be scheduled one hour minus the window from now.
+	require.InDelta(t, (time.Hour - preRotationWindow).Seconds(), res.RequeueAfter.Seconds(), 5)
+}
+
+// TestBackendSecurityPolicyController_RotateCredential_GCPOIDCUsesPreRotationWindow verifies that the GCP
+// OIDC path builds its rotator with the controller's configured pre-rotation window.
+func TestBackendSecurityPolicyController_RotateCredential_GCPOIDCUsesPreRotationWindow(t *testing.T) {
+	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		require.NoError(t, err)
+	}))
+	defer discoveryServer.Close()
+
+	const bspNamespace, bspName = "default", "gcp-oidc-bsp"
+	preRotationWindow := 10 * time.Minute
+	cl := requireNewFakeClientWithIndexes(t)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, nil, nil, preRotationWindow)
+
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "oidc-client-secret", Namespace: bspNamespace},
+		Data:       map[string][]byte{"client-secret": []byte("client-secret")},
+	}))
+	// Pre-create the generated secret with a future expiration so that no token request is made.
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rotators.GetBSPSecretName(bspName),
+			Namespace: bspNamespace,
+			Annotations: map[string]string{
+				rotators.ExpirationTimeAnnotationKey: time.Now().Add(time.Hour).Format(time.RFC3339),
+			},
+		},
+	}))
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "project-name",
+				Region:      "us-central1",
+				WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "project-id",
+					WorkloadIdentityPoolName:     "pool-name",
+					WorkloadIdentityProviderName: "provider-name",
+					OIDCExchangeToken: aigv1b1.GCPOIDCExchangeToken{
+						BackendSecurityPolicyOIDC: aigv1b1.BackendSecurityPolicyOIDC{
+							OIDC: egv1a1.OIDC{
+								Provider: egv1a1.OIDCProvider{Issuer: discoveryServer.URL},
+								ClientID: ptr.To("some-client-id"),
+								ClientSecret: gwapiv1.SecretObjectReference{
+									Name: "oidc-client-secret",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, cl.Create(t.Context(), bsp))
+
+	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
+	res, err := c.rotateCredential(ctx, bsp)
+	require.NoError(t, err)
+	// Expiration is in one hour, so the next rotation should be scheduled one hour minus the window from now.
+	require.InDelta(t, (time.Hour - preRotationWindow).Seconds(), res.RequeueAfter.Seconds(), 5)
+}
