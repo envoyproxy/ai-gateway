@@ -318,6 +318,9 @@ spec:
       audiences:
         - "https://api.example.com/mcp"
       protectedResourceMetadata:
+        # This authorization server binds aud to the RFC 8707 resource parameter, so the
+        # identifier is pinned to match audiences; see "Audience validation" below.
+        resource: "https://api.example.com/mcp"
         scopesSupported:
           - "profile"
           - "email"
@@ -351,8 +354,10 @@ so it has to match exactly, down to the scheme and port.
 
 By default the gateway derives it per request, from the scheme (the forwarded protocol), the
 authority (host and port) and the path the client actually used. One MCPRoute therefore serves
-the correct identifier on every hostname and port it is reachable on, with nothing to configure
-and nothing to keep in sync when the gateway moves.
+the correct identifier on every hostname and port it is reachable on, with nothing to configure.
+The one exception is an authorization server that sets the token's `aud` from the RFC 8707
+`resource` parameter: a static `audiences` list then has to agree with the derived identifier
+(see [Audience validation](#audience-validation)).
 
 Set `protectedResourceMetadata.resource` explicitly only when the externally visible URL cannot
 be recovered from the request — for example behind a CDN or reverse proxy that rewrites the
@@ -386,9 +391,14 @@ to be exact.
 #### Audience validation
 
 `audiences` is matched against the `aud` claim of the incoming token, and it is configured
-statically. A client that follows RFC 8707 sends the advertised `resource` as the `resource`
-parameter when requesting a token, and the authorization server binds `aud` to that value — so
-a derived identifier and a static `audiences` list have to agree.
+statically. What `aud` contains is up to the authorization server: often a fixed API identifier
+or client ID that has nothing to do with the resource URL, in which case the derived identifier
+does not affect audience validation at all.
+
+The two become coupled only when the authorization server honours RFC 8707. A client that
+follows RFC 8707 sends the advertised `resource` as the `resource` parameter when requesting a
+token, and such a server binds `aud` to that value — so a derived identifier and a static
+`audiences` list have to agree.
 
 Concretely: if the gateway is reached at `http://127.0.0.1:1975` the derived identifier is
 `http://127.0.0.1:1975/mcp`, a token minted for it carries that `aud`, and validation against

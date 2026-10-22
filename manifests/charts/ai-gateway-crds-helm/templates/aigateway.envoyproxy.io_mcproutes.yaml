@@ -6096,11 +6096,11 @@ spec:
                               it can name: the metadata endpoint is only reachable on hosts Hostnames matches. Without
                               Hostnames, every authority the Gateway listener accepts is reflected as-is.
 
-                              When Audiences is set, note that clients following RFC 8707 send the advertised
-                              identifier as the "resource" parameter when requesting a token, and the authorization
-                              server binds the token's "aud" to it. A derived identifier therefore has to agree with
-                              the statically configured Audiences, so list every address the route is reachable on,
-                              or set Resource explicitly. With Audiences empty there is nothing to disagree with.
+                              Audiences need not be the resource URL; it is whatever the authorization server puts in
+                              the token's "aud". Only an authorization server that honours RFC 8707 binds "aud" to the
+                              "resource" parameter, which clients set to the advertised identifier. With such a server
+                              and a non-empty Audiences, a derived identifier has to agree with Audiences, so list every
+                              address the route is reachable on, or set Resource explicitly.
                             format: uri
                             type: string
                           resourceDocumentation:
@@ -12395,11 +12395,11 @@ spec:
                               it can name: the metadata endpoint is only reachable on hosts Hostnames matches. Without
                               Hostnames, every authority the Gateway listener accepts is reflected as-is.
 
-                              When Audiences is set, note that clients following RFC 8707 send the advertised
-                              identifier as the "resource" parameter when requesting a token, and the authorization
-                              server binds the token's "aud" to it. A derived identifier therefore has to agree with
-                              the statically configured Audiences, so list every address the route is reachable on,
-                              or set Resource explicitly. With Audiences empty there is nothing to disagree with.
+                              Audiences need not be the resource URL; it is whatever the authorization server puts in
+                              the token's "aud". Only an authorization server that honours RFC 8707 binds "aud" to the
+                              "resource" parameter, which clients set to the advertised identifier. With such a server
+                              and a non-empty Audiences, a derived identifier has to agree with Audiences, so list every
+                              address the route is reachable on, or set Resource explicitly.
                             format: uri
                             type: string
                           resourceDocumentation:
