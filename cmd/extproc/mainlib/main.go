@@ -384,18 +384,18 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages/count_tokens"), extproc.NewFactory(
 		countTokensMetricsFactory, tracing.CountTokensTracer(), endpointspec.MessagesCountTokensEndpointSpec{}))
 
-	// Register the OpenAI Files API endpoints (/v1/files, /v1/files/{id}, /v1/files/{id}/content)
-	// under a single prefix processor that routes by encoded backend id.
 	if flags.fileIDEncryptionSeed == defaultInsecureMCPSessionEncryptionSeed {
 		l.Warn("Files/Batch API id encryption seed is set to the well-known default value; " +
 			"this allows anyone who knows this public default to decrypt and forge file and batch ids. " +
-			"Set --fileIDEncryptionSeed (or the Helm value controller.fileIDEncryption.seed) to a secret, " +
+			"Set --fileIDEncryptionSeed (or the Helm value controller.fileIDEncryption.seed) to a secret " +
 			"randomly-generated value before exposing this gateway to untrusted or multi-tenant clients.")
 	}
 	fileIDCodec, err := newFileIDCodec(&flags)
 	if err != nil {
 		return err
 	}
+	// Register the OpenAI Files API endpoints (/v1/files, /v1/files/{id}, /v1/files/{id}/content)
+	// under a single prefix processor that routes by encoded backend id.
 	server.RegisterPrefix(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files"),
 		extproc.NewFilesProcessorFactory(fileIDCodec))
 
