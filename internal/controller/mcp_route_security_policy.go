@@ -315,9 +315,13 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 // Go. Envoy Gateway funnels a ResponseOverride's header values into the local response policy's
 // response_headers_to_add, where command operators are expanded.
 //
+// An absent header renders as "-", which would leave unauthenticated clients with an unusable
+// "-://host/..." URL, so the scheme falls back to the :scheme pseudo-header when
+// X-Forwarded-Proto is missing.
+//
 // Reference: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#command-operators
 func envoyDerivedResourceMetadataURL(servingPath string) string {
-	return fmt.Sprintf("%%REQ(X-FORWARDED-PROTO)%%://%%REQ(:AUTHORITY)%%%s%s",
+	return fmt.Sprintf("%%REQ(X-FORWARDED-PROTO?:SCHEME)%%://%%REQ(:AUTHORITY)%%%s%s",
 		internalapi.OAuthProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))
 }
 

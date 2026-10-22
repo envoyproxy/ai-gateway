@@ -809,14 +809,14 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 	t.Run("resource omitted defers to Envoy substitution", func(t *testing.T) {
 		require.Equal(t,
 			`Bearer error="invalid_token", error_description="The access token is missing or invalid", `+
-				`resource_metadata="%REQ(X-FORWARDED-PROTO)%://%REQ(:AUTHORITY)%/.well-known/oauth-protected-resource/mcp"`,
+				`resource_metadata="%REQ(X-FORWARDED-PROTO?:SCHEME)%://%REQ(:AUTHORITY)%/.well-known/oauth-protected-resource/mcp"`,
 			buildWWWAuthenticateHeaderValue(&aigv1b1.ProtectedResourceMetadata{}, "/mcp"))
 	})
 
 	t.Run("resource omitted with custom path", func(t *testing.T) {
 		require.Equal(t,
 			`Bearer error="invalid_token", error_description="The access token is missing or invalid", `+
-				`resource_metadata="%REQ(X-FORWARDED-PROTO)%://%REQ(:AUTHORITY)%/.well-known/oauth-protected-resource/tenant/mcp", scope="read"`,
+				`resource_metadata="%REQ(X-FORWARDED-PROTO?:SCHEME)%://%REQ(:AUTHORITY)%/.well-known/oauth-protected-resource/tenant/mcp", scope="read"`,
 			buildWWWAuthenticateHeaderValue(&aigv1b1.ProtectedResourceMetadata{
 				ScopesSupported: []string{"read"},
 			}, "/tenant/mcp"))
