@@ -7,6 +7,7 @@ package tokenprovider
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,6 +105,7 @@ func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 	subjectExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
 
 	t.Run("success", func(t *testing.T) {
+		expiresAt := time.Now().Add(30 * time.Minute).Truncate(time.Second)
 		var gotBody map[string]string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, http.MethodPost, r.Method)
@@ -112,7 +114,7 @@ func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, json.Unmarshal(body, &gotBody))
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"access_token":"exchanged","issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","expires_in":600,"expires_at":1789045200}`))
+			_, _ = fmt.Fprintf(w, `{"access_token":"exchanged","issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","expires_in":600,"expires_at":%d}`, expiresAt.Unix())
 		}))
 		defer server.Close()
 
@@ -120,11 +122,10 @@ func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 			NewMockTokenProvider("subject", subjectExpiry, nil))
 		require.NoError(t, err)
 
-		before := time.Now()
 		token, err := provider.GetToken(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, "exchanged", token.Token)
-		require.WithinRange(t, token.ExpiresAt, before.Add(600*time.Second), time.Now().Add(600*time.Second))
+		require.True(t, expiresAt.Equal(token.ExpiresAt), "expected %v, got %v", expiresAt, token.ExpiresAt)
 		require.Equal(t, map[string]string{
 			"grant_type":           "urn:ietf:params:oauth:grant-type:token-exchange",
 			"subject_token":        "subject",
@@ -134,7 +135,23 @@ func TestOpenAIWorkloadIdentityTokenProvider_GetToken(t *testing.T) {
 		}, gotBody)
 	})
 
-	t.Run("no expires_in uses subject token expiry", func(t *testing.T) {
+	t.Run("no expires_at uses expires_in", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"access_token":"exchanged","expires_in":600}`))
+		}))
+		defer server.Close()
+
+		provider, err := NewOpenAIWorkloadIdentityTokenProvider(testOpenAIWorkloadIdentityConfig(server.URL),
+			NewMockTokenProvider("subject", subjectExpiry, nil))
+		require.NoError(t, err)
+		before := time.Now()
+		token, err := provider.GetToken(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, "exchanged", token.Token)
+		require.WithinRange(t, token.ExpiresAt, before.Add(600*time.Second), time.Now().Add(600*time.Second))
+	})
+
+	t.Run("no expires_at or expires_in uses subject token expiry", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`{"access_token":"exchanged"}`))
 		}))

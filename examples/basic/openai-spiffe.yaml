@@ -55,8 +55,9 @@ spec:
   # configured in your OpenAI organization:
   # https://developers.openai.com/api/reference/workload-identity-federation
   #
-  # Policies run as the controller's SPIFFE identity, so only trusted cluster admins should be
-  # allowed to create them.
+  # The SPIFFE identity is owned by the controller, not by this policy (unlike oidcExchangeToken, where
+  # the policy supplies its own credentials). Every policy using spiffeJWTSVID authenticates as the
+  # controller, so only trusted cluster admins should be allowed to create them.
   openAICredentials:
     organization: OPENAI_ORGANIZATION_ID # Optional. Replace with your OpenAI organization ID, or remove.
     project: OPENAI_PROJECT_ID # Optional. Replace with your OpenAI project ID, or remove.

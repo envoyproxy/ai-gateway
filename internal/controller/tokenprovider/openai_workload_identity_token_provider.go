@@ -61,7 +61,10 @@ type openAITokenExchangeRequest struct {
 // openAITokenExchangeResponse is the successful response of an OpenAI token exchange.
 type openAITokenExchangeResponse struct {
 	AccessToken string `json:"access_token"`
-	ExpiresIn   int64  `json:"expires_in"`
+	// ExpiresIn is the lifetime of the access token in seconds.
+	ExpiresIn int64 `json:"expires_in"`
+	// ExpiresAt is the expiration time of the access token in Unix seconds.
+	ExpiresAt int64 `json:"expires_at"`
 }
 
 // openAIErrorResponse is the error response of the OpenAI API.
@@ -116,7 +119,8 @@ func newOpenAITransport() (http.RoundTripper, error) {
 
 // GetToken implements TokenProvider.GetToken method to retrieve an OpenAI access token and its expiration time.
 //
-// When the response has no expires_in, the access token is assumed to expire with the subject token.
+// The expiration time is taken from expires_at, then from expires_in. When the response has neither, the
+// access token is assumed to expire with the subject token.
 func (t *openAIWorkloadIdentityTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
 	subject, err := t.subjectTokens.GetToken(ctx)
 	if err != nil {
@@ -171,7 +175,10 @@ func (t *openAIWorkloadIdentityTokenProvider) GetToken(ctx context.Context) (Tok
 		return TokenExpiry{}, errors.New("token exchange response has no access_token")
 	}
 	expiresAt := subject.ExpiresAt
-	if tokenResp.ExpiresIn > 0 {
+	switch {
+	case tokenResp.ExpiresAt > 0:
+		expiresAt = time.Unix(tokenResp.ExpiresAt, 0)
+	case tokenResp.ExpiresIn > 0:
 		expiresAt = issuedAt.Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 	}
 	return TokenExpiry{Token: tokenResp.AccessToken, ExpiresAt: expiresAt}, nil

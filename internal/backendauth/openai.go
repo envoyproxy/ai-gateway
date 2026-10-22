@@ -14,6 +14,13 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+const (
+	// openAIOrganizationHeader is the header that selects the OpenAI organization of a request.
+	openAIOrganizationHeader = "OpenAI-Organization"
+	// openAIProjectHeader is the header that selects the OpenAI project of a request.
+	openAIProjectHeader = "OpenAI-Project"
+)
+
 type openAIHandler struct {
 	accessToken string
 	applyFn     applyCredentialFn
@@ -42,12 +49,12 @@ func makeOpenAIApplyFn(organization, project string) applyCredentialFn {
 		requestHeaders["Authorization"] = v
 		headers := []internalapi.Header{{"Authorization", v}}
 		if organization != "" {
-			requestHeaders["OpenAI-Organization"] = organization
-			headers = append(headers, internalapi.Header{"OpenAI-Organization", organization})
+			requestHeaders[openAIOrganizationHeader] = organization
+			headers = append(headers, internalapi.Header{openAIOrganizationHeader, organization})
 		}
 		if project != "" {
-			requestHeaders["OpenAI-Project"] = project
-			headers = append(headers, internalapi.Header{"OpenAI-Project", project})
+			requestHeaders[openAIProjectHeader] = project
+			headers = append(headers, internalapi.Header{openAIProjectHeader, project})
 		}
 		return headers, nil
 	}

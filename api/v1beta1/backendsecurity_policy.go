@@ -424,8 +424,12 @@ type OpenAISubjectToken struct {
 	OIDCExchangeToken *BackendSecurityPolicyOIDC `json:"oidcExchangeToken,omitempty"`
 
 	// SPIFFEJWTSVID obtains the subject token as a JWT-SVID from the SPIFFE Workload API.
-	// The JWT-SVID is issued for the controller's SPIFFE ID, so every policy using this source acts as
-	// the controller; only trusted cluster admins should be allowed to create such policies.
+	//
+	// The SPIFFE identity is owned by the controller, not by the policy: the JWT-SVID is issued for the
+	// controller's SPIFFE ID. This differs from OIDCExchangeToken, where the policy supplies its own
+	// credentials. Every policy using this source authenticates as the controller and can obtain access
+	// tokens for any OpenAI service account mapped to the controller's SPIFFE ID, so only trusted cluster
+	// admins should be allowed to create such policies.
 	//
 	// +optional
 	SPIFFEJWTSVID *BackendSecurityPolicySPIFFEJWTSVID `json:"spiffeJWTSVID,omitempty"`
