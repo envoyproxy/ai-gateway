@@ -320,7 +320,7 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 
 	// The static direct response this replaced emitted the configured value unchanged, so a
 	// route that pins resource must see a byte-identical document. The challenge URL keeps
-	// normalizing the trailing slash, as buildResourceMetadataURL always did.
+	// normalizing the trailing slash, as internalapi.OAuthProtectedResourceMetadataURL does.
 	t.Run("a configured trailing slash is preserved in the document", func(t *testing.T) {
 		h := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{
 			Issuer:   "https://auth.example.com",

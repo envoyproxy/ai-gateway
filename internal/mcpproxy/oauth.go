@@ -14,25 +14,15 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-const (
-	// oauthProtectedResourceMetadataPath is the well-known path prefix that serves the OAuth
-	// Protected Resource Metadata document.
-	//
-	// References:
-	// * https://datatracker.ietf.org/doc/html/rfc9728#name-protected-resource-metadata
-	// * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
-	oauthProtectedResourceMetadataPath = "/.well-known/oauth-protected-resource"
-)
-
 // isProtectedResourceMetadataRequest reports whether the request targets the OAuth Protected
 // Resource Metadata endpoint. Envoy has already matched the request to the dedicated route rule
 // by the time it reaches the proxy; this only distinguishes it from MCP traffic on the same
 // listener, so an exact prefix match on the well-known path is sufficient.
 func isProtectedResourceMetadataRequest(path string) bool {
-	if path == oauthProtectedResourceMetadataPath {
+	if path == internalapi.OAuthProtectedResourceMetadataPath {
 		return true
 	}
-	return strings.HasPrefix(path, oauthProtectedResourceMetadataPath+"/")
+	return strings.HasPrefix(path, internalapi.OAuthProtectedResourceMetadataPath+"/")
 }
 
 // externalScheme returns the scheme the client used to reach the gateway.
@@ -88,32 +78,12 @@ func resourceIdentifier(r *http.Request, prm *filterapi.MCPRouteOAuthProtectedRe
 }
 
 // resourceMetadataURL returns the URL of the Protected Resource Metadata document for the MCP
-// endpoint this request was made against, per RFC 9728 section 3.1: the well-known path is
-// inserted between the identifier's authority and its path component.
+// endpoint this request was made against, per RFC 9728 section 3.1.
+//
+// The challenge URL drops a trailing slash on the identifier even though the document reproduces
+// a pinned value verbatim, matching the 401 challenge the controller builds for the same route.
 func resourceMetadataURL(r *http.Request, prm *filterapi.MCPRouteOAuthProtectedResourceMetadata, resourcePath string) string {
-	// buildResourceMetadataURL has always trimmed a trailing slash before splicing in the
-	// well-known path, so the challenge URL keeps that normalization even though the document
-	// reproduces the configured value verbatim.
-	identifier := strings.TrimSuffix(resourceIdentifier(r, prm, resourcePath), "/")
-
-	prefixLen := 0
-	switch {
-	case strings.HasPrefix(identifier, "https://"):
-		prefixLen = len("https://")
-	case strings.HasPrefix(identifier, "http://"):
-		prefixLen = len("http://")
-	}
-
-	baseURL, pathComponent := identifier, ""
-	if i := strings.IndexByte(identifier[prefixLen:], '/'); i >= 0 {
-		baseURL = identifier[:prefixLen+i]
-		pathComponent = identifier[prefixLen+i:]
-	}
-
-	// Some clients do not expect the path component in the resource_metadata URL, but the spec
-	// requires them to honor the value returned here. The document cannot be exposed at the
-	// root because several MCP routes with different OAuth settings may share a listener.
-	return baseURL + oauthProtectedResourceMetadataPath + pathComponent
+	return internalapi.OAuthProtectedResourceMetadataURL(resourceIdentifier(r, prm, resourcePath))
 }
 
 // serveOAuthProtectedResourceMetadata handles a request for the OAuth Protected Resource
@@ -156,7 +126,7 @@ func writeProtectedResourceMetadataCORSHeaders(h http.Header) {
 func (m *mcpRequestContext) writeProtectedResourceMetadata(w http.ResponseWriter, r *http.Request, prm *filterapi.MCPRouteOAuthProtectedResourceMetadata) {
 	// The MCP endpoint path is the request path with the well-known prefix removed. For an
 	// MCPRoute serving "/mcp" the request arrives at "/.well-known/oauth-protected-resource/mcp".
-	resourcePath := strings.TrimPrefix(externalPath(r), oauthProtectedResourceMetadataPath)
+	resourcePath := strings.TrimPrefix(externalPath(r), internalapi.OAuthProtectedResourceMetadataPath)
 
 	doc := map[string]any{
 		"resource":                 resourceIdentifier(r, prm, resourcePath),

@@ -350,7 +350,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 		// HTTPRoute is generated, and a direct response body cannot be templated.
 		//
 		// Suffix path: /.well-known/oauth-protected-resource{pathPrefix} (if pathPrefix exists).
-		protectedResourceSuffixPath := fmt.Sprintf("%s%s", oauthWellKnownProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))
+		protectedResourceSuffixPath := fmt.Sprintf("%s%s", internalapi.OAuthProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))
 		protectedResourceSuffixRule := gwapiv1.HTTPRouteRule{
 			Name: ptr.To(gwapiv1.SectionName("oauth-protected-resource-metadata")),
 			Matches: []gwapiv1.HTTPRouteMatch{

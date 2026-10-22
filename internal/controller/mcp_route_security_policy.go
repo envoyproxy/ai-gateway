@@ -32,7 +32,6 @@ import (
 )
 
 const (
-	oauthWellKnownProtectedResourceMetadataPath   = "/.well-known/oauth-protected-resource"
 	oauthWellKnownAuthorizationServerMetadataPath = "/.well-known/oauth-authorization-server"
 	oidcWellKnownMetadataPath                     = "/.well-known/openid-configuration"
 
@@ -319,43 +318,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 // Reference: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#command-operators
 func envoyDerivedResourceMetadataURL(servingPath string) string {
 	return fmt.Sprintf("%%REQ(X-FORWARDED-PROTO)%%://%%REQ(:AUTHORITY)%%%s%s",
-		oauthWellKnownProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))
-}
-
-// buildResourceMetadataURL constructs the OAuth protected resource metadata URL from an
-// explicitly configured resource identifier, by inserting the well-known path between the
-// identifier's authority and its path component.
-//
-// This is only used when the operator pins protectedResourceMetadata.resource. When it is
-// omitted, the identifier is derived from the request instead: by the MCP proxy for the
-// metadata document and the 403 challenge, and by Envoy for the 401 challenge.
-//
-// References:
-// * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
-// * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildResourceMetadataURL(resource string) string {
-	resourceURL := strings.TrimSuffix(resource, "/")
-
-	prefixLen := 0
-	switch {
-	case strings.HasPrefix(resourceURL, "https://"):
-		prefixLen = len("https://")
-	case strings.HasPrefix(resourceURL, "http://"):
-		prefixLen = len("http://")
-	}
-
-	baseURL, pathComponent := resourceURL, ""
-	if idx := strings.Index(resourceURL[prefixLen:], "/"); idx != -1 {
-		baseURL = resourceURL[:prefixLen+idx]
-		pathComponent = resourceURL[prefixLen+idx:]
-	}
-
-	// Some agents do not expect the path component to be included in the resource_metadata URL, but according to the
-	// spec https://mcp.mintlify.app/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
-	// they should honor the value returned here.
-	// We can't expose these resource at the root, because there may be multiple MCP routes with different OAuth settings, so we need
-	// to rely on clients properly implementing the spec and using this value returned in the header.
-	return fmt.Sprintf("%s%s%s", baseURL, oauthWellKnownProtectedResourceMetadataPath, pathComponent)
+		internalapi.OAuthProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))
 }
 
 // buildWWWAuthenticateHeaderValue constructs the WWW-Authenticate header value according to RFC 9728.
@@ -365,7 +328,7 @@ func buildResourceMetadataURL(resource string) string {
 func buildWWWAuthenticateHeaderValue(metadata *aigv1b1.ProtectedResourceMetadata, servingPath string) string {
 	var resourceMetadataURL string
 	if metadata.Resource != "" {
-		resourceMetadataURL = buildResourceMetadataURL(metadata.Resource)
+		resourceMetadataURL = internalapi.OAuthProtectedResourceMetadataURL(metadata.Resource)
 	} else {
 		resourceMetadataURL = envoyDerivedResourceMetadataURL(servingPath)
 	}
