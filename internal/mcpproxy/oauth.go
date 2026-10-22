@@ -56,8 +56,14 @@ func externalScheme(r *http.Request) string {
 // consulting x-ai-eg-original-path here: nothing strips that header off inbound requests, so
 // honoring it would let a client choose which document the proxy serves and which path the
 // advertised resource identifier names.
+//
+// URL.Path is percent-decoded, so a client that requested "/my%20mcp" would be told its
+// resource was a different path. EscapedPath keeps the encoding the client sent. The well-known
+// prefix is only unreserved characters, so the escaped and decoded forms share it:
+// isProtectedResourceMetadataRequest and the TrimPrefix in writeProtectedResourceMetadata
+// still select the same suffix.
 func externalPath(r *http.Request) string {
-	return r.URL.Path
+	return r.URL.EscapedPath()
 }
 
 // resourceIdentifier returns the RFC 9728 resource identifier for the MCP endpoint this request
@@ -66,6 +72,12 @@ func externalPath(r *http.Request) string {
 //
 // A configured override always wins, so an operator fronted by something that rewrites the
 // externally visible URL without forwarding headers can still pin the value.
+//
+// r.Host is used without an allow-list here on purpose. The well-known rule lives on the same
+// generated HTTPRoute as the MCP endpoint and carries the MCPRoute's hostnames, so Envoy only
+// selects it for a Host those hostnames match; any other Host never reaches the proxy. An
+// MCPRoute without hostnames is reachable on every authority its listener accepts, and the
+// identifier names whichever one the client used.
 func resourceIdentifier(r *http.Request, prm *filterapi.MCPRouteOAuthProtectedResourceMetadata, resourcePath string) string {
 	if prm != nil && prm.Resource != "" {
 		// Emitted exactly as configured, including any trailing slash. The static direct
@@ -166,11 +178,11 @@ func (m *mcpRequestContext) writeProtectedResourceMetadata(w http.ResponseWriter
 	h.Set("Content-Type", "application/json")
 	writeProtectedResourceMetadataCORSHeaders(h)
 	if prm.Resource == "" {
-		// The body depends on the forwarded scheme, so a shared cache must key on it. Host
-		// needs no Vary: it is already part of the effective request URI a cache keys on.
-		// Omitted when resource is pinned: that response is request-independent, exactly as
-		// the static direct response was, and the header would itself be a behaviour change.
-		h.Set("Vary", "X-Forwarded-Proto")
+		// The document names this request's host and scheme. A cache that stores
+		// /.well-known/* by path alone would serve one host's identifier to clients of
+		// another, so the response must not be stored. Omitted when resource is pinned:
+		// that response is request-independent, exactly as the static direct response was.
+		h.Set("Cache-Control", "no-store")
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err = w.Write(body); err != nil {

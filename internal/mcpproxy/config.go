@@ -51,6 +51,8 @@ type (
 		// prm is the OAuth protected resource metadata served for this route, if any.
 		// The resource identifier is derived per request rather than stored here; see
 		// resourceIdentifier in oauth.go.
+		// Deliberately not compared by sameTools (it isn't a tool change); LoadConfig builds new route
+		// objects and swaps in the new config every time.
 		prm            *filterapi.MCPRouteOAuthProtectedResourceMetadata
 		forwardHeaders []string
 		// routePrefixMode is the route-level fallback when a backend has no per-backend PrefixMode set.

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,6 +87,18 @@ func TestExternalPath(t *testing.T) {
 		r.Header.Set(internalapi.EnvoyOriginalPathHeader, "/.well-known/oauth-protected-resource/mcp")
 		require.Equal(t, "/mcp", externalPath(r))
 		require.False(t, isProtectedResourceMetadataRequest(externalPath(r)))
+	})
+
+	// URL.Path would decode this to "/my mcp". The resource identifier has to name the path the
+	// client actually requested. The well-known prefix needs no encoding, so detection and the
+	// trim that recovers the MCP path still agree on the escaped form.
+	t.Run("preserves a percent-encoded path segment", func(t *testing.T) {
+		const path = "/.well-known/oauth-protected-resource/my%20mcp"
+		r := httptest.NewRequest(http.MethodGet, "http://example.com"+path, nil)
+		got := externalPath(r)
+		require.Equal(t, path, got)
+		require.True(t, isProtectedResourceMetadataRequest(got))
+		require.Equal(t, "/my%20mcp", strings.TrimPrefix(got, internalapi.OAuthProtectedResourceMetadataPath))
 	})
 }
 
@@ -269,6 +282,15 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 		return w
 	}
 
+	t.Run("a percent-encoded path segment stays encoded in the resource", func(t *testing.T) {
+		h := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{Issuer: "https://auth.example.com"})
+		w := get(h, "api.example.com", "https", "/.well-known/oauth-protected-resource/my%20mcp", routeName)
+		require.Equal(t, http.StatusOK, w.Code)
+		var doc map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &doc))
+		require.Equal(t, "https://api.example.com/my%20mcp", doc["resource"])
+	})
+
 	t.Run("derives the resource from the request", func(t *testing.T) {
 		h := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{
 			Issuer:          "https://auth.example.com",
@@ -416,20 +438,22 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 		}
 	})
 
-	// A pinned resource makes the response request-independent, exactly as the static one was,
-	// so it must not acquire a Vary header. A derived one must.
-	t.Run("Vary is set only when the identifier is derived", func(t *testing.T) {
+	// A derived identifier names the request host. A cache that keys /.well-known/* on the
+	// path alone would serve one host's document to another, so that response must not be
+	// stored. A pinned resource is request-independent, exactly as the static direct response
+	// was, and must not acquire a cache header.
+	t.Run("derived responses are not stored", func(t *testing.T) {
 		derived := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{Issuer: "https://auth.example.com"})
 		w := get(derived, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", routeName)
-		// Host is already part of the effective request URI a cache keys on, so only the
-		// forwarded scheme needs to be named here.
-		require.Equal(t, "X-Forwarded-Proto", w.Header().Get("Vary"))
+		require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		require.Empty(t, w.Header().Get("Vary"))
 
 		pinned := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{
 			Issuer:   "https://auth.example.com",
 			Resource: "https://api.example.com/mcp",
 		})
 		w = get(pinned, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", routeName)
+		require.Empty(t, w.Header().Get("Cache-Control"))
 		require.Empty(t, w.Header().Get("Vary"))
 	})
 }

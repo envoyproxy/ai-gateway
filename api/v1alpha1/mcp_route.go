@@ -619,6 +619,10 @@ type ProtectedResourceMetadata struct {
 	// Leave it unset unless the gateway is fronted by something that rewrites the
 	// externally visible URL in a way the forwarded headers do not reflect.
 	//
+	// The derived identifier names the request's Host. Set Hostnames to restrict which hosts
+	// it can name: the metadata endpoint is only reachable on hosts Hostnames matches. Without
+	// Hostnames, every authority the Gateway listener accepts is reflected as-is.
+	//
 	// When Audiences is set, note that clients following RFC 8707 send the advertised
 	// identifier as the "resource" parameter when requesting a token, and the authorization
 	// server binds the token's "aud" to it. A derived identifier therefore has to agree with

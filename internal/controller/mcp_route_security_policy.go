@@ -535,6 +535,8 @@ func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute 
 // deleteOAuthProtectedResourceMetadataHRF removes the HTTPRouteFilter that previously served
 // the protected resource metadata as a static direct response. It is a no-op once no such
 // filter exists, so it costs a single cached Get per reconcile after an upgrade.
+//
+// TODO: Remove this, along with its call sites and tests, after the v2.0 release.
 func (c *MCPRouteController) deleteOAuthProtectedResourceMetadataHRF(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	name := oauthProtectedResourceMetadataName(mcpRoute.Name)
@@ -567,17 +569,11 @@ func (c *MCPRouteController) cleanupOAuthResources(ctx context.Context, mcpRoute
 		return fmt.Errorf("failed to get BackendTrafficPolicy for deletion: %w", err)
 	}
 
-	// Delete OAuth protected resource HTTPRouteFilter.
-	httpRouteFilterName := oauthProtectedResourceMetadataName(mcpRoute.Name)
-	var httpRouteFilter egv1a1.HTTPRouteFilter
-	err = c.client.Get(ctx, client.ObjectKey{Name: httpRouteFilterName, Namespace: mcpRoute.Namespace}, &httpRouteFilter)
-	if err == nil {
-		c.logger.Info("Deleting HTTPRouteFilter", "namespace", httpRouteFilter.Namespace, "name", httpRouteFilter.Name)
-		if err = c.client.Delete(ctx, &httpRouteFilter); err != nil {
-			return fmt.Errorf("failed to delete HTTPRouteFilter: %w", err)
-		}
-	} else if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get HTTPRouteFilter for deletion: %w", err)
+	// TODO: Remove after the v2.0 release, together with deleteOAuthProtectedResourceMetadataHRF.
+	// If OAuth is disabled on an MCPRoute before the upgraded controller first reconciles it,
+	// ensureOAuthResources never runs, so the legacy HTTPRouteFilter has to be deleted here too.
+	if err = c.deleteOAuthProtectedResourceMetadataHRF(ctx, mcpRoute); err != nil {
+		return fmt.Errorf("failed to delete legacy HTTPRouteFilter: %w", err)
 	}
 
 	// Delete OAuth authorization server HTTPRouteFilter.

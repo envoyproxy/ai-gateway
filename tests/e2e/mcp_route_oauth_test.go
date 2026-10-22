@@ -245,8 +245,10 @@ func TestMCPRouteOAuth(t *testing.T) {
 				"Resource should be derived from the request")
 			require.Equal(t, "example-resource-derived", metadata["resource_name"])
 
-			// The body depends on the forwarded scheme, so a shared cache must key on it.
-			require.Equal(t, "X-Forwarded-Proto", resp.Header.Get("Vary"))
+			// The document names this request's host. A cache that stores the path alone
+			// must not keep it.
+			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+			require.Empty(t, resp.Header.Get("Vary"))
 			requireMetadataCORSHeaders(t, resp)
 		})
 
@@ -293,6 +295,47 @@ func TestMCPRouteOAuth(t *testing.T) {
 				"Envoy should expand the substitution format string into the request authority")
 			t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 		})
+	})
+
+	// The proxy interpolates the request Host into the identifier without checking it against
+	// the MCPRoute's hostnames. That is safe only because Envoy enforces them first: the
+	// well-known rule is on the hostname-scoped HTTPRoute, so a foreign Host must not reach the
+	// proxy at all. A host rewrite or a host-less generated route would break that silently.
+	t.Run("derived identifier is limited to the route hostnames", func(t *testing.T) {
+		metadataURL := fmt.Sprintf("%s/.well-known/oauth-protected-resource/mcp-hostnames", fwd.Address())
+		get := func(host string) (int, map[string]interface{}) {
+			req, err := http.NewRequestWithContext(t.Context(), "GET", metadataURL, nil)
+			require.NoError(t, err)
+			req.Host = host
+			resp, err := httpClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			var metadata map[string]interface{}
+			if resp.StatusCode == http.StatusOK {
+				require.NoError(t, json.Unmarshal(body, &metadata))
+			}
+			return resp.StatusCode, metadata
+		}
+
+		require.Eventually(t, func() bool {
+			status, metadata := get("mcp.example.com")
+			if status != http.StatusOK {
+				t.Logf("waiting for hostname-scoped metadata route: status %d", status)
+				return false
+			}
+			require.Equal(t, "http://mcp.example.com/mcp-hostnames", metadata["resource"])
+			require.Equal(t, "example-resource-hostnames", metadata["resource_name"])
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
+
+		for _, host := range []string{"attacker.example.com", strings.TrimPrefix(fwd.Address(), "http://")} {
+			status, metadata := get(host)
+			require.Equal(t, http.StatusNotFound, status,
+				"Host %q is outside the route's hostnames and must not be served a document naming it", host)
+			require.Nil(t, metadata)
+		}
 	})
 
 	// Both places the gateway advertises a derived resource identifier interpolate the request
@@ -372,7 +415,8 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Equal(t, "https://foo.bar.com/mcp", metadata["resource"], "Resource should match configured value")
 
 		// A pinned resource makes the response request-independent, exactly as the static
-		// direct response this replaced was, so it must not acquire a Vary header.
+		// direct response this replaced was, so it must not acquire cache headers.
+		require.Empty(t, resp.Header.Get("Cache-Control"))
 		require.Empty(t, resp.Header.Get("Vary"))
 		requireMetadataCORSHeaders(t, resp)
 
