@@ -104,7 +104,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    the release notes JSON data file, MDX page, plain-markdown copy, and navigation updates for the docs site.
    Review the generated output and make any necessary adjustments.
 
-5. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
+5. The release candidate should be tested by the maintainers and the community. In case there is an issue, it should be fixed in the main branch
    and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
    in the above command and repeat the process.
 
