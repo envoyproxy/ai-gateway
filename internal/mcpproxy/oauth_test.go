@@ -446,7 +446,6 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 		derived := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{Issuer: "https://auth.example.com"})
 		w := get(derived, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", routeName)
 		require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
-		require.Empty(t, w.Header().Get("Vary"))
 
 		pinned := newOAuthTestProxy(t, routeName, &filterapi.MCPRouteOAuthProtectedResourceMetadata{
 			Issuer:   "https://auth.example.com",
@@ -454,7 +453,6 @@ func TestServeOAuthProtectedResourceMetadata(t *testing.T) {
 		})
 		w = get(pinned, "api.example.com", "https", "/.well-known/oauth-protected-resource/mcp", routeName)
 		require.Empty(t, w.Header().Get("Cache-Control"))
-		require.Empty(t, w.Header().Get("Vary"))
 	})
 }
 

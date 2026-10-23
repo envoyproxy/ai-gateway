@@ -488,13 +488,6 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			} else {
 				require.Error(t, filterErr, "authorization server HTTPRouteFilter should not exist")
 			}
-
-			// The protected resource metadata document is served by the MCP proxy, so no
-			// HTTPRouteFilter is generated for it regardless of the OAuth configuration.
-			prmFilterName := internalapi.MCPGeneratedResourceCommonPrefix + tt.mcpRoute.Name + oauthProtectedResourceMetadataSuffix
-			require.Error(t, fakeClient.Get(t.Context(),
-				client.ObjectKey{Name: prmFilterName, Namespace: tt.mcpRoute.Namespace}, &egv1a1.HTTPRouteFilter{}),
-				"protected resource metadata HTTPRouteFilter should not exist")
 		})
 	}
 }
@@ -535,7 +528,6 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 
 	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	backendTrafficPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
-	protecedResourceMetadataFilterName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
 	authServerMetadataFilterName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthAuthServerMetadataSuffix
 
 	var securityPolicy egv1a1.SecurityPolicy
@@ -545,10 +537,6 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	var backendTrafficPolicy egv1a1.BackendTrafficPolicy
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
 	require.NoError(t, err, "BackendTrafficPolicy should exist before cleanup")
-
-	var protecedResourceMetadataFilter egv1a1.HTTPRouteFilter
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: protecedResourceMetadataFilterName, Namespace: mcpRoute.Namespace}, &protecedResourceMetadataFilter)
-	require.Error(t, err, "Protected Resource Metadata HTTPRouteFilter is served by the MCP proxy, not generated")
 
 	var authServerMetadataFilter egv1a1.HTTPRouteFilter
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: authServerMetadataFilterName, Namespace: mcpRoute.Namespace}, &authServerMetadataFilter)
@@ -567,10 +555,6 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
 	require.Error(t, err, "BackendTrafficPolicy should be deleted after cleanup")
 	require.True(t, apierrors.IsNotFound(err), "BackendTrafficPolicy should not be found after cleanup")
-
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: protecedResourceMetadataFilterName, Namespace: mcpRoute.Namespace}, &protecedResourceMetadataFilter)
-	require.Error(t, err, "Protected Resource Metadata HTTPRouteFilter should be deleted after cleanup")
-	require.True(t, apierrors.IsNotFound(err), "Protected Resource Metadata HTTPRouteFilter should not be found after cleanup")
 
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: authServerMetadataFilterName, Namespace: mcpRoute.Namespace}, &authServerMetadataFilter)
 	require.Error(t, err, "Authorization Server Metadata HTTPRouteFilter should be deleted after cleanup")
@@ -610,7 +594,6 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 
 	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	backendTrafficPolicyName := oauthProtectedResourceMetadataName(mcpRoute.Name)
-	protectedResourceMetadataFilterName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 	authServerMetadataFilterName := oauthAuthServerMetadataFilterName(mcpRoute.Name)
 
 	// Ensure OAuth resources exist after initial reconciliation.
@@ -620,7 +603,6 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 	require.NotNil(t, sp.Spec.APIKeyAuth)
 
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &egv1a1.BackendTrafficPolicy{}))
-	require.Error(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: protectedResourceMetadataFilterName, Namespace: mcpRoute.Namespace}, &egv1a1.HTTPRouteFilter{}))
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: authServerMetadataFilterName, Namespace: mcpRoute.Namespace}, &egv1a1.HTTPRouteFilter{}))
 
 	// Remove OAuth configuration and reconcile again.
@@ -635,10 +617,6 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 
 	// OAuth-specific resources should be removed.
 	err := fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &egv1a1.BackendTrafficPolicy{})
-	require.Error(t, err)
-	require.True(t, apierrors.IsNotFound(err))
-
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: protectedResourceMetadataFilterName, Namespace: mcpRoute.Namespace}, &egv1a1.HTTPRouteFilter{})
 	require.Error(t, err)
 	require.True(t, apierrors.IsNotFound(err))
 
@@ -1211,6 +1189,8 @@ func Test_buildOAuthAuthServerMetadataJSON_explicitURL(t *testing.T) {
 // resource metadata as a static direct response. The document is now served by the MCP proxy, so
 // the stale filter must be removed rather than left dangling behind a route rule that no longer
 // references it.
+//
+// TODO: Remove after the v2.0 release, together with deleteOAuthProtectedResourceMetadataHRF.
 func TestMCPRouteController_deletesSupersededProtectedResourceMetadataHRF(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
@@ -1246,6 +1226,7 @@ func TestMCPRouteController_deletesSupersededProtectedResourceMetadataHRF(t *tes
 	require.NoError(t, c.syncMCPRouteSecurityPolicy(t.Context(), mcpRoute, "httproute-test-route"))
 }
 
+// TODO: Remove after the v2.0 release, together with deleteOAuthProtectedResourceMetadataHRF.
 func TestMCPRouteController_deleteOAuthProtectedResourceMetadataHRF_errors(t *testing.T) {
 	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},

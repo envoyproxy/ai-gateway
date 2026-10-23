@@ -342,12 +342,12 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 	// Add OAuth metadata endpoints if authentication is configured.
 	if mcpRoute.Spec.SecurityPolicy != nil && mcpRoute.Spec.SecurityPolicy.OAuth != nil {
 		// OAuth 2.0 Protected Resource Metadata (RFC 9728).
-		// TODO: only one MCPRoute targeting the same listener can be configured with OAuth due to the fixed well-known path.
 		//
-		// This is routed to the MCP proxy rather than answered by a static direct response,
-		// because the document's "resource" identifier must name the scheme, authority and path
-		// the client actually used to reach the gateway. None of that is knowable when the
-		// HTTPRoute is generated, and a direct response body cannot be templated.
+		// Served by the MCP proxy rather than by a static direct response. When
+		// protectedResourceMetadata.resource is omitted, the identifier is derived from the
+		// request, which a direct response body cannot do. A pinned resource is served the
+		// same way. The well-known path includes this route's serving path, so MCPRoutes on
+		// one listener can each configure OAuth as long as those paths differ.
 		//
 		// Suffix path: /.well-known/oauth-protected-resource{pathPrefix} (if pathPrefix exists).
 		protectedResourceSuffixPath := fmt.Sprintf("%s%s", internalapi.OAuthProtectedResourceMetadataPath, strings.TrimSuffix(servingPath, "/"))

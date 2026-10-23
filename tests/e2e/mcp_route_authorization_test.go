@@ -196,10 +196,11 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Contains(t, errMsg, "forbidden", "unexpected error: %v", err)
 	})
 
-	// The insufficient_scope challenge is the one resource_metadata surface built by the MCP
-	// proxy rather than by Envoy, so it is the only place the derived identifier can be proven
-	// on the 403 path. mcp-route-authorization-derived is identical to the route above except
-	// that it omits protectedResourceMetadata.resource.
+	// A missing scope makes the proxy emit the insufficient_scope challenge. The proxy builds
+	// that resource_metadata URL, and it also builds the metadata document; Envoy builds only
+	// the 401 challenge. The derived route has its own path and omits
+	// protectedResourceMetadata.resource, so the URL names the port-forward address this test
+	// reached. The in-process check of the same header is TestHandleToolCallRequest_InsufficientScope.
 	for _, tc := range []struct {
 		name                 string
 		path                 string

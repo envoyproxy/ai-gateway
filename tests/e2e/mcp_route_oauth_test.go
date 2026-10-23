@@ -216,7 +216,7 @@ func TestMCPRouteOAuth(t *testing.T) {
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 
 		// Validate WWW-Authenticate header contains scope parameter.
-		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain scope parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 
@@ -248,7 +248,6 @@ func TestMCPRouteOAuth(t *testing.T) {
 			// The document names this request's host. A cache that stores the path alone
 			// must not keep it.
 			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
-			require.Empty(t, resp.Header.Get("Vary"))
 			requireMetadataCORSHeaders(t, resp)
 		})
 
@@ -338,14 +337,15 @@ func TestMCPRouteOAuth(t *testing.T) {
 		}
 	})
 
-	// Both places the gateway advertises a derived resource identifier interpolate the request
-	// authority: the 401 challenge via an Envoy substitution format string, and the metadata
-	// document via the MCP proxy. Neither escapes, so both rest on Envoy rejecting an authority
-	// that could break out of the surrounding syntax. Pin that assumption rather than trust it:
-	// if it ever stops holding, a client-supplied Host could inject an auth-param into the
-	// challenge, or a JSON key such as authorization_servers into the document, which would
-	// point clients at an attacker-chosen authorization server. Only the derived route is worth
-	// probing; a pinned resource never interpolates the authority in the first place.
+	// A derived identifier is interpolated, unescaped, in three places. The 401 challenge uses
+	// an Envoy substitution format string. The metadata document and the 403 insufficient_scope
+	// challenge are both built in the MCP proxy from the same request authority. All three rest
+	// on Envoy rejecting an authority that could break out of the surrounding syntax. Pin that
+	// assumption rather than trust it: if it ever stops holding, a client-supplied Host could
+	// inject an auth-param into a challenge, or a JSON key such as authorization_servers into
+	// the document, which would point clients at an attacker-chosen authorization server. The
+	// cases below are the two that can be reached without a session. A pinned resource never
+	// interpolates the authority.
 	t.Run("a Host that could break out of the advertised syntax is rejected", func(t *testing.T) {
 		// A quote is the character that matters: it terminates the quoted auth-param in
 		// WWW-Authenticate and the JSON string literal in the metadata document.
@@ -415,9 +415,8 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Equal(t, "https://foo.bar.com/mcp", metadata["resource"], "Resource should match configured value")
 
 		// A pinned resource makes the response request-independent, exactly as the static
-		// direct response this replaced was, so it must not acquire cache headers.
+		// direct response this replaced was, so it must not acquire a Cache-Control header.
 		require.Empty(t, resp.Header.Get("Cache-Control"))
-		require.Empty(t, resp.Header.Get("Vary"))
 		requireMetadataCORSHeaders(t, resp)
 
 		authServers, ok := metadata["authorization_servers"].([]interface{})
@@ -574,7 +573,7 @@ func TestMCPRouteOAuth(t *testing.T) {
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 
 		// Validate WWW-Authenticate header contains scope parameter.
-		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain scope parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 }

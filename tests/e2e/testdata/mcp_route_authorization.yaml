@@ -99,11 +99,11 @@ spec:
                 - all-access
           # No target means all targets are allowed.
 ---
-# Identical to mcp-route-authorization-default-deny above except that
-# protectedResourceMetadata.resource is omitted, so the gateway derives the identifier from
-# each request. The 403 insufficient_scope challenge is the surface only this suite covers:
-# unlike the 401, it is built by the MCP proxy rather than by Envoy. The two routes serve
-# different paths, so their well-known endpoints do not collide.
+# Same authorization rules as mcp-route-authorization-default-deny, on its own path, with
+# protectedResourceMetadata.resource omitted so the gateway derives the identifier from each
+# request. This suite checks that derived URL on the 403 insufficient_scope challenge, which
+# the MCP proxy builds. Envoy builds the 401 challenge, and the proxy also builds the metadata
+# document. The paths differ so the well-known endpoints do not collide.
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
