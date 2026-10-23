@@ -379,7 +379,7 @@ Response:
 | `400 Bad Request` | Upload without a `model` field, list without a `?model=` query parameter, or an invalid `after` id.                                                               |
 | `404 Not Found`   | A file id that cannot be decoded (unknown, tampered, or forged), or an unsupported method/path.                                                                   |
 | `500`             | The matched route rule has more than one backend, the file id belongs to a different backend than the one serving the route, or the backend schema is not OpenAI. |
-| `502 Bad Gateway` | The upstream response contained a file id the gateway could not safely re-encode.                               |
+| `502 Bad Gateway` | The upstream response contained a file id the gateway could not safely re-encode.                                                                                 |
 
 ## Caveats and limitations
 
