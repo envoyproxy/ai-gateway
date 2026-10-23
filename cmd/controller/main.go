@@ -78,6 +78,7 @@ type flags struct {
 	fileIDFallbackEncryptionIterations     int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	credentialPreRotationWindow            time.Duration
 	quotaRateLimitServiceAddr              string
 	quotaRateLimitTimeout                  int64
 	quotaRateLimitFailureModeDeny          bool
@@ -272,6 +273,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		2*time.Minute, // This is the controller-runtime default
 		"Maximum time to wait for k8s caches to sync",
 	)
+	credentialPreRotationWindow := fs.Duration(
+		"credentialPreRotationWindow",
+		controller.DefaultPreRotationWindow,
+		"How long before expiry to rotate short-lived BackendSecurityPolicy credentials.",
+	)
 	mcpSessionEncryptionSeed := fs.String("mcpSessionEncryptionSeed", "default-insecure-seed",
 		"Seed used to derive the MCP session encryption key. This should be changed and set to a secure value.")
 	mcpSessionEncryptionIterations := fs.Int("mcpSessionEncryptionIterations", 100_000,
@@ -395,6 +401,10 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		return nil, fmt.Errorf("file id fallback encryption iterations must be positive: %d", *fileIDFallbackEncryptionIterations)
 	}
 
+	if *credentialPreRotationWindow <= 0 {
+		return nil, fmt.Errorf("credential pre-rotation window must be positive: %s", *credentialPreRotationWindow)
+	}
+
 	return &flags{
 		envoyGatewayNamespace:                  *envoyGatewayNamespace,
 		extProcLogLevel:                        *extProcLogLevelPtr,
@@ -423,6 +433,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		maxRecvMsgSize:                         *maxRecvMsgSize,
 		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
 		cacheSyncTimeout:                       *cacheSyncTimeout,
+		credentialPreRotationWindow:            *credentialPreRotationWindow,
 		mcpSessionEncryptionSeed:               *mcpSessionEncryptionSeed,
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
@@ -558,6 +569,7 @@ func main() {
 		FileIDFallbackEncryptionSeed:           parsedFlags.fileIDFallbackEncryptionSeed,
 		FileIDFallbackEncryptionIterations:     parsedFlags.fileIDFallbackEncryptionIterations,
 		RateLimitRunner:                        rlRunner,
+		CredentialPreRotationWindow:            parsedFlags.credentialPreRotationWindow,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

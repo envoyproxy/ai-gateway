@@ -142,6 +142,11 @@ controller:
     # Default is 2 minutes.
     cacheSyncTimeout: 2m
 
+  # How long before expiry the controller rotates short-lived BackendSecurityPolicy credentials
+  #  Must be positive and shorter than the credential lifetime.
+  # Default is 5 minutes.
+  credentialPreRotationWindow: 5m
+
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller
