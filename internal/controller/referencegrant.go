@@ -20,6 +20,8 @@ const (
 	backendSecurityPolicyKind = "BackendSecurityPolicy"
 	// quotaPolicyKind is the kind for QuotaPolicy.
 	quotaPolicyKind = "QuotaPolicy"
+	// mcpRouteKind is the kind for MCPRoute.
+	mcpRouteKind = "MCPRoute"
 	// secretGroup is the API group for the core Secret resource (the core group is the empty string).
 	secretGroup = ""
 	// secretKind is the kind for the core Secret resource.
@@ -162,6 +164,31 @@ func (v *referenceGrantValidator) validateSecretReference(
 ) error {
 	return v.validateReference(ctx,
 		aiServiceBackendGroup, backendSecurityPolicyKind, bspNamespace,
+		secretGroup, secretKind, secretNamespace, secretName)
+}
+
+// validateMCPRouteSecretReference validates that an MCPRoute can reference a core Secret (the
+// apiKey.secretRef of a backend's securityPolicy) in a different namespace by checking for a valid
+// ReferenceGrant allowing MCPRoute from routeNamespace to reference Secret in secretNamespace.
+//
+// Like validateSecretReference, this is a thin MCPRoute-specific entry point over validateReference.
+//
+// Parameters:
+//   - ctx: context for the operation
+//   - routeNamespace: namespace of the MCPRoute
+//   - secretNamespace: namespace of the referenced Secret
+//   - secretName: name of the Secret (optional, for the error message)
+//
+// Returns:
+//   - error: nil if the reference is valid (same namespace or valid ReferenceGrant exists), error otherwise
+func (v *referenceGrantValidator) validateMCPRouteSecretReference(
+	ctx context.Context,
+	routeNamespace string,
+	secretNamespace string,
+	secretName string,
+) error {
+	return v.validateReference(ctx,
+		aiServiceBackendGroup, mcpRouteKind, routeNamespace,
 		secretGroup, secretKind, secretNamespace, secretName)
 }
 
