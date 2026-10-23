@@ -38,6 +38,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -58,6 +59,63 @@ func requireLLMRequestCostsEqual(t *testing.T, want, got []filterapi.LLMRequestC
 	if diff := cmp.Diff(want, got, cmpopts.SortSlices(less)); diff != "" {
 		t.Fatalf("LLMRequestCosts not equal (-want +got):\n%s", diff)
 	}
+}
+
+func TestInjectQuotaPolicyCostExpressions(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
+	controller := &GatewayController{
+		client:                  fakeClient,
+		logger:                  ctrl.Log,
+		referenceGrantValidator: newReferenceGrantValidator(fakeClient),
+	}
+	model := "model-a"
+	expression := "input_tokens + output_tokens"
+	policy := &aigv1a1.QuotaPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "policy", Namespace: "route-ns"},
+		Spec: aigv1a1.QuotaPolicySpec{
+			TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{
+				Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: "backend",
+			}},
+			PerModelQuotas: []aigv1a1.PerModelQuota{{
+				ModelName: &model,
+				Quota:     aigv1a1.QuotaDefinition{CostExpression: &expression},
+			}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), policy))
+	unrelatedModel := "unrelated-model"
+	unrelatedPolicy := &aigv1a1.QuotaPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "unrelated-policy", Namespace: "other-ns"},
+		Spec: aigv1a1.QuotaPolicySpec{
+			TargetRefs: []gwapiv1a2.NamespacedPolicyTargetReference{{
+				Group: aiServiceBackendGroup, Kind: aiServiceBackendKind, Name: "other-backend",
+			}},
+			PerModelQuotas: []aigv1a1.PerModelQuota{{
+				ModelName: &unrelatedModel,
+				Quota:     aigv1a1.QuotaDefinition{CostExpression: &expression},
+			}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), unrelatedPolicy))
+	var policies aigv1a1.QuotaPolicyList
+	require.NoError(t, fakeClient.List(t.Context(), &policies))
+	require.Len(t, policies.Items, 2)
+	require.Equal(t, string(aiServiceBackendGroup), string(policies.Items[0].Spec.TargetRefs[0].Group))
+	require.Equal(t, string(aiServiceBackendKind), string(policies.Items[0].Spec.TargetRefs[0].Kind))
+	require.Len(t, policies.Items[0].Spec.PerModelQuotas, 1)
+
+	config := &filterapi.Config{
+		Backends: []filterapi.Backend{{AIServiceBackendName: "route-ns/backend"}},
+	}
+	injected := make(map[string]struct{})
+	controller.injectQuotaPolicyCostExpressions(t.Context(), config, injected, "route")
+	require.Len(t, config.LLMRequestCosts, 1)
+	require.Equal(t, expression, config.LLMRequestCosts[0].CEL)
+	require.Equal(t, "route-ns/backend", config.LLMRequestCosts[0].Backend)
+	require.Equal(t, model, config.LLMRequestCosts[0].Model)
+
+	controller.injectQuotaPolicyCostExpressions(t.Context(), config, injected, "route")
+	require.Len(t, config.LLMRequestCosts, 1)
 }
 
 // newTestGatewayController builds a GatewayController for tests, deriving the
@@ -2346,7 +2404,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 
 		// Simulate new pod created after rollout with -mcpAddr present
-		pod.Spec.InitContainers[0].Args = []string{"-logLevel", logLevel, "-mcpAddr", ":9856", "-adminPort", "1064"}
+		pod.Spec.InitContainers[0].Args = []string{"-logLevel", logLevel, "-mcpAddr", internalapi.MCPProxyAddr, "-adminPort", "1064"}
 		pod, err = kube.CoreV1().Pods(egNamespace).Update(t.Context(), pod, metav1.UpdateOptions{})
 		require.NoError(t, err)
 
@@ -2692,10 +2750,34 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 	t.Run("container mode: needMCP with -mcpAddr keeps sidecar", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
-			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":808"),
+			extProcContainer("-logLevel", logLevel, "-mcpAddr", internalapi.MCPProxyAddr),
 		}}}
 		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
-		require.True(t, hasSideCar, "with -mcpAddr present the sidecar is up to date")
+		require.True(t, hasSideCar, "with the desired -mcpAddr the sidecar is up to date")
+	})
+
+	// Pods created before the MCP proxy was bound to loopback listen on every interface. They must
+	// be rolled, otherwise the proxy stays reachable from other pods until something else restarts them.
+	t.Run("container mode: needMCP with all-interfaces -mcpAddr triggers rollout", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
+			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":9856"),
+		}}}
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
+		require.False(t, hasSideCar, "a non-loopback -mcpAddr must trigger rollout")
+	})
+
+	t.Run("sidecar mode: needMCP with all-interfaces -mcpAddr triggers rollout", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":9856"),
+		}}}
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
+		require.False(t, hasSideCar, "a non-loopback -mcpAddr must trigger rollout")
+
+		pod.Spec.InitContainers[0].Args = []string{"-logLevel", logLevel, "-mcpAddr", internalapi.MCPProxyAddr}
+		hasSideCar = c.checkPodHasSideCar(pod, true, c.image)
+		require.True(t, hasSideCar, "with the desired -mcpAddr the sidecar is up to date")
 	})
 
 	t.Run("container mode: logLevel mismatch triggers rollout", func(t *testing.T) {
@@ -3554,6 +3636,13 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	require.Equal(t, "mcp-uuid", cfg.UUID)
 	require.NotNil(t, cfg.MCPConfig)
 	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), cfg.MCPConfig.BackendListenerAddr)
+	// The MCP session encryption config is delivered through the filter config Secrets.
+	require.Equal(t, &filterapi.MCPSessionEncryption{
+		Seed:               "seed",
+		Iterations:         100,
+		FallbackSeed:       "fallback",
+		FallbackIterations: 200,
+	}, cfg.MCPConfig.SessionEncryption)
 }
 
 func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {

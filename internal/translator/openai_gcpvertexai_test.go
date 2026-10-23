@@ -2884,3 +2884,29 @@ func TestOpenAIToGCPVertexAITranslator_ContextCacheSetter(t *testing.T) {
 		require.False(t, set, "CacheCreationInputTokens must not be set when no cache was created")
 	})
 }
+
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody_NullBody(t *testing.T) {
+	// genai's GenerateContentResponse.UnmarshalJSON dereferences a nil pointer when it is given
+	// a JSON null, so a null body or stream event must be handled before decoding.
+	t.Run("non-streaming", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{requestModel: "gemini-2.5-flash"}
+		var err error
+		require.NotPanics(t, func() {
+			_, _, _, _, err = translator.ResponseBody(map[string]string{"content-type": "application/json"}, strings.NewReader("null"), true, nil)
+		})
+		require.NoError(t, err)
+	})
+	t.Run("streaming", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{stream: true}
+		body := "data: null\n\n" +
+			`data: {"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4}}` + "\n\n"
+		var tokenUsage metrics.TokenUsage
+		var err error
+		require.NotPanics(t, func() {
+			_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(body), true, nil)
+		})
+		require.NoError(t, err)
+		// The usage of the valid event that follows the null one is still counted.
+		require.Equal(t, tokenUsageFrom(3, 0, -1, 1, 4, 0), tokenUsage)
+	})
+}
